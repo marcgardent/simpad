@@ -1,0 +1,8 @@
+{
+    "abs_threshold": 0.15,
+    "tc_threshold": 0.2,
+    "lateral_slide_threshold": 0.1,
+    "udp_host": "127.0.0.1",
+    "udp_port": 5606,
+    "update_rate_hz": 100
+}
