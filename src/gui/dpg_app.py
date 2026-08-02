@@ -32,28 +32,48 @@ EFFECTS = [
         "label": "ABS / Braking",
         "desc": "Wheel lock — longitudinal slip on front wheels",
         "color": [0, 210, 255, 255],
-        "defaults": {"threshold": 0.15, "low_gain": 0.3, "low_gamma": 1.0, "high_gain": 1.0, "high_gamma": 1.5},
+        "defaults": {
+            "threshold": 0.15,
+            "low_gain": 0.3, "low_gamma": 1.0,
+            "high_gain": 1.0, "high_gamma": 1.5,
+            "shape": "Square (Pulsed)", "pulse_on_ms": 20.0, "pulse_off_ms": 30.0,
+        },
     },
     {
         "id": "oversteer",
         "label": "Oversteer",
         "desc": "Rear axle lateral slip",
         "color": [231, 76, 60, 255],
-        "defaults": {"threshold": 0.12, "low_gain": 1.0, "low_gamma": 1.2, "high_gain": 0.4, "high_gamma": 1.0},
+        "defaults": {
+            "threshold": 0.12,
+            "low_gain": 1.0, "low_gamma": 1.2,
+            "high_gain": 0.4, "high_gamma": 1.0,
+            "shape": "Sine (Smooth)", "pulse_on_ms": 25.0, "pulse_off_ms": 35.0,
+        },
     },
     {
         "id": "understeer",
         "label": "Understeer",
         "desc": "Front axle lateral slip",
         "color": [165, 105, 189, 255],
-        "defaults": {"threshold": 0.10, "low_gain": 0.5, "low_gamma": 1.5, "high_gain": 0.8, "high_gamma": 1.0},
+        "defaults": {
+            "threshold": 0.10,
+            "low_gain": 0.5, "low_gamma": 1.5,
+            "high_gain": 0.8, "high_gamma": 1.0,
+            "shape": "Sawtooth (Scrub)", "pulse_on_ms": 15.0, "pulse_off_ms": 20.0,
+        },
     },
     {
         "id": "spin",
         "label": "Traction / Spin",
         "desc": "Rear wheel spin on acceleration (TC)",
         "color": [255, 153, 0, 255],
-        "defaults": {"threshold": 0.18, "low_gain": 1.0, "low_gamma": 1.0, "high_gain": 0.2, "high_gamma": 2.0},
+        "defaults": {
+            "threshold": 0.18,
+            "low_gain": 1.0, "low_gamma": 1.0,
+            "high_gain": 0.2, "high_gamma": 2.0,
+            "shape": "Sawtooth (Scrub)", "pulse_on_ms": 15.0, "pulse_off_ms": 25.0,
+        },
     },
 ]
 
@@ -74,6 +94,9 @@ class EffectState:
         self.low_gamma = defaults["low_gamma"]
         self.high_gain = defaults["high_gain"]
         self.high_gamma = defaults["high_gamma"]
+        self.shape = defaults.get("shape", "Square (Pulsed)")
+        self.pulse_on_ms = defaults.get("pulse_on_ms", 20.0)
+        self.pulse_off_ms = defaults.get("pulse_off_ms", 30.0)
 
     def low_curve(self, xs: List[float]) -> List[float]:
         return [_apply_curve(x, self.low_gamma, self.low_gain, self.threshold) for x in xs]
@@ -89,6 +112,9 @@ class EffectState:
             "low_gamma": self.low_gamma,
             "high_gain": self.high_gain,
             "high_gamma": self.high_gamma,
+            "shape": self.shape,
+            "pulse_on_ms": self.pulse_on_ms,
+            "pulse_off_ms": self.pulse_off_ms,
         }
 
     def load_dict(self, d: dict):
@@ -98,6 +124,9 @@ class EffectState:
         self.low_gamma = d.get("low_gamma", self.low_gamma)
         self.high_gain = d.get("high_gain", self.high_gain)
         self.high_gamma = d.get("high_gamma", self.high_gamma)
+        self.shape = d.get("shape", self.shape)
+        self.pulse_on_ms = d.get("pulse_on_ms", self.pulse_on_ms)
+        self.pulse_off_ms = d.get("pulse_off_ms", self.pulse_off_ms)
 
     def to_physics_config(self) -> dict:
         p = self.eid
@@ -169,6 +198,7 @@ class SimPadDPGApp:
             self._haptics = WindowsHapticController()
             self._synth = HapticPulseSynthesizer(self._haptics)
             self._synth.start()
+            self._load_profile_into_ui(self._current_profile_name)
         except Exception as e:
             print(f"[HAPTICS] Init error: {e}", flush=True)
 
@@ -297,10 +327,10 @@ class SimPadDPGApp:
 
                 dpg.add_spacer(width=15)
                 dpg.add_combo(
-                    items=["50 Hz Smooth", "1000 Hz Raw Pulse"],
-                    default_value="1000 Hz Raw Pulse",
+                    items=["50 Hz Smooth", "200 Hz Precision", "1000 Hz Raw Pulse"],
+                    default_value="200 Hz Precision",
                     tag="combo_haptic_mode",
-                    width=130,
+                    width=150,
                     callback=self._cb_toggle_haptic_mode,
                 )
 
@@ -437,8 +467,8 @@ class SimPadDPGApp:
                 dpg.add_text("1000 Hz Pulse Waveform Shaping", color=[255, 170, 0, 255])
                 dpg.add_combo(
                     label="Shape",
-                    items=["Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"],
-                    default_value="Square (Pulsed)",
+                    items=["Flat (Continuous)", "Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"],
+                    default_value=state.shape,
                     tag=f"tune_shape_{eid}",
                     width=170,
                     callback=lambda s, a, u: self._cb_pulse_param_changed(u, "shape", a),
@@ -446,14 +476,14 @@ class SimPadDPGApp:
                 )
                 dpg.add_slider_float(
                     label="Pulse ON (ms)",
-                    default_value=10.0, min_value=1.0, max_value=100.0,
+                    default_value=state.pulse_on_ms, min_value=1.0, max_value=100.0,
                     format="%.1f ms", tag=f"tune_pulse_on_{eid}", width=170,
                     callback=lambda s, a, u: self._cb_pulse_param_changed(u, "pulse_on_ms", a),
                     user_data=eid,
                 )
                 dpg.add_slider_float(
                     label="Pulse OFF (ms)",
-                    default_value=20.0, min_value=1.0, max_value=100.0,
+                    default_value=state.pulse_off_ms, min_value=1.0, max_value=100.0,
                     format="%.1f ms", tag=f"tune_pulse_off_{eid}", width=170,
                     callback=lambda s, a, u: self._cb_pulse_param_changed(u, "pulse_off_ms", a),
                     user_data=eid,
@@ -514,6 +544,13 @@ class SimPadDPGApp:
         profile = self._pm.get(name)
         if profile is None:
             return
+        shape_map = {
+            "Flat (Continuous)": WaveformShape.FLAT,
+            "Square (Pulsed)": WaveformShape.SQUARE,
+            "Sawtooth (Scrub)": WaveformShape.SAWTOOTH,
+            "Sine (Smooth)": WaveformShape.SINE,
+            "Burst (Impact)": WaveformShape.BURST,
+        }
         for e in EFFECTS:
             eid = e["id"]
             if eid in profile.effects:
@@ -528,9 +565,26 @@ class SimPadDPGApp:
                 dpg.set_value(f"tune_low_gamma_{eid}", state.low_gamma)
                 dpg.set_value(f"tune_high_gain_{eid}", state.high_gain)
                 dpg.set_value(f"tune_high_gamma_{eid}", state.high_gamma)
+                dpg.set_value(f"tune_shape_{eid}", state.shape)
+                dpg.set_value(f"tune_pulse_on_{eid}", state.pulse_on_ms)
+                dpg.set_value(f"tune_pulse_off_{eid}", state.pulse_off_ms)
 
                 if self._physics:
                     self._physics.update_config(state.to_physics_config())
+
+                if hasattr(self, "_synth") and self._synth:
+                    self._synth.update_effect_params(
+                        eid,
+                        low_gain=state.low_gain if state.enabled else 0.0,
+                        low_gamma=state.low_gamma,
+                        high_gain=state.high_gain if state.enabled else 0.0,
+                        high_gamma=state.high_gamma,
+                        cutoff=state.threshold,
+                        shape=shape_map.get(state.shape, WaveformShape.SQUARE),
+                        pulse_on_ms=state.pulse_on_ms,
+                        pulse_off_ms=state.pulse_off_ms,
+                    )
+
                 self._update_plot_curves(eid)
 
     def _cb_manual_fire_test(self, eid: str):
@@ -562,20 +616,31 @@ class SimPadDPGApp:
         dpg.set_value(f"dash_enable_{eid}", enabled)
         if self._physics:
             self._physics.update_config(state.to_physics_config())
+        if hasattr(self, "_synth") and self._synth:
+            self._synth.update_effect_params(
+                eid,
+                low_gain=state.low_gain if enabled else 0.0,
+                high_gain=state.high_gain if enabled else 0.0,
+            )
         self._mark_unsaved()
 
     def _cb_pulse_param_changed(self, effect_id: str, param: str, val):
+        state = self._states[effect_id]
+        setattr(state, param, val)
         if hasattr(self, "_synth") and self._synth:
             if param == "shape":
                 shape_map = {
+                    "Flat (Continuous)": WaveformShape.FLAT,
                     "Square (Pulsed)": WaveformShape.SQUARE,
                     "Sawtooth (Scrub)": WaveformShape.SAWTOOTH,
                     "Sine (Smooth)": WaveformShape.SINE,
                     "Burst (Impact)": WaveformShape.BURST,
                 }
-                val = shape_map.get(val, WaveformShape.SQUARE)
-            self._synth.update_effect_params(effect_id, **{param: val})
-            self._mark_unsaved()
+                synth_val = shape_map.get(val, WaveformShape.SQUARE)
+            else:
+                synth_val = val
+            self._synth.update_effect_params(effect_id, **{param: synth_val})
+        self._mark_unsaved()
 
     def _cb_param_changed(self, eid: str, param: str, value: float):
         state = self._states[eid]
@@ -585,8 +650,10 @@ class SimPadDPGApp:
         if hasattr(self, "_synth") and self._synth:
             self._synth.update_effect_params(
                 eid,
-                gain=max(state.low_gain, state.high_gain),
-                gamma=state.high_gamma,
+                low_gain=state.low_gain if state.enabled else 0.0,
+                low_gamma=state.low_gamma,
+                high_gain=state.high_gain if state.enabled else 0.0,
+                high_gamma=state.high_gamma,
                 cutoff=state.threshold,
             )
         self._update_plot_curves(eid)
@@ -614,8 +681,16 @@ class SimPadDPGApp:
             dpg.add_button(label="OK", width=100, callback=lambda: dpg.delete_item("modal_install_res"))
 
     def _cb_toggle_haptic_mode(self, sender, app_data):
+        mode_map = {
+            "1000 Hz Raw Pulse":  0.001,   # 1 ms → vrai 1000 Hz hardware output
+            "200 Hz Precision":   0.005,   # 5 ms → bon compromis LRA
+            "50 Hz Smooth":       0.020,   # 20 ms → lissé, faible charge CPU
+        }
+        interval = mode_map.get(app_data, 0.005)
+        if hasattr(self, "_synth") and self._synth:
+            self._synth._hw_interval = interval
         self._haptic_mode_1000hz = (app_data == "1000 Hz Raw Pulse")
-        print(f"[Haptics] Switched Haptic Mode -> {'1000 Hz Raw Pulse' if self._haptic_mode_1000hz else '50 Hz Smooth DirectDrive'}", flush=True)
+        print(f"[Haptics] Mode -> {app_data} ({interval*1000:.0f} ms / {1/interval:.0f} Hz)", flush=True)
 
     def _cb_toggle_telemetry(self):
         self._telemetry_enabled = not self._telemetry_enabled
@@ -763,11 +838,20 @@ class SimPadDPGApp:
             raw_stick = 0.0
         input_val = (raw_stick + 1.0) / 2.0
 
+        # Check manual test button status
+        is_manual_fire = getattr(self, "_manual_test_active", False)
+        manual_eid = getattr(self, "_manual_test_eid", None)
+
         # Update cursor line & readout for each effect tab
         active_effect_id = None
         test_low, test_high = 0.0, 0.0
 
         active_tab_val = dpg.get_value("main_tab_bar")
+        if isinstance(active_tab_val, int):
+            if active_tab_val > 0:
+                active_tab_val = dpg.get_item_alias(active_tab_val) or ""
+            else:
+                active_tab_val = ""
 
         for e in EFFECTS:
             eid = e["id"]
@@ -783,8 +867,10 @@ class SimPadDPGApp:
                 test_low, test_high = o_low, o_high
                 if not has_pad:
                     status_text = " (No Controller)"
-                elif btn_held:
+                elif btn_held or is_manual_fire:
                     status_text = "  ● FIRE"
+                elif abs(raw_stick) > 0.05:
+                    status_text = "  ● TEST (Stick)"
                 else:
                     status_text = ""
 
@@ -796,14 +882,15 @@ class SimPadDPGApp:
         # 3. Unified Single-Thread Haptic Routing (Synthesizer is EXCLUSIVE controller writer)
         game_active = (self._udp and self._telemetry_enabled and self._udp.is_receiving_packets()[0])
 
-        is_manual_fire = getattr(self, "_manual_test_active", False)
-        manual_eid = getattr(self, "_manual_test_eid", None)
-
         effective_test_eid = manual_eid if is_manual_fire else active_effect_id
-        is_testing = (btn_held and has_pad) or is_manual_fire
+        stick_active = has_pad and abs(raw_stick) > 0.05
+        is_testing = (btn_held and has_pad) or is_manual_fire or stick_active
 
         if is_testing and effective_test_eid:
-            test_val = max(0.75, input_val) if is_manual_fire else (input_val if input_val > 0.05 else 0.75)
+            if is_manual_fire:
+                test_val = input_val if stick_active else max(0.75, input_val)
+            else:
+                test_val = input_val if input_val > 0.02 else 0.75
 
             lock_test  = test_val if effective_test_eid == "lock" else 0.0
             spin_test  = test_val if effective_test_eid == "spin" else 0.0

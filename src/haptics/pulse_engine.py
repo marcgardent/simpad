@@ -23,12 +23,14 @@ if sys.platform == "win32":
 
 
 class WaveformShape:
+    FLAT = "flat"          # Continuous rumble (no pulsing)
     SQUARE = "square"      # Crisp mechanical pulse (ABS / TC snap)
     SAWTOOTH = "sawtooth"  # Progressive ramp + sudden drop (Tire scrub)
     SINE = "sine"          # Smooth bell curve surge + rest (Weight transfer)
     BURST = "burst"        # Sharp impact decay + rest (Curb impact)
 
     CHOICES = [
+        ("Flat (Continuous)", FLAT),
         ("Square (Pulsed)", SQUARE),
         ("Sawtooth (Scrub)", SAWTOOTH),
         ("Sine (Smooth)", SINE),
@@ -38,13 +40,19 @@ class WaveformShape:
 
 @dataclass
 class HapticEffectParams:
-    """Paramètres d'impulsion configurés en millisecondes (ms)."""
-    gain: float = 1.0               # Intensité max (0.0 à 1.0)
-    gamma: float = 1.0              # Courbe de réponse (exposant)
-    cutoff: float = 0.0             # Seuil minimum
-    shape: str = WaveformShape.SQUARE  # Forme d'impulsion
-    pulse_on_ms: float = 25.0       # Durée de l'impulsion ON en ms (10.0 à 250.0 ms)
-    pulse_off_ms: float = 35.0      # Durée de la pause OFF en ms (10.0 à 250.0 ms)
+    """Paramètres d'impulsion configurables depuis l'UI."""
+    # Courbe Low Freq → canal lf (low_frequency_rumble)
+    low_gain: float = 1.0
+    low_gamma: float = 1.0
+    # Courbe High Freq → canal hf (high_frequency_rumble)
+    high_gain: float = 0.3
+    high_gamma: float = 1.0
+    # Seuil commun
+    cutoff: float = 0.0
+    # Forme et timing d'impulsion
+    shape: str = WaveformShape.SQUARE
+    pulse_on_ms: float = 20.0
+    pulse_off_ms: float = 30.0
 
 
 class HapticPulseSynthesizer:
@@ -66,11 +74,12 @@ class HapticPulseSynthesizer:
         self._raw_understeer: float = 0.0
 
         # Calibrated default effect parameters in ms
+        # Paramètres LRA (Linear Resonant Actuator — Gulikit/DualSense)
         self.params: Dict[str, HapticEffectParams] = {
-            "lock": HapticEffectParams(gain=1.0, shape=WaveformShape.SQUARE, pulse_on_ms=25.0, pulse_off_ms=35.0),
-            "spin": HapticEffectParams(gain=0.9, shape=WaveformShape.SAWTOOTH, pulse_on_ms=20.0, pulse_off_ms=30.0),
-            "oversteer": HapticEffectParams(gain=0.9, shape=WaveformShape.SINE, pulse_on_ms=30.0, pulse_off_ms=45.0),
-            "understeer": HapticEffectParams(gain=0.8, shape=WaveformShape.SAWTOOTH, pulse_on_ms=18.0, pulse_off_ms=25.0),
+            "lock":       HapticEffectParams(low_gain=1.0, low_gamma=1.0,  high_gain=1.0, high_gamma=1.5, cutoff=0.0, shape=WaveformShape.SQUARE,   pulse_on_ms=20.0, pulse_off_ms=30.0),
+            "spin":       HapticEffectParams(low_gain=1.0, low_gamma=1.0,  high_gain=0.2, high_gamma=2.0, cutoff=0.0, shape=WaveformShape.SAWTOOTH, pulse_on_ms=15.0, pulse_off_ms=25.0),
+            "oversteer":  HapticEffectParams(low_gain=1.0, low_gamma=1.2,  high_gain=0.4, high_gamma=1.0, cutoff=0.0, shape=WaveformShape.SINE,     pulse_on_ms=25.0, pulse_off_ms=35.0),
+            "understeer": HapticEffectParams(low_gain=0.5, low_gamma=1.5,  high_gain=0.8, high_gamma=1.0, cutoff=0.0, shape=WaveformShape.SAWTOOTH, pulse_on_ms=15.0, pulse_off_ms=20.0),
         }
 
         # Internal phase accumulators (0.0 to 1.0)
@@ -79,7 +88,8 @@ class HapticPulseSynthesizer:
 
         # Rate limiting hardware updates (max 50 Hz = 20 ms)
         self._last_hw_time: float = 0.0
-        self._last_hw_vib: Tuple[float, float, float, float] = (-1.0, -1.0, -1.0, -1.0)
+        self._last_hw_vib: Tuple[float, float] = (-1.0, -1.0)
+        self._hw_interval: float = 0.005  # 200 Hz hardware output (5 ms)
 
     def set_controller(self, controller):
         with self._lock:
@@ -106,7 +116,11 @@ class HapticPulseSynthesizer:
         """
         Évalue la forme d'onde avec pause à ZÉRO STRICT (HARD ZERO REST PHASE).
         Phase (0.0 à 1.0). Si phase >= duty, retourne 0.0 (arrêt du moteur).
+        Pour FLAT, retourne 1.0 continu sans pulsation.
         """
+        if shape == WaveformShape.FLAT:
+            return 1.0
+
         phase = phase % 1.0
 
         # Phase de repos (OFF) -> Zéro strict pour permettre le débrayage du moteur
@@ -152,7 +166,7 @@ class HapticPulseSynthesizer:
                 raw_over = self._raw_oversteer
                 raw_under = self._raw_understeer
 
-            l_low, l_high, r_low, r_high = 0.0, 0.0, 0.0, 0.0
+            lf_raw, hf_raw = 0.0, 0.0
 
             for eid, raw_val in [
                 ("lock", raw_lock),
@@ -173,32 +187,41 @@ class HapticPulseSynthesizer:
                 self._phases[eid] = (self._phases[eid] + pulse_freq * dt) % 1.0
                 mod = self._eval_waveform(p.shape, self._phases[eid], duty_cycle)
 
-                # Amplitude modulée
-                norm_val = (raw_val - p.cutoff) / max(0.001, 1.0 - p.cutoff)
-                base_intensity = math.pow(max(0.0, min(1.0, norm_val)), p.gamma) * p.gain * mod
+                # Signal brut 0.0-1.0 (sans seuil physique — appliqué par moteur ensuite)
+                # Calcul séparé lf/hf depuis les courbes de réponse UI :
+                #   low_gain/low_gamma  → lf_raw (canal grave)
+                #   high_gain/high_gamma → hf_raw (canal aigu)
+                norm_val = max(0.0, min(1.0, (raw_val - p.cutoff) / max(0.001, 1.0 - p.cutoff)))
 
-                # Décalage de tension physique minimale (0.30 + 0.70 * intensity) pour vaincre la friction des moteurs ERM
-                intensity = (0.30 + 0.70 * base_intensity) if base_intensity > 0.0 else 0.0
+                lf_sig = math.pow(norm_val, p.low_gamma)  * p.low_gain  * mod
+                hf_sig = math.pow(norm_val, p.high_gamma) * p.high_gain * mod
 
-                if eid == "lock":
-                    r_high = max(r_high, intensity)
-                elif eid == "spin":
-                    l_low = max(l_low, intensity)
-                elif eid == "oversteer":
-                    l_low = max(l_low, intensity)
-                    r_high = max(r_high, intensity * 0.4)
-                elif eid == "understeer":
-                    l_high = max(l_high, intensity)
-                    r_low = max(r_low, intensity * 0.3)
+                lf_raw = max(lf_raw, max(0.0, min(1.0, lf_sig)))
+                hf_raw = max(hf_raw, max(0.0, min(1.0, hf_sig)))
 
-            # Transmettre au contrôleur matériel avec rate-limiting à 50 Hz (20 ms)
-            if self.controller and (t0 - self._last_hw_time >= 0.018):
-                target_vib = (round(l_low, 2), round(l_high, 2), round(r_low, 2), round(r_high, 2))
-                if target_vib != self._last_hw_vib:
-                    self._last_hw_time = t0
+            # LRA (Gulikit/DualSense) : pas de seuil de démarrage.
+            # Réponse linéaire directe depuis 0%, hard zero réel sur OFF.
+            lf_out = max(0.0, min(1.0, lf_raw))
+            hf_out = max(0.0, min(1.0, hf_raw))
+
+            # Transmettre au contrôleur matériel à 50 Hz (toutes les 18 ms)
+            # Pour les signaux non-nuls : toujours rafraîchir SDL3 pour éviter
+            # que duration_ms expire avant la prochaine commande (sinon: silence au milieu d'une phase ON).
+            # Pour le zéro : seulement envoyer si changement (éviter le spam de silences).
+            if self.controller and (t0 - self._last_hw_time >= self._hw_interval):
+                self._last_hw_time = t0
+                target_vib = (round(lf_out, 2), round(hf_out, 2))
+                is_silent = (lf_out == 0.0 and hf_out == 0.0)
+                if not is_silent or target_vib != self._last_hw_vib:
                     self._last_hw_vib = target_vib
                     try:
-                        self.controller.set_vibration(l_low, l_high, r_low, r_high)
+                        # duration_ms = pulse_on_ms de l'effet dominant (couvre la phase ON complète)
+                        dominant_on_ms = max(
+                            (self.params[eid].pulse_on_ms for eid in self.params if not is_silent),
+                            default=20.0
+                        )
+                        dur_ms = 10 if is_silent else max(20, int(dominant_on_ms))
+                        self.controller.set_vibration(lf_out, 0.0, 0.0, hf_out, duration_ms=dur_ms)
                     except Exception:
                         pass
 
