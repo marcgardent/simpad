@@ -85,23 +85,63 @@ class VehicleSensors:
             vehicle_speed=avg_speed,
         )
 
-    # ── Sensor Intensity Properties (0.0 to 1.0) ──────────────────────────────
+    # ── Combined & Per-Side Sensor Intensity Properties (0.0 to 1.0) ──────────
     @property
     def lock_intensity(self) -> float:
-        """Intensité max du blocage de roues AV (Freinage / ABS)."""
+        """Over-Braking intensity (Combined Max FL/FR)."""
         return max(self.front_left_lock, self.front_right_lock)
 
     @property
+    def lock_left(self) -> float:
+        """Over-Braking Left wheel (FL)."""
+        return self.front_left_lock
+
+    @property
+    def lock_right(self) -> float:
+        """Over-Braking Right wheel (FR)."""
+        return self.front_right_lock
+
+    @property
     def spin_intensity(self) -> float:
-        """Intensité max du patinage de roues AR (Accélération / TC)."""
+        """Over-Acceleration intensity (Combined Max RL/RR)."""
         return max(self.rear_left_spin, self.rear_right_spin)
 
     @property
+    def spin_left(self) -> float:
+        """Over-Acceleration Left wheel (RL)."""
+        return self.rear_left_spin
+
+    @property
+    def spin_right(self) -> float:
+        """Over-Acceleration Right wheel (RR)."""
+        return self.rear_right_spin
+
+    @property
     def oversteer_intensity(self) -> float:
-        """Intensité max du glissement latéral AR (Survirage)."""
+        """Oversteer intensity (Combined Max RL/RR)."""
         return max(self.rear_left_lat_slip, self.rear_right_lat_slip)
 
     @property
+    def oversteer_left(self) -> float:
+        """Oversteer Left wheel (RL)."""
+        return self.rear_left_lat_slip
+
+    @property
+    def oversteer_right(self) -> float:
+        """Oversteer Right wheel (RR)."""
+        return self.rear_right_lat_slip
+
+    @property
     def understeer_intensity(self) -> float:
-        """Intensité max du glissement latéral AV (Sousvirage)."""
+        """Understeer intensity (Combined Max FL/FR)."""
         return max(self.front_left_lat_slip, self.front_right_lat_slip)
+
+    @property
+    def understeer_left(self) -> float:
+        """Understeer Left wheel (FL)."""
+        return self.front_left_lat_slip
+
+    @property
+    def understeer_right(self) -> float:
+        """Understeer Right wheel (FR)."""
+        return self.front_right_lat_slip

@@ -1,0 +1,146 @@
+"""
+SimPad Haptic Middleware — Real-time Haptic Synthesizer Engine.
+Runs a dedicated high-frequency thread (50 Hz, 200 Hz, 1000 Hz) decoupled from the GUI render loop.
+Executes the compiled Python graph function and drives hardware vibration motors in real time.
+"""
+
+import time
+import threading
+from typing import Optional, Callable, Tuple
+
+
+class HapticSynthesizerEngine:
+    """
+    High-frequency synthesis engine running a dedicated background thread.
+    Supported frequencies: 50 Hz (20ms), 200 Hz (5ms), 1000 Hz (1ms).
+    """
+
+    def __init__(self, haptic_controller=None, default_freq_hz: int = 200):
+        self._haptic_controller = haptic_controller
+        self._freq_hz = default_freq_hz
+        self._interval_s = 1.0 / default_freq_hz
+
+        self._compiled_func: Optional[Callable[[dict, float], Tuple[float, float]]] = None
+        self._telemetry = {"abs": 0.0, "tc": 0.0, "oversteer": 0.0, "understeer": 0.0}
+
+        self._last_low_out = 0.0
+        self._last_high_out = 0.0
+
+        self._lock = threading.Lock()
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._start_time = time.time()
+
+    def set_haptic_controller(self, controller):
+        with self._lock:
+            self._haptic_controller = controller
+
+    def set_frequency(self, freq_hz: int):
+        """Sets the synthesizer sample rate in Hz (e.g. 50, 200, 1000)."""
+        valid_freq = max(10, min(2000, freq_hz))
+        with self._lock:
+            self._freq_hz = valid_freq
+            self._interval_s = 1.0 / valid_freq
+
+    def get_frequency(self) -> int:
+        with self._lock:
+            return self._freq_hz
+
+    def set_compiled_func(self, func: Optional[Callable[[dict, float], Tuple[float, float]]]):
+        """Hot-reloads the compiled Python evaluation function atomically."""
+        with self._lock:
+            self._compiled_func = func
+
+    def update_telemetry(
+        self,
+        abs_val: float = 0.0, abs_l: Optional[float] = None, abs_r: Optional[float] = None,
+        tc_val: float = 0.0, tc_l: Optional[float] = None, tc_r: Optional[float] = None,
+        over_val: float = 0.0, over_l: Optional[float] = None, over_r: Optional[float] = None,
+        und_val: float = 0.0, und_l: Optional[float] = None, und_r: Optional[float] = None
+    ):
+        """Updates live telemetry input values thread-safely for combined and L/R channels."""
+        with self._lock:
+            self._telemetry["abs"] = float(abs_val)
+            self._telemetry["abs_l"] = float(abs_l) if abs_l is not None else float(abs_val)
+            self._telemetry["abs_r"] = float(abs_r) if abs_r is not None else float(abs_val)
+
+            self._telemetry["tc"] = float(tc_val)
+            self._telemetry["tc_l"] = float(tc_l) if tc_l is not None else float(tc_val)
+            self._telemetry["tc_r"] = float(tc_r) if tc_r is not None else float(tc_val)
+
+            self._telemetry["oversteer"] = float(over_val)
+            self._telemetry["over_l"] = float(over_l) if over_l is not None else float(over_val)
+            self._telemetry["over_r"] = float(over_r) if over_r is not None else float(over_val)
+
+            self._telemetry["understeer"] = float(und_val)
+            self._telemetry["und_l"] = float(und_l) if und_l is not None else float(und_val)
+            self._telemetry["und_r"] = float(und_r) if und_r is not None else float(und_val)
+
+    def get_current_outputs(self) -> Tuple[float, float]:
+        """Returns the most recent calculated (low_freq_rumble, high_freq_buzz) outputs."""
+        with self._lock:
+            return self._last_low_out, self._last_high_out
+
+    def start(self):
+        """Starts the high-frequency synthesizer background loop thread."""
+        if self._running:
+            return
+        self._running = True
+        self._start_time = time.time()
+        self._thread = threading.Thread(target=self._synthesis_loop, daemon=True, name="HapticSynthesizerThread")
+        self._thread.start()
+
+    def stop(self):
+        """Stops the synthesizer thread and silences motors."""
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._thread = None
+        if self._haptic_controller and hasattr(self._haptic_controller, "set_vibration"):
+            try:
+                self._haptic_controller.set_vibration(left_low=0.0, left_high=0.0, right_low=0.0, right_high=0.0, duration_ms=10)
+            except Exception:
+                pass
+
+    def _synthesis_loop(self):
+        """High-precision real-time synthesis loop running at target sample rate."""
+        next_tick = time.perf_counter()
+
+        while self._running:
+            now = time.perf_counter()
+            t_elapsed = time.time() - self._start_time
+
+            with self._lock:
+                func = self._compiled_func
+                telemetry = dict(self._telemetry)
+                controller = self._haptic_controller
+                interval = self._interval_s
+
+            low_out, high_out = 0.0, 0.0
+
+            if func:
+                try:
+                    low_out, high_out = func(telemetry, t_elapsed)
+                except Exception:
+                    low_out, high_out = 0.0, 0.0
+
+            with self._lock:
+                self._last_low_out = low_out
+                self._last_high_out = high_out
+
+            # Hardware vibration update
+            if controller and hasattr(controller, "is_connected") and controller.is_connected():
+                try:
+                    duration = int(max(10, interval * 2000))
+                    controller.set_vibration(left_low=low_out, left_high=0.0, right_low=0.0, right_high=high_out, duration_ms=duration)
+                except Exception:
+                    pass
+
+            # Precise timing control for target frequency
+            next_tick += interval
+            sleep_time = next_tick - time.perf_counter()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                # If we overshot interval, catch up
+                next_tick = time.perf_counter()

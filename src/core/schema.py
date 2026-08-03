@@ -1,0 +1,116 @@
+"""
+SimPad Haptic Middleware — Graph Schema & AI Preset Validator.
+
+Provides schema validation, JSON serialization/deserialization, and specifications
+for AI-assisted preset generation.
+"""
+
+import json
+from typing import Dict, Any, Tuple, List, Optional
+
+
+VALID_NODE_TYPES = {
+    "constant",
+    "float_constant",
+    "multiply",
+    "array_multiply",
+    "normalize",
+    "math",
+    "transform",
+    "shape"
+}
+
+VALID_SENSOR_OUTPUTS = {
+    "attr_out_abs", "attr_out_abs_l", "attr_out_abs_r",
+    "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
+    "attr_out_over", "attr_out_over_l", "attr_out_over_r",
+    "attr_out_und", "attr_out_und_l", "attr_out_und_r"
+}
+
+VALID_MOTOR_INPUTS = {
+    "attr_in_low",
+    "attr_in_high"
+}
+
+
+class GraphSchemaValidator:
+    """Validates node graph dictionaries generated manually or by AI models."""
+
+    @staticmethod
+    def validate(graph_data: dict) -> Tuple[bool, str]:
+        """
+        Validates the structure, nodes, parameters and link connections of a graph dictionary.
+        Returns (is_valid, error_message).
+        """
+        if not isinstance(graph_data, dict):
+            return False, "Graph data must be a JSON object (dict)."
+
+        if "nodes" not in graph_data or not isinstance(graph_data["nodes"], dict):
+            return False, "Graph data must contain a 'nodes' dict."
+
+        if "links" not in graph_data or not isinstance(graph_data["links"], list):
+            return False, "Graph data must contain a 'links' list."
+
+        nodes = graph_data["nodes"]
+        links = graph_data["links"]
+
+        # Track registered attribute pins (outputs and inputs)
+        available_outputs = set(VALID_SENSOR_OUTPUTS)
+        available_inputs = set(VALID_MOTOR_INPUTS)
+
+        # Validate nodes
+        for ntag, ninfo in nodes.items():
+            if not isinstance(ninfo, dict):
+                return False, f"Node '{ntag}' definition must be a dict."
+
+            ntype = ninfo.get("type")
+            if ntype not in VALID_NODE_TYPES:
+                return False, f"Node '{ntag}' has invalid type '{ntype}'. Allowed: {sorted(list(VALID_NODE_TYPES))}"
+
+            out_attr = ninfo.get("out_attr")
+            if out_attr:
+                available_outputs.add(out_attr)
+
+            # Collect input attributes for link validation
+            for key in ["in_attr", "in_a", "in_b", "in_on", "in_off"]:
+                val = ninfo.get(key)
+                if val:
+                    available_inputs.add(val)
+
+        # Validate links
+        for idx, link in enumerate(links):
+            if not isinstance(link, (list, tuple)) or len(link) != 2:
+                return False, f"Link #{idx} must be a 2-element list [src_output_attr, tgt_input_attr]."
+
+            src_out, tgt_in = link[0], link[1]
+
+            if src_out not in available_outputs:
+                return False, f"Link #{idx} references unknown source output pin '{src_out}'."
+
+            if tgt_in not in available_inputs:
+                return False, f"Link #{idx} references unknown target input pin '{tgt_in}'."
+
+        return True, "Valid Graph Schema"
+
+
+def export_graph_json(graph_data: dict, indent: int = 2) -> str:
+    """Serializes a graph dictionary into a clean JSON string."""
+    return json.dumps(graph_data, indent=indent)
+
+
+def import_graph_json(json_str: str) -> Tuple[Optional[dict], str]:
+    """Parses a JSON string, validates its schema, and returns (graph_dict, status_msg)."""
+    try:
+        data = json.loads(json_str)
+    except Exception as e:
+        return None, f"Invalid JSON Syntax: {e}"
+
+    # Extract inner graph_data if wrapped in a profile container
+    if "graph_data" in data and isinstance(data["graph_data"], dict):
+        data = data["graph_data"]
+
+    is_valid, msg = GraphSchemaValidator.validate(data)
+    if not is_valid:
+        return None, f"Schema Validation Error: {msg}"
+
+    return data, "OK"
