@@ -30,13 +30,17 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
             "constant", "float_constant", "multiply", "array_multiply",
             "normalize", "math", "transform", "shape",
             "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
+            "sensor_engine_regime", "sensor_wheel_travel",
             "output_xinput"
         }
         self.assertTrue(expected_types.issubset(registered_types))
 
 
     def test_sensor_nodes_generation(self):
-        sensor_types = ["sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer"]
+        sensor_types = [
+            "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
+            "sensor_engine_regime", "sensor_wheel_travel"
+        ]
         for stype in sensor_types:
             node = NodeFactory.get_node(stype)
             self.assertIsNotNone(node)

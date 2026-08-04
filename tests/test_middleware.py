@@ -34,5 +34,17 @@ class TestLMUMiddleware(unittest.TestCase):
         self.assertEqual(r_high, 0.0)
 
 
+    def test_engine_and_travel_telemetry(self):
+        json_data = b'{"Type":"TelemInfoV01","mEngineRPM":7200.0,"mEngineMaxRPM":7500.0,"wheels":[{"mSuspensionDeflection":0.09},{"mSuspensionDeflection":0.01},{"mSuspensionDeflection":0.05},{"mSuspensionDeflection":0.01}]}'
+        parsed = LMUParser.parse(json_data)
+        self.assertIsNotNone(parsed)
+        sensors = parsed.to_sensors()
+        self.assertAlmostEqual(sensors.engine_rpm, 7200.0)
+        self.assertAlmostEqual(sensors.engine_max_rpm, 7500.0)
+        self.assertAlmostEqual(sensors.rpm_ratio, 0.96, places=2)
+        self.assertGreater(sensors.overrev_intensity, 0.0)
+        self.assertAlmostEqual(sensors.travel_left, 0.9, places=2)
+
+
 if __name__ == "__main__":
     unittest.main()

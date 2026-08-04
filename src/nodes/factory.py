@@ -17,6 +17,8 @@ from src.nodes.sensor import (
     OverAccelSensorNode,
     OversteerSensorNode,
     UndersteerSensorNode,
+    EngineRegimeSensorNode,
+    WheelTravelSensorNode,
 )
 from src.nodes.output import XInputOutputNode
 
@@ -65,6 +67,8 @@ def _initialize_factory():
     NodeFactory.register(OverAccelSensorNode)
     NodeFactory.register(OversteerSensorNode)
     NodeFactory.register(UndersteerSensorNode)
+    NodeFactory.register(EngineRegimeSensorNode)
+    NodeFactory.register(WheelTravelSensorNode)
     NodeFactory.register(XInputOutputNode)
 
 

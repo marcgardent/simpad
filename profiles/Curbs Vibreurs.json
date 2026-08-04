@@ -1,0 +1,64 @@
+{
+  "name": "Curbs Vibreurs",
+  "preset": true,
+  "version": 2,
+  "graph_data": {
+    "nodes": {
+      "node_sensor_travel_1": {
+        "type": "sensor_wheel_travel",
+        "out_attr": "attr_out_dyn_trv_max_1",
+        "out_l": "attr_out_dyn_trv_l_1",
+        "out_r": "attr_out_dyn_trv_r_1",
+        "out_fl": "attr_out_dyn_trv_fl_1",
+        "out_fr": "attr_out_dyn_trv_fr_1",
+        "out_rl": "attr_out_dyn_trv_rl_1",
+        "out_rr": "attr_out_dyn_trv_rr_1",
+        "pos": [30.0, 40.0]
+      },
+      "node_tf_trv_l": {
+        "type": "transform",
+        "in_attr": "attr_in_tf_trv_l",
+        "out_attr": "attr_out_tf_trv_l",
+        "thresh": 0.08,
+        "gain": 1.5,
+        "gamma": 0.8,
+        "pos": [260.0, 40.0]
+      },
+      "node_tf_trv_r": {
+        "type": "transform",
+        "in_attr": "attr_in_tf_trv_r",
+        "out_attr": "attr_out_tf_trv_r",
+        "thresh": 0.08,
+        "gain": 1.5,
+        "gamma": 0.8,
+        "pos": [260.0, 240.0]
+      },
+      "node_shape_trv_l": {
+        "type": "shape",
+        "in_attr": "attr_in_shape_trv_l",
+        "out_attr": "attr_out_shape_trv_l",
+        "shape": "Sawtooth (Scrub)",
+        "freq": 35.0,
+        "duty": 0.4,
+        "pos": [460.0, 40.0]
+      },
+      "node_shape_trv_r": {
+        "type": "shape",
+        "in_attr": "attr_in_shape_trv_r",
+        "out_attr": "attr_out_shape_trv_r",
+        "shape": "Sawtooth (Scrub)",
+        "freq": 35.0,
+        "duty": 0.4,
+        "pos": [460.0, 240.0]
+      }
+    },
+    "links": [
+      ["attr_out_dyn_trv_l_1", "attr_in_tf_trv_l"],
+      ["attr_out_tf_trv_l", "attr_in_shape_trv_l"],
+      ["attr_out_shape_trv_l", "attr_in_low"],
+      ["attr_out_dyn_trv_r_1", "attr_in_tf_trv_r"],
+      ["attr_out_tf_trv_r", "attr_in_shape_trv_r"],
+      ["attr_out_shape_trv_r", "attr_in_high"]
+    ]
+  }
+}

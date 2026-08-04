@@ -205,6 +205,78 @@ class NodeUIFactory:
         recompile_cb()
         return node_tag
 
+    def add_node_sensor_engine(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 520.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_engine_{nid}"
+        out_over_tag = f"attr_out_dyn_over_rev_{nid}"
+        out_under_tag = f"attr_out_dyn_under_rev_{nid}"
+        out_rpm_tag = f"attr_out_dyn_rpm_{nid}"
+
+        with dpg.node(label=f"Input: Engine Regime #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Sur-régime (Upshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_over_tag):
+                dpg.add_text("Sur-régime (Upshift)", color=[255, 100, 100, 255])
+            with dpg.node_attribute(label="Sous-régime (Downshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_under_tag):
+                dpg.add_text("Sous-régime (Downshift)", color=[100, 200, 255, 255])
+            with dpg.node_attribute(label="Engine RPM Ratio", attribute_type=dpg.mvNode_Attr_Output, tag=out_rpm_tag):
+                dpg.add_text("Engine RPM Ratio", color=[255, 220, 0, 255])
+
+        for pin in [out_over_tag, out_under_tag, out_rpm_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_engine_regime",
+            "out_over_rev": out_over_tag,
+            "out_under_rev": out_under_tag,
+            "out_rpm": out_rpm_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_travel(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 640.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_travel_{nid}"
+        out_max_tag = f"attr_out_dyn_trv_max_{nid}"
+        out_l_tag = f"attr_out_dyn_trv_l_{nid}"
+        out_r_tag = f"attr_out_dyn_trv_r_{nid}"
+        out_fl_tag = f"attr_out_dyn_trv_fl_{nid}"
+        out_fr_tag = f"attr_out_dyn_trv_fr_{nid}"
+        out_rl_tag = f"attr_out_dyn_trv_rl_{nid}"
+        out_rr_tag = f"attr_out_dyn_trv_rr_{nid}"
+
+        with dpg.node(label=f"Input: Wheel Travel #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Travel Max", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Wheel Travel (Max)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Travel Left", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Wheel Travel (Max Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Travel Right", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Wheel Travel (Max Right)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Travel FL", attribute_type=dpg.mvNode_Attr_Output, tag=out_fl_tag):
+                dpg.add_text("Wheel Travel (Front Left)", color=[200, 200, 200, 255])
+            with dpg.node_attribute(label="Travel FR", attribute_type=dpg.mvNode_Attr_Output, tag=out_fr_tag):
+                dpg.add_text("Wheel Travel (Front Right)", color=[200, 200, 200, 255])
+            with dpg.node_attribute(label="Travel RL", attribute_type=dpg.mvNode_Attr_Output, tag=out_rl_tag):
+                dpg.add_text("Wheel Travel (Rear Left)", color=[200, 200, 200, 255])
+            with dpg.node_attribute(label="Travel RR", attribute_type=dpg.mvNode_Attr_Output, tag=out_rr_tag):
+                dpg.add_text("Wheel Travel (Rear Right)", color=[200, 200, 200, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag, out_fl_tag, out_fr_tag, out_rl_tag, out_rr_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_wheel_travel",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
+            "out_fl": out_fl_tag,
+            "out_fr": out_fr_tag,
+            "out_rl": out_rl_tag,
+            "out_rr": out_rr_tag,
+        }
+        recompile_cb()
+        return node_tag
+
     def add_node_output_xinput(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(580.0, 120.0)) -> str:
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)

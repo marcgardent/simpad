@@ -56,9 +56,13 @@ class HapticSynthesizerEngine:
         abs_val: float = 0.0, abs_l: Optional[float] = None, abs_r: Optional[float] = None,
         tc_val: float = 0.0, tc_l: Optional[float] = None, tc_r: Optional[float] = None,
         over_val: float = 0.0, over_l: Optional[float] = None, over_r: Optional[float] = None,
-        und_val: float = 0.0, und_l: Optional[float] = None, und_r: Optional[float] = None
+        und_val: float = 0.0, und_l: Optional[float] = None, und_r: Optional[float] = None,
+        over_rev: float = 0.0, under_rev: float = 0.0, rpm: float = 0.0,
+        travel_val: float = 0.0, travel_l: Optional[float] = None, travel_r: Optional[float] = None,
+        travel_fl: Optional[float] = None, travel_fr: Optional[float] = None,
+        travel_rl: Optional[float] = None, travel_rr: Optional[float] = None
     ):
-        """Updates live telemetry input values thread-safely for combined and L/R channels."""
+        """Updates live telemetry input values thread-safely for all channels."""
         with self._lock:
             self._telemetry["abs"] = float(abs_val)
             self._telemetry["abs_l"] = float(abs_l) if abs_l is not None else float(abs_val)
@@ -75,6 +79,18 @@ class HapticSynthesizerEngine:
             self._telemetry["understeer"] = float(und_val)
             self._telemetry["und_l"] = float(und_l) if und_l is not None else float(und_val)
             self._telemetry["und_r"] = float(und_r) if und_r is not None else float(und_val)
+
+            self._telemetry["over_rev"] = float(over_rev)
+            self._telemetry["under_rev"] = float(under_rev)
+            self._telemetry["rpm"] = float(rpm)
+
+            self._telemetry["travel"] = float(travel_val)
+            self._telemetry["travel_l"] = float(travel_l) if travel_l is not None else float(travel_val)
+            self._telemetry["travel_r"] = float(travel_r) if travel_r is not None else float(travel_val)
+            self._telemetry["travel_fl"] = float(travel_fl) if travel_fl is not None else float(travel_val)
+            self._telemetry["travel_fr"] = float(travel_fr) if travel_fr is not None else float(travel_val)
+            self._telemetry["travel_rl"] = float(travel_rl) if travel_rl is not None else float(travel_val)
+            self._telemetry["travel_rr"] = float(travel_rr) if travel_rr is not None else float(travel_val)
 
     def get_current_outputs(self) -> Tuple[float, float]:
         """Returns the most recent calculated (low_freq_rumble, high_freq_buzz) outputs."""

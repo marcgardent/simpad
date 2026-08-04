@@ -17,7 +17,10 @@ VALID_SENSOR_OUTPUTS = {
     "attr_out_abs", "attr_out_abs_l", "attr_out_abs_r",
     "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
     "attr_out_over", "attr_out_over_l", "attr_out_over_r",
-    "attr_out_und", "attr_out_und_l", "attr_out_und_r"
+    "attr_out_und", "attr_out_und_l", "attr_out_und_r",
+    "attr_out_over_rev", "attr_out_under_rev", "attr_out_rpm",
+    "attr_out_travel", "attr_out_travel_l", "attr_out_travel_r",
+    "attr_out_travel_fl", "attr_out_travel_fr", "attr_out_travel_rl", "attr_out_travel_rr"
 }
 
 VALID_MOTOR_INPUTS = {
@@ -60,14 +63,15 @@ class GraphSchemaValidator:
             if ntype not in VALID_NODE_TYPES:
                 return False, f"Node '{ntag}' has invalid type '{ntype}'. Allowed: {sorted(list(VALID_NODE_TYPES))}"
 
-            out_attr = ninfo.get("out_attr")
-            if out_attr:
-                available_outputs.add(out_attr)
+            # Collect all output attributes (out_attr, out_l, out_r, out_over_rev, etc.)
+            for key, val in ninfo.items():
+                if key.startswith("out_") and isinstance(val, str):
+                    available_outputs.add(val)
 
             # Collect input attributes for link validation
-            for key in ["in_attr", "in_a", "in_b", "in_on", "in_off"]:
+            for key in ["in_attr", "in_a", "in_b", "in_on", "in_off", "in_low", "in_high", "in_freq"]:
                 val = ninfo.get(key)
-                if val:
+                if val and isinstance(val, str):
                     available_inputs.add(val)
 
         # Validate links

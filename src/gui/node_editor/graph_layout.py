@@ -26,8 +26,10 @@ class NodeGraphArranger:
                 pass
 
         # Specific known built-in nodes
-        if ntag in ["node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und"]:
+        if ntag in ["node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und", "node_sensor_engine"]:
             return 260.0, 135.0
+        elif ntag == "node_sensor_travel":
+            return 260.0, 260.0
         elif ntag == "node_sensors":
             return 260.0, 480.0
         elif ntag == "node_xinput":
@@ -36,8 +38,10 @@ class NodeGraphArranger:
         # Custom nodes lookup
         if ntag in custom_nodes:
             ntype = custom_nodes[ntag].get("type")
-            if ntype in ["sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer"]:
+            if ntype in ["sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer", "sensor_engine_regime"]:
                 return 260.0, 135.0
+            elif ntype == "sensor_wheel_travel":
+                return 260.0, 260.0
             elif ntype in ["constant", "float_constant"]:
                 return 200.0, 95.0
             elif ntype in ["multiply", "array_multiply"]:

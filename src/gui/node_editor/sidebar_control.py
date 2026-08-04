@@ -43,6 +43,18 @@ class NodeSidebarControl:
                 dpg.add_slider_float(label="L", tag="test_sensor_und_l", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
                 dpg.add_slider_float(label="R", tag="test_sensor_und_r", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
 
+            dpg.add_spacer(height=2)
+            dpg.add_text("Engine RPM & Regime", color=[255, 100, 100, 255])
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="Sur", tag="test_sensor_over_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="Sous", tag="test_sensor_under_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+
+            dpg.add_spacer(height=2)
+            dpg.add_text("Wheel Travel / Curbs", color=[100, 255, 150, 255])
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="L", tag="test_sensor_travel_l", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="R", tag="test_sensor_travel_r", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+
             dpg.add_spacer(height=10)
             dpg.add_separator()
             dpg.add_spacer(height=4)
@@ -57,6 +69,11 @@ class NodeSidebarControl:
                 dpg.add_button(label="Oversteer R", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_over_r"))
                 dpg.add_button(label="Under L", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_und_l"))
                 dpg.add_button(label="Under R", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_und_r"))
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Sur-régime", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_over_rev"))
+                dpg.add_button(label="Sous-régime", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_under_rev"))
+                dpg.add_button(label="Curb Left", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_travel_l"))
+                dpg.add_button(label="Curb Right", width=65, callback=lambda: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_travel_r"))
 
             dpg.add_spacer(height=10)
             dpg.add_separator()
@@ -83,7 +100,9 @@ class NodeSidebarControl:
             "test_sensor_abs_l", "test_sensor_abs_r",
             "test_sensor_tc_l", "test_sensor_tc_r",
             "test_sensor_over_l", "test_sensor_over_r",
-            "test_sensor_und_l", "test_sensor_und_r"
+            "test_sensor_und_l", "test_sensor_und_r",
+            "test_sensor_over_rev", "test_sensor_under_rev",
+            "test_sensor_travel_l", "test_sensor_travel_r"
         ]:
             if dpg.does_item_exist(tag):
                 dpg.set_value(tag, 0.0)
@@ -108,11 +127,21 @@ class NodeSidebarControl:
             und_r = dpg.get_value("test_sensor_und_r") if dpg.does_item_exist("test_sensor_und_r") else 0.0
             und_val = max(und_l, und_r)
 
+            over_rev = dpg.get_value("test_sensor_over_rev") if dpg.does_item_exist("test_sensor_over_rev") else 0.0
+            under_rev = dpg.get_value("test_sensor_under_rev") if dpg.does_item_exist("test_sensor_under_rev") else 0.0
+            rpm_val = max(over_rev, under_rev)
+
+            travel_l = dpg.get_value("test_sensor_travel_l") if dpg.does_item_exist("test_sensor_travel_l") else 0.0
+            travel_r = dpg.get_value("test_sensor_travel_r") if dpg.does_item_exist("test_sensor_travel_r") else 0.0
+            travel_val = max(travel_l, travel_r)
+
             synth_engine.update_telemetry(
                 abs_val=abs_val, abs_l=abs_l, abs_r=abs_r,
                 tc_val=tc_val, tc_l=tc_l, tc_r=tc_r,
                 over_val=over_val, over_l=over_l, over_r=over_r,
-                und_val=und_val, und_l=und_l, und_r=und_r
+                und_val=und_val, und_l=und_l, und_r=und_r,
+                over_rev=over_rev, under_rev=under_rev, rpm=rpm_val,
+                travel_val=travel_val, travel_l=travel_l, travel_r=travel_r
             )
 
     def evaluate_graph(self, synth_engine: Any, profile_manager: Any, update_preset_ui_cb: Callable[[], None]) -> Tuple[float, float]:

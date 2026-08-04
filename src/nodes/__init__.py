@@ -17,6 +17,8 @@ from src.nodes.sensor import (
     OverAccelSensorNode,
     OversteerSensorNode,
     UndersteerSensorNode,
+    EngineRegimeSensorNode,
+    WheelTravelSensorNode,
 )
 from src.nodes.output import XInputOutputNode
 
@@ -35,6 +37,8 @@ __all__ = [
     "OverAccelSensorNode",
     "OversteerSensorNode",
     "UndersteerSensorNode",
+    "EngineRegimeSensorNode",
+    "WheelTravelSensorNode",
     "XInputOutputNode",
 ]
 

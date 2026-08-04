@@ -94,6 +94,10 @@ class NodeEditorTab:
                     dpg.add_button(label="+ Oversteer Sensor", width=-1, callback=lambda: self._add_node_sensor_over())
                     dpg.add_spacer(height=2)
                     dpg.add_button(label="+ Understeer Sensor", width=-1, callback=lambda: self._add_node_sensor_und())
+                    dpg.add_spacer(height=2)
+                    dpg.add_button(label="+ Engine Regime Sensor", width=-1, callback=lambda: self._add_node_sensor_engine())
+                    dpg.add_spacer(height=2)
+                    dpg.add_button(label="+ Wheel Travel Sensor", width=-1, callback=lambda: self._add_node_sensor_travel())
                     dpg.add_spacer(height=6)
                     dpg.add_separator()
                     dpg.add_spacer(height=4)
@@ -231,6 +235,12 @@ class NodeEditorTab:
 
     def _add_node_sensor_und(self, pos=(30.0, 400.0)):
         return self._factory.add_node_sensor_und(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_engine(self, pos=(30.0, 520.0)):
+        return self._factory.add_node_sensor_engine(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_travel(self, pos=(30.0, 640.0)):
+        return self._factory.add_node_sensor_travel(self._custom_nodes, self.recompile_and_update_synth, pos)
 
     def _add_node_output_xinput(self, pos=(580.0, 120.0)):
         return self._factory.add_node_output_xinput(self._custom_nodes, self.recompile_and_update_synth, pos)
@@ -540,6 +550,22 @@ class NodeEditorTab:
                 if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
                 if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
 
+            elif ntype == "sensor_engine_regime":
+                new_ntag = self._add_node_sensor_engine(pos=pos)
+                if "out_over_rev" in ndata: tag_remap[ndata["out_over_rev"]] = self._custom_nodes[new_ntag]["out_over_rev"]
+                if "out_under_rev" in ndata: tag_remap[ndata["out_under_rev"]] = self._custom_nodes[new_ntag]["out_under_rev"]
+                if "out_rpm" in ndata: tag_remap[ndata["out_rpm"]] = self._custom_nodes[new_ntag]["out_rpm"]
+
+            elif ntype == "sensor_wheel_travel":
+                new_ntag = self._add_node_sensor_travel(pos=pos)
+                if "out_attr" in ndata: tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
+                if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
+                if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
+                if "out_fl" in ndata: tag_remap[ndata["out_fl"]] = self._custom_nodes[new_ntag]["out_fl"]
+                if "out_fr" in ndata: tag_remap[ndata["out_fr"]] = self._custom_nodes[new_ntag]["out_fr"]
+                if "out_rl" in ndata: tag_remap[ndata["out_rl"]] = self._custom_nodes[new_ntag]["out_rl"]
+                if "out_rr" in ndata: tag_remap[ndata["out_rr"]] = self._custom_nodes[new_ntag]["out_rr"]
+
             elif ntype == "output_xinput":
                 new_ntag = self._add_node_output_xinput(pos=pos)
                 if "in_low" in ndata: tag_remap[ndata["in_low"]] = self._custom_nodes[new_ntag]["in_low"]
@@ -556,6 +582,9 @@ class NodeEditorTab:
             "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
             "attr_out_over", "attr_out_over_l", "attr_out_over_r",
             "attr_out_und", "attr_out_und_l", "attr_out_und_r",
+            "attr_out_over_rev", "attr_out_under_rev", "attr_out_rpm",
+            "attr_out_travel", "attr_out_travel_l", "attr_out_travel_r",
+            "attr_out_travel_fl", "attr_out_travel_fr", "attr_out_travel_rl", "attr_out_travel_rr",
             "attr_out_const", "attr_in_low", "attr_in_high"
         ]:
             tag_remap[base_tag] = base_tag

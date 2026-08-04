@@ -1,0 +1,50 @@
+{
+  "name": "Engine Shift",
+  "preset": true,
+  "version": 2,
+  "graph_data": {
+    "nodes": {
+      "node_sensor_engine_1": {
+        "type": "sensor_engine_regime",
+        "out_over_rev": "attr_out_dyn_over_rev_1",
+        "out_under_rev": "attr_out_dyn_under_rev_1",
+        "out_rpm": "attr_out_dyn_rpm_1",
+        "pos": [30.0, 40.0]
+      },
+      "node_tf_overrev": {
+        "type": "transform",
+        "in_attr": "attr_in_tf_overrev",
+        "out_attr": "attr_out_tf_overrev",
+        "thresh": 0.05,
+        "gain": 1.2,
+        "gamma": 1.0,
+        "pos": [260.0, 40.0]
+      },
+      "node_shape_overrev": {
+        "type": "shape",
+        "in_attr": "attr_in_shape_overrev",
+        "out_attr": "attr_out_shape_overrev",
+        "shape": "Square (Pulsed)",
+        "freq": 30.0,
+        "duty": 0.5,
+        "pos": [460.0, 40.0]
+      },
+      "node_tf_underrev": {
+        "type": "transform",
+        "in_attr": "attr_in_tf_underrev",
+        "out_attr": "attr_out_tf_underrev",
+        "thresh": 0.05,
+        "gain": 1.0,
+        "gamma": 1.0,
+        "pos": [260.0, 240.0]
+      }
+    },
+    "links": [
+      ["attr_out_dyn_over_rev_1", "attr_in_tf_overrev"],
+      ["attr_out_tf_overrev", "attr_in_shape_overrev"],
+      ["attr_out_shape_overrev", "attr_in_high"],
+      ["attr_out_dyn_under_rev_1", "attr_in_tf_underrev"],
+      ["attr_out_tf_underrev", "attr_in_low"]
+    ]
+  }
+}

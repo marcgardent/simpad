@@ -19,6 +19,9 @@ class TelemetryData:
     longitudinal_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     lateral_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     lateral_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    engine_rpm: float = 0.0
+    engine_max_rpm: float = 7500.0
+    suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
     def to_sensors(self) -> VehicleSensors:
         return VehicleSensors.from_wheel_velocities(
@@ -26,6 +29,9 @@ class TelemetryData:
             self.longitudinal_ground_vel,
             self.lateral_patch_vel,
             self.lateral_ground_vel,
+            engine_rpm=self.engine_rpm,
+            engine_max_rpm=self.engine_max_rpm,
+            suspension_travels=self.suspension_travels,
         )
 
 
@@ -48,20 +54,30 @@ class LMUParser:
                 js = json.loads(raw_strip.decode("utf-8", errors="ignore"))
                 msg_type = js.get("Type") or js.get("type", "")
 
-                if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js:
+                if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js or "mEngineRPM" in js:
                     wheels = js.get("mWheel") or js.get("wheels") or []
+                    lpv, lgv, lat_pv, lat_gv, travels = (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)
+
                     if isinstance(wheels, list) and len(wheels) >= 4:
                         lpv = tuple(float(w.get("mLongitudinalPatchVel", w.get("longitudinalPatchVel", 0.0))) for w in wheels[:4])
                         lgv = tuple(float(w.get("mLongitudinalGroundVel", w.get("longitudinalGroundVel", lpv[i]))) for i, w in enumerate(wheels[:4]))
                         lat_pv = tuple(float(w.get("mLateralPatchVel", w.get("lateralPatchVel", 0.0))) for w in wheels[:4])
                         lat_gv = tuple(float(w.get("mLateralGroundVel", w.get("lateralGroundVel", 0.0))) for w in wheels[:4])
+                        # Deflection in meters (e.g. 0.0m to 0.12m), normalized by 0.10m stroke
+                        travels = tuple(min(1.0, max(0.0, float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) / 0.10)) for w in wheels[:4])
 
-                        return TelemetryData(
-                            longitudinal_patch_vel=lpv,
-                            longitudinal_ground_vel=lgv,
-                            lateral_patch_vel=lat_pv,
-                            lateral_ground_vel=lat_gv,
-                        )
+                    e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
+                    e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
+
+                    return TelemetryData(
+                        longitudinal_patch_vel=lpv,
+                        longitudinal_ground_vel=lgv,
+                        lateral_patch_vel=lat_pv,
+                        lateral_ground_vel=lat_gv,
+                        engine_rpm=e_rpm,
+                        engine_max_rpm=e_max_rpm,
+                        suspension_travels=travels,
+                    )
 
             except Exception as e:
                 logger.debug(f"[LMUParser] JSON decode error: {e}")

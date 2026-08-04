@@ -123,26 +123,23 @@ class SimPadDPGApp:
         self._load_fonts()
 
     def _load_fonts(self):
-        local_font = _PROJECT_ROOT / "assets" / "fonts" / "segoeui.ttf"
+        local_font = _PROJECT_ROOT / "assets" / "fonts" / "DejaVuSans.ttf"
         font_candidates = [
-            local_font,
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/arial.ttf",
+            local_font
         ]
         with dpg.font_registry():
             for fpath in font_candidates:
                 p = Path(fpath)
                 if p.exists():
                     try:
-                        with dpg.font(str(p), 18) as font:
-                            dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
-                            dpg.add_font_chars([0x2605, 0x2606, 0x2713, 0x2715])  # ★, ☆, ✓, ✕
+                        font = dpg.add_font(str(p), 18)
                         dpg.bind_font(font)
-                        print(f"[Font] Loaded standalone font with special chars: {p} (18px)", flush=True)
+                        print(f"[Font] Loaded standalone font: {p} (18px)", flush=True)
                         return
                     except Exception as e:
                         print(f"[Font] Error loading {p}: {e}", flush=True)
         dpg.set_global_font_scale(1.25)
+
 
 
     # ── GUI Layout ────────────────────────────────────────────────────────────
@@ -263,6 +260,16 @@ class SimPadDPGApp:
                 und_val=sensors.understeer_intensity,
                 und_l=sensors.understeer_left,
                 und_r=sensors.understeer_right,
+                over_rev=sensors.overrev_intensity,
+                under_rev=sensors.underrev_intensity,
+                rpm=sensors.rpm_ratio,
+                travel_val=sensors.travel_intensity,
+                travel_l=sensors.travel_left,
+                travel_r=sensors.travel_right,
+                travel_fl=sensors.front_left_travel,
+                travel_fr=sensors.front_right_travel,
+                travel_rl=sensors.rear_left_travel,
+                travel_rr=sensors.rear_right_travel,
             )
 
         al, ar, bgl, bgr = data.longitudinal_patch_vel

@@ -44,13 +44,9 @@ class LMUPluginManager:
     @classmethod
     def get_source_dll(cls, project_root: Path) -> Optional[Path]:
         """Find source plugin DLL in project root."""
-        candidates = [
-            project_root / "LeMansUltimateTelemetryPlugin.dll",
-            project_root / "rFactor2SharedMemoryMapPlugin64.dll",
-        ]
-        for c in candidates:
-            if c.exists():
-                return c
+        candidate = project_root / "assets" / "plugins" / "lmu" / "LeMansUltimateTelemetryPlugin.dll"
+        if candidate.exists():
+            return candidate
         return None
 
     @classmethod
@@ -67,18 +63,8 @@ class LMUPluginManager:
         if not plugins_dir.exists():
             return False, "Plugins folder missing in LMU", lmu_dir
 
-        target_dlls = [
-            plugins_dir / "LeMansUltimateTelemetryPlugin.dll",
-            plugins_dir / "rFactor2SharedMemoryMapPlugin64.dll",
-        ]
-
-        dll_found = False
-        for dll in target_dlls:
-            if dll.exists() and dll.stat().st_size > 0:
-                dll_found = True
-                break
-
-        if not dll_found:
+        target_dll = plugins_dir / "LeMansUltimateTelemetryPlugin.dll"
+        if not (target_dll.exists() and target_dll.stat().st_size > 0):
             return False, "Plugin DLL missing in Plugins/", lmu_dir
 
         return True, "Plugin Active & Configured", lmu_dir

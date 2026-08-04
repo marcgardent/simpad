@@ -57,6 +57,26 @@ $$\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_
 
 ---
 
+### 5. ⚙️ Engine Regime (Sur-régime / Sous-régime & Shift Sweet Spots)
+- **Formula & Normalization**:
+  For engine RPM ratio $r = \frac{\text{RPM}}{\text{RPM}_{\max}}$:
+  $$\text{Sur-régime (Over-rev / Upshift)} = \text{clamp}\left(\frac{r - 0.90}{1.0 - 0.90}, \, 0.0, \, 1.0\right)$$
+  $$\text{Sous-régime (Under-rev / Downshift)} = \text{clamp}\left(\frac{0.45 - r}{0.45 - 0.20}, \, 0.0, \, 1.0\right)$$
+- **Physics & Shift Sweet Spots**:
+  - 🏎️ **Upshift Sweet Spot**: Shift up right when the **Sur-régime** haptic signal reaches **`0.70` - `0.90`**. Upshifting at this exact window maximizes power output right before bouncing off the engine rev limiter (`1.0`).
+  - 📉 **Downshift Sweet Spot**: Downshift under heavy braking when the **Sous-régime** signal enters **`0.30` - `0.60`**. Downshifting within this sweet spot keeps the engine landed cleanly in peak torque without causing rear compression lockup (rear wheel axle hop from excessive engine braking).
+
+---
+
+### 6. 🛞 Wheel Suspension Travel (Vibreurs / Curbs)
+- **Formula**:
+  $$\text{travel}_i = \text{clamp}\left(\frac{\text{deflection}_i}{\text{max\_stroke}}, \, 0.0, \, 1.0\right)$$
+  $$\text{Travel Left} = \max\left(\text{travel}_{\text{FrontLeft}}, \text{travel}_{\text{RearLeft}}\right)$$
+  $$\text{Travel Right} = \max\left(\text{travel}_{\text{FrontRight}}, \text{travel}_{\text{RearRight}}\right)$$
+- **Physics**: Measures wheel vertical displacement / suspension compression relative to max suspension travel stroke. Riding over left curbs triggers `Travel Left`, while riding over right curbs triggers `Travel Right`.
+
+---
+
 ## ⚡ High-Frequency Graph Synthesizer Engine
 
 The **GraphCompiler** JIT-compiles visual node graphs into standalone Python bytecode functions executed inside a dedicated thread running at **50 Hz, 200 Hz, or 1000 Hz**.
@@ -110,10 +130,13 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 ### 📌 Registered Pins Reference
 
 #### 1. Telemetry Sensor Output Pins (Source Pins)
+#### 1. Telemetry Sensor Output Pins (Source Pins)
 - **Over-Braking**: `attr_out_abs` (Max), `attr_out_abs_l` (Left), `attr_out_abs_r` (Right)
 - **Over-Acceleration**: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right)
 - **Oversteer**: `attr_out_over` (Max), `attr_out_over_l` (Left), `attr_out_over_r` (Right)
 - **Understeer**: `attr_out_und` (Max), `attr_out_und_l` (Left), `attr_out_und_r` (Right)
+- **Engine Regime**: `attr_out_over_rev` (Sur-régime / Upshift), `attr_out_under_rev` (Sous-régime / Downshift), `attr_out_rpm` (RPM Ratio)
+- **Wheel Travel**: `attr_out_travel` (Max), `attr_out_travel_l` (Left), `attr_out_travel_r` (Right), `attr_out_travel_fl`, `attr_out_travel_fr`, `attr_out_travel_rl`, `attr_out_travel_rr`
 
 #### 2. XInput Motor Input Pins (Destination Pins - Red Summing Multi-Ports)
 - **Low Freq Rumble (Left)**: `attr_in_low`
@@ -129,6 +152,8 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 | `sensor_over_accel` | Over-Acceleration telemetry sensor input | Outputs: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right) |
 | `sensor_oversteer` | Oversteer telemetry sensor input | Outputs: `attr_out_over` (Max), `attr_out_over_l` (Left), `attr_out_over_r` (Right) |
 | `sensor_understeer` | Understeer telemetry sensor input | Outputs: `attr_out_und` (Max), `attr_out_und_l` (Left), `attr_out_und_r` (Right) |
+| `sensor_engine_regime` | Engine Regime telemetry sensor input | Outputs: `attr_out_over_rev` (Sur-régime), `attr_out_under_rev` (Sous-régime), `attr_out_rpm` |
+| `sensor_wheel_travel` | Wheel Travel telemetry sensor input | Outputs: `attr_out_travel` (Max), `attr_out_travel_l` (Left), `attr_out_travel_r` (Right), `attr_out_travel_fl`, `attr_out_travel_fr`, `attr_out_travel_rl`, `attr_out_travel_rr` |
 | `constant` | Normalized scalar `[0.0, 1.0]` | `"val"` (float) |
 | `float_constant` | Raw float value (ms/scalar) | `"val"` (float) |
 | `multiply` | Multiplies 2 inputs | `"in_a"`, `"in_b"`, `"out_attr"` |

@@ -33,6 +33,16 @@ class VehicleSensors:
     rear_left_lat_slip: float = 0.0
     rear_right_lat_slip: float = 0.0
 
+    # 4. Régime Moteur
+    engine_rpm: float = 0.0
+    engine_max_rpm: float = 7500.0
+
+    # 5. Débattement / Suspension Travel des roues (FL, FR, RL, RR) [0.0 à 1.0]
+    front_left_travel: float = 0.0
+    front_right_travel: float = 0.0
+    rear_left_travel: float = 0.0
+    rear_right_travel: float = 0.0
+
     # Vitesse du véhicule (m/s)
     vehicle_speed: float = 0.0
 
@@ -43,6 +53,9 @@ class VehicleSensors:
         long_ground_vels: Tuple[float, float, float, float],
         lat_patch_vels: Tuple[float, float, float, float],
         lat_ground_vels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+        engine_rpm: float = 0.0,
+        engine_max_rpm: float = 7500.0,
+        suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
     ) -> "VehicleSensors":
         locks = []
         spins = []
@@ -75,6 +88,10 @@ class VehicleSensors:
             spins.append(min(1.0, max(0.0, spin_val)))
             lats.append(min(1.0, max(0.0, lat_slip)))
 
+        travels = [min(1.0, max(0.0, float(st))) for st in suspension_travels[:4]]
+        if len(travels) < 4:
+            travels.extend([0.0] * (4 - len(travels)))
+
         return cls(
             front_left_lock=locks[0],
             front_right_lock=locks[1],
@@ -88,6 +105,12 @@ class VehicleSensors:
             front_right_lat_slip=lats[1],
             rear_left_lat_slip=lats[2],
             rear_right_lat_slip=lats[3],
+            engine_rpm=max(0.0, float(engine_rpm)),
+            engine_max_rpm=max(1000.0, float(engine_max_rpm)),
+            front_left_travel=travels[0],
+            front_right_travel=travels[1],
+            rear_left_travel=travels[2],
+            rear_right_travel=travels[3],
             vehicle_speed=avg_speed,
         )
 
@@ -151,3 +174,50 @@ class VehicleSensors:
     def understeer_right(self) -> float:
         """Understeer Right wheel (FR)."""
         return self.front_right_lat_slip
+
+    # ── Engine Regime Properties ─────────────────────────────────────────────
+    @property
+    def rpm_ratio(self) -> float:
+        """Engine RPM ratio (0.0 to 1.0 relative to max RPM)."""
+        if self.engine_max_rpm <= 0.0:
+            return 0.0
+        return min(1.0, max(0.0, self.engine_rpm / self.engine_max_rpm))
+
+    @property
+    def overrev_intensity(self) -> float:
+        """
+        Sur-régime / Upshift Warning Intensity (0.0 to 1.0).
+        Ramps up from 0.0 at 90% RPM max to 1.0 at 100% (Redline / Upshift sweet spot).
+        """
+        r = self.rpm_ratio
+        if r <= 0.90:
+            return 0.0
+        return min(1.0, max(0.0, (r - 0.90) / 0.10))
+
+    @property
+    def underrev_intensity(self) -> float:
+        """
+        Sous-régime / Downshift Warning Intensity (0.0 to 1.0).
+        Ramps up from 0.0 at 45% RPM max down to 1.0 at 20% (Idle / Downshift sweet spot).
+        """
+        r = self.rpm_ratio
+        if r >= 0.45:
+            return 0.0
+        return min(1.0, max(0.0, (0.45 - r) / 0.25))
+
+    # ── Wheel Suspension Travel Properties (Vibreurs / Curbs) ──────────────────
+    @property
+    def travel_intensity(self) -> float:
+        """Wheel Travel intensity (Combined Max FL, FR, RL, RR)."""
+        return max(self.front_left_travel, self.front_right_travel, self.rear_left_travel, self.rear_right_travel)
+
+    @property
+    def travel_left(self) -> float:
+        """Wheel Travel Left side (Max FL, RL)."""
+        return max(self.front_left_travel, self.rear_left_travel)
+
+    @property
+    def travel_right(self) -> float:
+        """Wheel Travel Right side (Max FR, RR)."""
+        return max(self.front_right_travel, self.rear_right_travel)
+
