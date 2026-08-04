@@ -40,14 +40,16 @@ class NodeEditorTab:
                     dpg.add_combo(
                         items=self._profile_manager.list_display_names(),
                         default_value=self._profile_manager.get_display_name(self._profile_manager._active_profile_name),
-                        width=160,
+                        width=150,
                         tag="combo_profile_select",
                         callback=self._cb_load_preset
                     )
+                    dpg.add_button(label="+ New Profile", tag="btn_new_profile", callback=self._open_new_profile_modal)
                     dpg.add_button(label="Save Profile", tag="btn_save_profile", callback=self._cb_save_preset)
                     dpg.add_button(label="Rename", tag="btn_rename_profile", callback=self._open_rename_profile_modal)
                     dpg.add_button(label="Clone Profile", tag="btn_clone_profile", callback=self._cb_clone_preset)
                     dpg.add_button(label="Delete Profile", tag="btn_delete_profile", callback=self._cb_delete_preset)
+
 
                     dpg.add_spacer(width=15)
                     dpg.add_text("Frequency:", color=[0, 210, 255, 255])
@@ -619,6 +621,53 @@ class NodeEditorTab:
             dpg.configure_item("combo_profile_select", items=displays, default_value=active_disp)
             self._cb_load_preset()
 
+    def _get_centered_modal_pos(self, width: int = 440, height: int = 170) -> Tuple[int, int]:
+        vp_w = dpg.get_viewport_width() if dpg.is_viewport_ok() else 1240
+        vp_h = dpg.get_viewport_height() if dpg.is_viewport_ok() else 780
+        pos_x = max(20, (vp_w - width) // 2)
+        pos_y = max(20, (vp_h - height) // 2)
+        return (pos_x, pos_y)
+
+    def _open_new_profile_modal(self):
+        """Opens a DPG modal window prompting the user to name a new blank profile."""
+        modal_tag = "modal_new_profile"
+        if dpg.does_item_exist(modal_tag):
+            dpg.delete_item(modal_tag)
+
+        input_tag = "input_new_profile_name"
+        pos = self._get_centered_modal_pos(440, 170)
+
+        base_name = "New Profile"
+        counter = 1
+        default_name = base_name
+        while default_name in self._profile_manager.profiles:
+            counter += 1
+            default_name = f"{base_name} {counter}"
+
+        def create_new_profile():
+            new_name = dpg.get_value(input_tag).strip()
+            if not new_name:
+                return
+            blank_graph = {"nodes": {}, "links": []}
+            prof, msg = self._profile_manager.save_profile(new_name, blank_graph)
+            if prof:
+                displays = self._profile_manager.list_display_names()
+                new_disp = self._profile_manager.get_display_name(prof.name)
+                dpg.configure_item("combo_profile_select", items=displays, default_value=new_disp)
+                self.import_graph_from_dict(blank_graph)
+                self._update_preset_ui_state()
+            if dpg.does_item_exist(modal_tag):
+                dpg.delete_item(modal_tag)
+
+        with dpg.window(label="Create New Profile", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
+            dpg.add_text("Enter name for the new profile:", color=[255, 200, 0, 255])
+            dpg.add_spacer(height=6)
+            dpg.add_input_text(default_value=default_name, width=-1, tag=input_tag, on_enter=True, callback=lambda: create_new_profile())
+            dpg.add_spacer(height=14)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Create", width=110, callback=lambda: create_new_profile())
+                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+
     def _open_rename_profile_modal(self):
         """Opens a DPG modal window allowing the user to rename the active user profile."""
         selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
@@ -631,6 +680,7 @@ class NodeEditorTab:
             dpg.delete_item(modal_tag)
 
         input_tag = "input_rename_profile_name"
+        pos = self._get_centered_modal_pos(440, 170)
 
         def apply_profile_rename():
             new_name = dpg.get_value(input_tag).strip()
@@ -645,11 +695,11 @@ class NodeEditorTab:
             if dpg.does_item_exist(modal_tag):
                 dpg.delete_item(modal_tag)
 
-        with dpg.window(label="Rename Profile", tag=modal_tag, modal=True, show=True, width=380, height=140, pos=(300, 200)):
+        with dpg.window(label="Rename Profile", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
             dpg.add_text(f"Rename Profile '{prof.name}':", color=[255, 200, 0, 255])
-            dpg.add_spacer(height=4)
+            dpg.add_spacer(height=6)
             dpg.add_input_text(default_value=prof.name, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_profile_rename())
-            dpg.add_spacer(height=10)
+            dpg.add_spacer(height=14)
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Apply", width=110, callback=lambda: apply_profile_rename())
                 dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
@@ -678,6 +728,7 @@ class NodeEditorTab:
             dpg.delete_item(modal_tag)
 
         input_tag = "input_rename_node_label"
+        pos = self._get_centered_modal_pos(440, 170)
 
         def apply_node_rename():
             new_label = dpg.get_value(input_tag).strip()
@@ -689,14 +740,15 @@ class NodeEditorTab:
             if dpg.does_item_exist(modal_tag):
                 dpg.delete_item(modal_tag)
 
-        with dpg.window(label="Rename Node (F2)", tag=modal_tag, modal=True, show=True, width=380, height=140, pos=(300, 200)):
+        with dpg.window(label="Rename Node (F2)", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
             dpg.add_text("Enter new node display label:", color=[0, 210, 255, 255])
-            dpg.add_spacer(height=4)
+            dpg.add_spacer(height=6)
             dpg.add_input_text(default_value=current_label, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_node_rename())
-            dpg.add_spacer(height=10)
+            dpg.add_spacer(height=14)
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Apply", width=110, callback=lambda: apply_node_rename())
                 dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+
 
     def _cb_change_frequency(self, sender, app_data):
         freq_str = app_data
@@ -710,18 +762,33 @@ class NodeEditorTab:
         if self._synth_engine:
             self._synth_engine.set_frequency(freq)
 
+    def _set_button_enabled(self, btn_tag: str, enabled: bool):
+        if not dpg.does_item_exist(btn_tag):
+            return
+        dpg.configure_item(btn_tag, enabled=enabled)
+        if enabled:
+            dpg.bind_item_theme(btn_tag, 0)
+        else:
+            if not hasattr(self, "_disabled_btn_theme") or not dpg.does_item_exist(self._disabled_btn_theme):
+                with dpg.theme() as theme:
+                    with dpg.theme_component(dpg.mvButton):
+                        dpg.add_theme_color(dpg.mvThemeCol_Button, [45, 45, 52, 255])
+                        dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, [45, 45, 52, 255])
+                        dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, [45, 45, 52, 255])
+                        dpg.add_theme_color(dpg.mvThemeCol_Text, [120, 120, 130, 255])
+                self._disabled_btn_theme = theme
+            dpg.bind_item_theme(btn_tag, self._disabled_btn_theme)
+
     def _update_preset_ui_state(self):
-        """Disables Save, Rename, and Delete buttons if current profile is a read-only preset."""
+        """Disables and grays out Save, Rename, and Delete buttons if current profile is a read-only preset."""
         selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else self._profile_manager._active_profile_name
         prof = self._profile_manager.get_profile(selected_display)
         is_preset = prof.is_preset if prof else False
 
-        if dpg.does_item_exist("btn_save_profile"):
-            dpg.configure_item("btn_save_profile", enabled=not is_preset)
-        if dpg.does_item_exist("btn_rename_profile"):
-            dpg.configure_item("btn_rename_profile", enabled=not is_preset)
-        if dpg.does_item_exist("btn_delete_profile"):
-            dpg.configure_item("btn_delete_profile", enabled=not is_preset)
+        self._set_button_enabled("btn_save_profile", not is_preset)
+        self._set_button_enabled("btn_rename_profile", not is_preset)
+        self._set_button_enabled("btn_delete_profile", not is_preset)
+
 
 
     def _show_python_code_modal(self):
@@ -732,11 +799,13 @@ class NodeEditorTab:
 
         graph_dict = self.export_graph_to_dict()
         py_source = GraphCompiler.generate_python_source(graph_dict)
+        pos = self._get_centered_modal_pos(700, 500)
 
-        with dpg.window(label="Generated Python Graph Code", tag=modal_tag, modal=True, show=True, width=700, height=500, pos=(250, 100)):
+        with dpg.window(label="Generated Python Graph Code", tag=modal_tag, modal=True, show=True, width=700, height=500, pos=pos):
             dpg.add_text("Standalone Compiled Python Function for High-Frequency Synthesizer Engine:", color=[0, 210, 255, 255])
             dpg.add_spacer(height=6)
             dpg.add_input_text(multiline=True, readonly=True, default_value=py_source, width=-1, height=400)
             dpg.add_spacer(height=6)
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Close", width=120, callback=lambda: dpg.delete_item(modal_tag))
+

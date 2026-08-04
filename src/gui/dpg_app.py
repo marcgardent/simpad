@@ -134,13 +134,16 @@ class SimPadDPGApp:
                 p = Path(fpath)
                 if p.exists():
                     try:
-                        font = dpg.add_font(str(p), 18)
+                        with dpg.font(str(p), 18) as font:
+                            dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
+                            dpg.add_font_chars([0x2605, 0x2606, 0x2713, 0x2715])  # ★, ☆, ✓, ✕
                         dpg.bind_font(font)
-                        print(f"[Font] Loaded standalone font: {p} (18px)", flush=True)
+                        print(f"[Font] Loaded standalone font with special chars: {p} (18px)", flush=True)
                         return
                     except Exception as e:
                         print(f"[Font] Error loading {p}: {e}", flush=True)
         dpg.set_global_font_scale(1.25)
+
 
     # ── GUI Layout ────────────────────────────────────────────────────────────
     def _build_gui(self):
