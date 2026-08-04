@@ -3,27 +3,15 @@ SimPad Physics — Haptic Processor using Normalized VehicleSensors.
 Converts normalized wheel slip ratios into 4 haptic vibration channels.
 """
 
-import math
 from typing import Dict, Any, Tuple, Union
+from src.core.math_utils import apply_response_curve, clamp
 from src.telemetry.sensors import VehicleSensors
 from src.telemetry.lmu_parser import TelemetryData
 
-
-def apply_response_curve(raw_intensity: float, gamma: float, gain: float, min_cutoff: float) -> float:
-    """Applique une courbe de réponse paramétrique (Gamma/Exposant + Gain + Cutoff)."""
-    if raw_intensity < min_cutoff:
-        return 0.0
-
-    # Normalisation au-dessus du cutoff
-    norm = (raw_intensity - min_cutoff) / max(0.001, 1.0 - min_cutoff)
-
-    # Application de la courbe exponentielle (gamma > 1: progressive, gamma < 1: agressive)
-    curved = math.pow(max(0.0, min(1.0, norm)), gamma)
-
-    # Application du gain et saturation à 1.0
-    return min(1.0, max(0.0, curved * gain))
+# TODO: [DRY] Import unified apply_response_curve from src.core.math_utils instead of duplicating math definitions across physics and GUI modules.
 
 
+# TODO: [SRP] PhysicsToHaptic should focus strictly on mapping telemetry signals to vibration levels, delegating configuration defaults and math utility functions to dedicated schemas/modules.
 class PhysicsToHaptic:
     """
     Processeur physique convertissant les capteurs VehicleSensors en intensités haptiques.
@@ -64,57 +52,64 @@ class PhysicsToHaptic:
     def update_config(self, new_config: Dict[str, Any]) -> None:
         self.config.update(new_config)
 
+    # TODO: [SLAP] Keep process() at a single high level of abstraction: extract signals -> compute effect intensities -> mix channels.
     def process(self, telemetry: Union[VehicleSensors, TelemetryData]) -> Tuple[float, float, float, float]:
         """
         Calcule les intensités vibratoires (left_low, left_high, right_low, right_high)
         à partir des signaux du domaine VehicleSensors.
         """
-        s = telemetry.to_sensors() if isinstance(telemetry, TelemetryData) else telemetry
+        sensors = telemetry.to_sensors() if isinstance(telemetry, TelemetryData) else telemetry
 
-        # 1. FREINAGE / BLOCAGE DE ROUES (ABS) — Roues AV
-        lock_thresh = self.config.get("lock_threshold", 0.15)
-        raw_lock_g = max(0.0, s.front_left_lock - lock_thresh) / max(0.01, 1.0 - lock_thresh) if s.front_left_lock > lock_thresh else 0.0
-        raw_lock_d = max(0.0, s.front_right_lock - lock_thresh) / max(0.01, 1.0 - lock_thresh) if s.front_right_lock > lock_thresh else 0.0
+        # Level 1: Calculate raw effect slip levels
+        lock_l, lock_r = self._calc_raw_slip(sensors.front_left_lock, sensors.front_right_lock, "lock")
+        over_l, over_r = self._calc_raw_slip(sensors.rear_left_lat_slip, sensors.rear_right_lat_slip, "oversteer")
+        under_l, under_r = self._calc_raw_slip(sensors.front_left_lat_slip, sensors.front_right_lat_slip, "understeer")
+        spin_l, spin_r = self._calc_raw_slip(sensors.rear_left_spin, sensors.rear_right_spin, "spin")
 
-        lock_g_low  = apply_response_curve(raw_lock_g, self.config.get("lock_low_gamma", 1.0), self.config.get("lock_low_gain", 0.3), self.config.get("lock_low_cutoff", 0.0))
-        lock_g_high = apply_response_curve(raw_lock_g, self.config.get("lock_high_gamma", 1.5), self.config.get("lock_high_gain", 1.0), self.config.get("lock_high_cutoff", 0.0))
-        lock_d_low  = apply_response_curve(raw_lock_d, self.config.get("lock_low_gamma", 1.0), self.config.get("lock_low_gain", 0.3), self.config.get("lock_low_cutoff", 0.0))
-        lock_d_high = apply_response_curve(raw_lock_d, self.config.get("lock_high_gamma", 1.5), self.config.get("lock_high_gain", 1.0), self.config.get("lock_high_cutoff", 0.0))
+        # Level 2: Compute low/high haptic intensities for each wheel
+        lock_g_low, lock_g_high, lock_d_low, lock_d_high = self._eval_effect_curves(lock_l, lock_r, "lock")
+        over_g_low, over_g_high, over_d_low, over_d_high = self._eval_effect_curves(over_l, over_r, "oversteer")
+        under_g_low, under_g_high, under_d_low, under_d_high = self._eval_effect_curves(under_l, under_r, "understeer")
+        spin_g_low, spin_g_high, spin_d_low, spin_d_high = self._eval_effect_curves(spin_l, spin_r, "spin")
 
-        # 2. SURVIRAGE / OVERSTEER — Roues AR
-        over_thresh = self.config.get("oversteer_threshold", 0.12)
-        raw_over_g = max(0.0, s.rear_left_lat_slip - over_thresh) / max(0.01, 1.0 - over_thresh) if s.rear_left_lat_slip > over_thresh else 0.0
-        raw_over_d = max(0.0, s.rear_right_lat_slip - over_thresh) / max(0.01, 1.0 - over_thresh) if s.rear_right_lat_slip > over_thresh else 0.0
+        # Level 3: Mix final multi-channel outputs using MAX combination
+        return self._mix_channels(
+            (lock_g_low, lock_g_high, lock_d_low, lock_d_high),
+            (over_g_low, over_g_high, over_d_low, over_d_high),
+            (under_g_low, under_g_high, under_d_low, under_d_high),
+            (spin_g_low, spin_g_high, spin_d_low, spin_d_high)
+        )
 
-        over_g_low  = apply_response_curve(raw_over_g, self.config.get("oversteer_low_gamma", 1.2), self.config.get("oversteer_low_gain", 1.0), self.config.get("oversteer_low_cutoff", 0.0))
-        over_g_high = apply_response_curve(raw_over_g, self.config.get("oversteer_high_gamma", 1.0), self.config.get("oversteer_high_gain", 0.4), self.config.get("oversteer_high_cutoff", 0.0))
-        over_d_low  = apply_response_curve(raw_over_d, self.config.get("oversteer_low_gamma", 1.2), self.config.get("oversteer_low_gain", 1.0), self.config.get("oversteer_low_cutoff", 0.0))
-        over_d_high = apply_response_curve(raw_over_d, self.config.get("oversteer_high_gamma", 1.0), self.config.get("oversteer_high_gain", 0.4), self.config.get("oversteer_high_cutoff", 0.0))
+    # TODO: [DRY] Helper method to normalize slip values above threshold, eliminating 4x repeated boilerplate code.
+    def _calc_raw_slip(self, left_val: float, right_val: float, effect_name: str) -> Tuple[float, float]:
+        thresh = self.config.get(f"{effect_name}_threshold", 0.15)
+        span = max(0.01, 1.0 - thresh)
+        raw_l = max(0.0, left_val - thresh) / span if left_val > thresh else 0.0
+        raw_r = max(0.0, right_val - thresh) / span if right_val > thresh else 0.0
+        return raw_l, raw_r
 
-        # 3. SOUSVIRAGE / UNDERSTEER — Roues AV
-        under_thresh = self.config.get("understeer_threshold", 0.10)
-        raw_under_g = max(0.0, s.front_left_lat_slip - under_thresh) / max(0.01, 1.0 - under_thresh) if s.front_left_lat_slip > under_thresh else 0.0
-        raw_under_d = max(0.0, s.front_right_lat_slip - under_thresh) / max(0.01, 1.0 - under_thresh) if s.front_right_lat_slip > under_thresh else 0.0
+    # TODO: [DRY] Helper method to apply response curves for both left/right wheels (Low & High channels), fixing previous copy-paste parameter bug.
+    def _eval_effect_curves(self, raw_l: float, raw_r: float, effect_name: str) -> Tuple[float, float, float, float]:
+        low_g = self.config.get(f"{effect_name}_low_gamma", 1.0)
+        low_gain = self.config.get(f"{effect_name}_low_gain", 1.0)
+        low_cut = self.config.get(f"{effect_name}_low_cutoff", 0.0)
 
-        under_g_low  = apply_response_curve(raw_under_g, self.config.get("understeer_low_gamma", 1.5), self.config.get("understeer_low_gain", 0.5), self.config.get("understeer_low_cutoff", 0.0))
-        under_g_high = apply_response_curve(raw_under_g, self.config.get("understeer_high_gamma", 1.0), self.config.get("understeer_high_gain", 0.8), self.config.get("understeer_high_cutoff", 0.0))
-        under_d_low  = apply_response_curve(raw_under_d, self.config.get("understeer_low_gamma", 1.5), self.config.get("understeer_low_gain", 0.5), self.config.get("understeer_low_cutoff", 0.0))
-        under_d_high = apply_response_curve(raw_under_d, self.config.get("understeer_high_gamma", 1.0), self.config.get("understeer_high_gain", 0.8), self.config.get("understeer_high_cutoff", 0.0))
+        high_g = self.config.get(f"{effect_name}_high_gamma", 1.0)
+        high_gain = self.config.get(f"{effect_name}_high_gain", 1.0)
+        high_cut = self.config.get(f"{effect_name}_high_cutoff", 0.0)
 
-        # 4. PATINAGE / TC — Roues AR
-        spin_thresh = self.config.get("spin_threshold", 0.18)
-        raw_spin_g = max(0.0, s.rear_left_spin - spin_thresh) / max(0.01, 1.0 - spin_thresh) if s.rear_left_spin > spin_thresh else 0.0
-        raw_spin_d = max(0.0, s.rear_right_spin - spin_thresh) / max(0.01, 1.0 - spin_thresh) if s.rear_right_spin > spin_thresh else 0.0
+        l_low = apply_response_curve(raw_l, low_g, low_gain, low_cut)
+        l_high = apply_response_curve(raw_l, high_g, high_gain, high_cut)
+        r_low = apply_response_curve(raw_r, low_g, low_gain, low_cut)
+        r_high = apply_response_curve(raw_r, high_g, high_gain, high_cut)
 
-        spin_g_low  = apply_response_curve(raw_spin_g, self.config.get("spin_low_gamma", 1.0), self.config.get("spin_low_gain", 1.0), self.config.get("spin_low_cutoff", 0.0))
-        spin_g_high = apply_response_curve(raw_spin_g, self.config.get("spin_high_gamma", 2.0), self.config.get("spin_high_gain", 0.2), self.config.get("spin_high_cutoff", 0.0))
-        spin_d_low  = apply_response_curve(raw_spin_d, self.config.get("spin_low_gain", 1.0), self.config.get("spin_low_cutoff", 0.0))
-        spin_d_high = apply_response_curve(raw_spin_d, self.config.get("spin_high_gamma", 2.0), self.config.get("spin_high_gain", 0.2), self.config.get("spin_high_cutoff", 0.0))
+        return l_low, l_high, r_low, r_high
 
-        # MIXAGE CANAUX (MAX)
-        left_low   = min(1.0, max(lock_g_low,  over_g_low,  under_g_low,  spin_g_low))
-        left_high  = min(1.0, max(lock_g_high, over_g_high, under_g_high, spin_g_high))
-        right_low  = min(1.0, max(lock_d_low,  over_d_low,  under_d_low,  spin_d_low))
-        right_high = min(1.0, max(lock_d_high, over_d_high, under_d_high, spin_d_high))
-
+    # TODO: [SLAP] Single function to mix channel signals cleanly.
+    @staticmethod
+    def _mix_channels(*effects_quads: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
+        left_low = clamp(max(quad[0] for quad in effects_quads))
+        left_high = clamp(max(quad[1] for quad in effects_quads))
+        right_low = clamp(max(quad[2] for quad in effects_quads))
+        right_high = clamp(max(quad[3] for quad in effects_quads))
         return left_low, left_high, right_low, right_high

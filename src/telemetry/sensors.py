@@ -61,12 +61,18 @@ class VehicleSensors:
                 long_slip = (lpv - lgv) / speed
                 lat_slip = abs(lat_pv) / speed
             else:
-                # Low-speed absolute velocity difference capped
-                long_slip = math.copysign(min(1.0, abs(lpv - lgv)), lpv - lgv)
+                # Low-speed / simulated synthetic velocity magnitude
+                if lgv == 0.0 and lpv != 0.0:
+                    lock_val = abs(lpv) if i < 2 else max(0.0, -lpv)
+                    spin_val = abs(lpv) if i >= 2 else max(0.0, lpv)
+                else:
+                    long_slip = math.copysign(min(1.0, abs(lpv - lgv)), lpv - lgv)
+                    lock_val = max(0.0, -long_slip)
+                    spin_val = max(0.0, long_slip)
                 lat_slip = min(1.0, abs(lat_pv))
 
-            locks.append(min(1.0, max(0.0, -long_slip)))
-            spins.append(min(1.0, max(0.0, long_slip)))
+            locks.append(min(1.0, max(0.0, lock_val)))
+            spins.append(min(1.0, max(0.0, spin_val)))
             lats.append(min(1.0, max(0.0, lat_slip)))
 
         return cls(

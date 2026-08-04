@@ -72,7 +72,7 @@ class LMUParser:
                 values = struct.unpack(cls.PACKET_FORMAT, data[:cls.PACKET_SIZE])
                 lpv = (float(values[0]), float(values[1]), float(values[2]), float(values[3]))
                 lat_pv = (float(values[4]), float(values[5]), float(values[6]), float(values[7]))
-                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=lpv, lateral_patch_vel=lat_pv)
+                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=(0.0, 0.0, 0.0, 0.0), lateral_patch_vel=lat_pv)
             except Exception as e:
                 logger.debug(f"[LMUParser] Erreur unpack 32b: {e}")
 

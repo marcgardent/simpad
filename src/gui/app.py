@@ -88,13 +88,12 @@ EFFECTS = [
 ]
 
 
-def _apply_curve(x: float, gamma: float, gain: float, threshold: float) -> float:
-    if x < threshold:
-        return 0.0
-    norm = (x - threshold) / max(0.001, 1.0 - threshold)
-    return min(1.0, max(0.0, math.pow(max(0.0, min(1.0, norm)), gamma) * gain))
+from src.core.math_utils import apply_response_curve
+
+# TODO: [DRY] Replaced local duplicate _apply_curve definition with central apply_response_curve from src.core.math_utils.
 
 
+# TODO: [SRP] EffectState encapsulates GUI effect tuning state, delegating math response curve evaluations to math_utils.
 class EffectState:
     def __init__(self, eid: str, defaults: dict):
         self.eid = eid
@@ -106,10 +105,10 @@ class EffectState:
         self.high_gamma = defaults["high_gamma"]
 
     def low_curve(self, xs):
-        return [_apply_curve(x, self.low_gamma, self.low_gain, self.threshold) for x in xs]
+        return [apply_response_curve(x, self.low_gamma, self.low_gain, self.threshold) for x in xs]
 
     def high_curve(self, xs):
-        return [_apply_curve(x, self.high_gamma, self.high_gain, self.threshold) for x in xs]
+        return [apply_response_curve(x, self.high_gamma, self.high_gain, self.threshold) for x in xs]
 
     def to_dict(self) -> dict:
         return {

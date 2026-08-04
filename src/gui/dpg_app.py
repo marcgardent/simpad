@@ -217,78 +217,78 @@ class SimPadDPGApp:
                 dpg.configure_item("lbl_plugin_status", color=[231, 76, 60, 255])
 
     # ── Render Loop Tick ──────────────────────────────────────────────────────
+    # TODO: [SLAP] Keep _render_tick at a single high level of abstraction: poll status -> process telemetry frame -> refresh plot series.
+    # TODO: [SRP] UI rendering tick should delegate data history queue calculations and plot rendering to helper methods.
     def _render_tick(self):
-        # 1. Update Hardware & UDP Status Labels
-        if self._haptics:
-            if hasattr(self._haptics, "poll"):
-                self._haptics.poll()
-            has_pad = self._haptics.is_connected()
-            if dpg.does_item_exist("lbl_pad_status"):
-                if has_pad:
-                    dpg.set_value("lbl_pad_status", "Connected")
-                    dpg.configure_item("lbl_pad_status", color=[46, 204, 113, 255])
-                else:
-                    dpg.set_value("lbl_pad_status", "Disconnected")
-                    dpg.configure_item("lbl_pad_status", color=[231, 76, 60, 255])
+        if not hasattr(self, "_lmu_installer"):
+            return
 
-        if self._udp:
-            udp_recv, last_time, pcount = self._udp.is_receiving_packets()
-            if dpg.does_item_exist("lbl_udp_status"):
-                if udp_recv:
-                    dpg.set_value("lbl_udp_status", "Active")
-                    dpg.configure_item("lbl_udp_status", color=[46, 204, 113, 255])
-                else:
-                    dpg.set_value("lbl_udp_status", "Waiting...")
-                    dpg.configure_item("lbl_udp_status", color=[231, 76, 60, 255])
+        self._update_status_indicators()
 
-            if udp_recv and self._telemetry_enabled:
-                data = self._udp.get_latest_data()
-                if data:
-                    sensors = data.to_sensors()
-                    if self._synth:
-                        self._synth.update_telemetry(
-                            abs_val=sensors.lock_intensity,
-                            abs_l=sensors.lock_left,
-                            abs_r=sensors.lock_right,
-                            tc_val=sensors.spin_intensity,
-                            tc_l=sensors.spin_left,
-                            tc_r=sensors.spin_right,
-                            over_val=sensors.oversteer_intensity,
-                            over_l=sensors.oversteer_left,
-                            over_r=sensors.oversteer_right,
-                            und_val=sensors.understeer_intensity,
-                            und_l=sensors.understeer_left,
-                            und_r=sensors.understeer_right,
-                        )
+        if self._udp and self._udp.is_receiving() and self._telemetry_enabled:
+            data = self._udp.get_latest_data()
+            if data:
+                self._process_telemetry_frame(data)
+        else:
+            if hasattr(self, "_node_editor"):
+                self._node_editor.evaluate_graph()
 
-                    # Update Live Plot History
-                    al, ar, bgl, bgr = data.longitudinal_patch_vel
-                    cll, clr, crl, crr = data.lateral_patch_vel
-                    now = time.time() - self._start_time
+    def _update_status_indicators(self):
+        if dpg.does_item_exist("lbl_lmu_status"):
+            is_inst = self._lmu_installer.is_installed()
+            dpg.set_value("lbl_lmu_status", "Installed" if is_inst else "Not Installed")
+            dpg.configure_item("lbl_lmu_status", color=[46, 204, 113, 255] if is_inst else [231, 76, 60, 255])
 
-                    low_val, high_val = self._node_editor.evaluate_graph()
+        if dpg.does_item_exist("lbl_udp_status"):
+            udp_recv = self._udp and self._udp.is_receiving()
+            dpg.set_value("lbl_udp_status", "Active" if udp_recv else "Waiting...")
+            dpg.configure_item("lbl_udp_status", color=[46, 204, 113, 255] if udp_recv else [231, 76, 60, 255])
 
-                    self._t.append(now)
-                    self._d_abs.append(min(1.0, max(abs(al), abs(ar))))
-                    self._d_tc.append(min(1.0, max(abs(bgl), abs(bgr))))
-                    self._d_over.append(min(1.0, max(abs(crl), abs(crr))))
-                    self._d_und.append(min(1.0, max(abs(cll), abs(clr))))
-                    self._d_low.append(low_val)
-                    self._d_high.append(high_val)
+    def _process_telemetry_frame(self, data: TelemetryData):
+        sensors = data.to_sensors()
+        if self._synth:
+            self._synth.update_telemetry(
+                abs_val=sensors.lock_intensity,
+                abs_l=sensors.lock_left,
+                abs_r=sensors.lock_right,
+                tc_val=sensors.spin_intensity,
+                tc_l=sensors.spin_left,
+                tc_r=sensors.spin_right,
+                over_val=sensors.oversteer_intensity,
+                over_l=sensors.oversteer_left,
+                over_r=sensors.oversteer_right,
+                und_val=sensors.understeer_intensity,
+                und_l=sensors.understeer_left,
+                und_r=sensors.understeer_right,
+            )
 
-                    t_list = list(self._t)
-                    if dpg.does_item_exist("mon_series_abs"):
-                        dpg.set_value("mon_series_abs", [t_list, list(self._d_abs)])
-                        dpg.set_value("mon_series_tc", [t_list, list(self._d_tc)])
-                        dpg.set_value("mon_series_over", [t_list, list(self._d_over)])
-                        dpg.set_value("mon_series_und", [t_list, list(self._d_und)])
-                        dpg.set_value("mon_series_low", [t_list, list(self._d_low)])
-                        dpg.set_value("mon_series_high", [t_list, list(self._d_high)])
-                        if t_list:
-                            dpg.set_axis_limits("mon_xaxis", t_list[0], t_list[-1])
-            else:
-                if hasattr(self, "_node_editor"):
-                    self._node_editor.evaluate_graph()
+        al, ar, bgl, bgr = data.longitudinal_patch_vel
+        cll, clr, crl, crr = data.lateral_patch_vel
+        now = time.time() - self._start_time
+
+        low_val, high_val = self._node_editor.evaluate_graph()
+
+        self._t.append(now)
+        self._d_abs.append(min(1.0, max(abs(al), abs(ar))))
+        self._d_tc.append(min(1.0, max(abs(bgl), abs(bgr))))
+        self._d_over.append(min(1.0, max(abs(crl), abs(crr))))
+        self._d_und.append(min(1.0, max(abs(cll), abs(clr))))
+        self._d_low.append(low_val)
+        self._d_high.append(high_val)
+
+        self._refresh_live_plots()
+
+    def _refresh_live_plots(self):
+        t_list = list(self._t)
+        if dpg.does_item_exist("mon_series_abs"):
+            dpg.set_value("mon_series_abs", [t_list, list(self._d_abs)])
+            dpg.set_value("mon_series_tc", [t_list, list(self._d_tc)])
+            dpg.set_value("mon_series_over", [t_list, list(self._d_over)])
+            dpg.set_value("mon_series_und", [t_list, list(self._d_und)])
+            dpg.set_value("mon_series_low", [t_list, list(self._d_low)])
+            dpg.set_value("mon_series_high", [t_list, list(self._d_high)])
+            if t_list:
+                dpg.set_axis_limits("mon_xaxis", t_list[0], t_list[-1])
 
     # ── Shutdown ───────────────────────────────────────────────────────────────
     def _on_close(self):

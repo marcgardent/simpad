@@ -13,15 +13,13 @@ from typing import Dict, Any, List, Optional, Tuple
 from src.core.compiler import GraphCompiler
 from src.core.schema import export_graph_json, import_graph_json, GraphSchemaValidator
 from src.profiles.manager import GraphProfileManager
+from src.core.math_utils import apply_response_curve
+
+# TODO: [DRY] Replaced local duplicate _apply_curve definition with central apply_response_curve from src.core.math_utils.
 
 
-def _apply_curve(x: float, gamma: float, gain: float, threshold: float) -> float:
-    if x < threshold:
-        return 0.0
-    norm = (x - threshold) / max(0.001, 1.0 - threshold)
-    return min(1.0, max(0.0, math.pow(max(0.0, min(1.0, norm)), gamma) * gain))
-
-
+# TODO: [SRP] NodeEditorTab currently handles UI layout, node graph state, profile management, code compilation, and manual testing. In future refactorings, graph state model and layout rendering should be split.
+# TODO: [SLAP] Keep UI construction methods at a uniform high level of abstraction, delegating raw widget configuration and event binding to helper builder methods.
 class NodeEditorTab:
     """Encapsulates the DearPyGui Node Editor interface and dynamic graph solver."""
 
@@ -50,11 +48,12 @@ class NodeEditorTab:
                         items=self._profile_manager.list_names(),
                         default_value=self._profile_manager._active_profile_name,
                         width=140,
-                        tag="combo_preset_select"
+                        tag="combo_preset_select",
+                        callback=self._cb_load_preset
                     )
-                    dpg.add_button(label="Load Preset", callback=self._cb_load_preset)
-                    dpg.add_button(label="Save Preset", callback=self._cb_save_preset)
-                    dpg.add_button(label="Delete", callback=self._cb_delete_preset)
+                    dpg.add_button(label="Save Preset", tag="btn_save_preset", callback=self._cb_save_preset)
+                    dpg.add_button(label="Clone", tag="btn_clone_preset", callback=self._cb_clone_preset)
+                    dpg.add_button(label="Delete", tag="btn_delete_preset", callback=self._cb_delete_preset)
 
                     dpg.add_spacer(width=15)
                     dpg.add_text("Frequency:", color=[0, 210, 255, 255])
@@ -70,9 +69,6 @@ class NodeEditorTab:
                     dpg.add_button(label="View Python Code", callback=self._show_python_code_modal)
                     dpg.add_spacer(width=10)
                     dpg.add_button(label="Auto-Arrange Graph", callback=self.auto_arrange_nodes)
-                    dpg.add_spacer(width=10)
-                    dpg.add_button(label="Export JSON", callback=self._show_json_export_modal)
-                    dpg.add_button(label="Import JSON", callback=self._show_json_import_modal)
 
             dpg.add_spacer(height=2)
 
@@ -230,6 +226,7 @@ class NodeEditorTab:
         active_preset = self._profile_manager.get_active()
         if active_preset:
             self.import_graph_from_dict(active_preset.graph_data)
+            self._update_preset_ui_state()
 
     def _apply_pin_theme(self, attr_tag: str, pin_type: Any = "normalized", is_normalized: Optional[bool] = None, is_square: bool = False):
         if is_normalized is not None:
@@ -499,7 +496,7 @@ class NodeEditorTab:
                     dpg.set_axis_limits(xaxis_tag, 0, 1)
                     with dpg.plot_axis(dpg.mvYAxis, no_tick_labels=True, tag=yaxis_tag):
                         dpg.set_axis_limits(yaxis_tag, 0, 1.05)
-                        ys = [_apply_curve(x, gamma, gain, thresh) for x in xs]
+                        ys = [apply_response_curve(x, gamma, gain, thresh) for x in xs]
                         dpg.add_line_series(xs, ys, tag=series_tag)
                         dpg.add_line_series([-1, -1], [0, 1], tag=cursor_tag)
 
@@ -535,7 +532,7 @@ class NodeEditorTab:
             gm = dpg.get_value(gamma_tag)
             th = dpg.get_value(thresh_tag)
             xs = [x / 100.0 for x in range(101)]
-            ys = [_apply_curve(x, gm, g, th) for x in xs]
+            ys = [apply_response_curve(x, gm, g, th) for x in xs]
             dpg.set_value(series_tag, [xs, ys])
 
     def _update_shape_plot(self, nid: int):
@@ -807,8 +804,26 @@ class NodeEditorTab:
                 und_val=und_val, und_l=und_l, und_r=und_r
             )
 
+    def _update_preset_ui_state(self):
+        """Disables Save and Delete buttons if current profile is a read-only preset."""
+        selected_name = dpg.get_value("combo_preset_select") if dpg.does_item_exist("combo_preset_select") else self._profile_manager._active_profile_name
+        prof = self._profile_manager.get_profile(selected_name)
+        is_preset = prof.is_preset if prof else False
+
+        if dpg.does_item_exist("btn_save_preset"):
+            dpg.configure_item("btn_save_preset", enabled=not is_preset)
+        if dpg.does_item_exist("btn_delete_preset"):
+            dpg.configure_item("btn_delete_preset", enabled=not is_preset)
+
     def evaluate_graph(self) -> Tuple[float, float]:
-        """Reads current output values from high-frequency synthesizer engine."""
+        """Reads current output values from high-frequency synthesizer engine and polls profile directory changes."""
+        if self._profile_manager.check_for_changes():
+            names = self._profile_manager.list_names()
+            active_name = self._profile_manager._active_profile_name
+            if dpg.does_item_exist("combo_preset_select"):
+                dpg.configure_item("combo_preset_select", items=names, default_value=active_name)
+            self._update_preset_ui_state()
+
         if self._synth_engine:
             low_val, high_val = self._synth_engine.get_current_outputs()
         else:
@@ -1062,23 +1077,39 @@ class NodeEditorTab:
             print(f"[NodeEditor] Graph compilation error: {e}")
 
     # ── Preset Callbacks ──────────────────────────────────────────────────────
+    # ── Preset Callbacks ──────────────────────────────────────────────────────
     def _cb_load_preset(self):
         preset_name = dpg.get_value("combo_preset_select")
         prof = self._profile_manager.get_profile(preset_name)
         if prof:
             self._profile_manager.set_active(preset_name)
             self.import_graph_from_dict(prof.graph_data)
+        self._update_preset_ui_state()
 
     def _cb_save_preset(self):
         preset_name = dpg.get_value("combo_preset_select")
         graph_dict = self.export_graph_to_dict()
-        self._profile_manager.save_profile(preset_name, graph_dict)
-        dpg.configure_item("combo_preset_select", items=self._profile_manager.list_names())
+        prof, msg = self._profile_manager.save_profile(preset_name, graph_dict)
+        if prof:
+            names = self._profile_manager.list_names()
+            dpg.configure_item("combo_preset_select", items=names, default_value=prof.name)
+            self._update_preset_ui_state()
+
+    def _cb_clone_preset(self):
+        preset_name = dpg.get_value("combo_preset_select")
+        cloned_prof, msg = self._profile_manager.clone_profile(preset_name)
+        if cloned_prof:
+            names = self._profile_manager.list_names()
+            dpg.configure_item("combo_preset_select", items=names, default_value=cloned_prof.name)
+            self.import_graph_from_dict(cloned_prof.graph_data)
+            self._update_preset_ui_state()
 
     def _cb_delete_preset(self):
         preset_name = dpg.get_value("combo_preset_select")
-        if self._profile_manager.delete_profile(preset_name):
-            dpg.configure_item("combo_preset_select", items=self._profile_manager.list_names(), default_value="Default")
+        success, msg = self._profile_manager.delete_profile(preset_name)
+        if success:
+            active_name = self._profile_manager._active_profile_name
+            dpg.configure_item("combo_preset_select", items=self._profile_manager.list_names(), default_value=active_name)
             self._cb_load_preset()
 
     def _cb_change_frequency(self, sender, app_data):
@@ -1109,51 +1140,3 @@ class NodeEditorTab:
             dpg.add_spacer(height=6)
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Close", width=120, callback=lambda: dpg.delete_item(modal_tag))
-
-    def _show_json_export_modal(self):
-        """Opens a DPG modal displaying the JSON serialized graph topology for saving or AI generation."""
-        modal_tag = "modal_json_export"
-        if dpg.does_item_exist(modal_tag):
-            dpg.delete_item(modal_tag)
-
-        graph_dict = self.export_graph_to_dict()
-        json_str = export_graph_json(graph_dict)
-
-        with dpg.window(label="Export Graph JSON Specification", tag=modal_tag, modal=True, show=True, width=700, height=520, pos=(250, 100)):
-            dpg.add_text("Graph JSON Topology (Save, share or feed to Generative AI):", color=[0, 210, 255, 255])
-            dpg.add_spacer(height=4)
-            dpg.add_input_text(multiline=True, readonly=True, default_value=json_str, width=-1, height=410)
-            dpg.add_spacer(height=6)
-            with dpg.group(horizontal=True):
-                dpg.add_button(label="Close", width=120, callback=lambda: dpg.delete_item(modal_tag))
-
-    def _show_json_import_modal(self):
-        """Opens a DPG modal allowing users or AI to paste and load a JSON graph specification."""
-        modal_tag = "modal_json_import"
-        if dpg.does_item_exist(modal_tag):
-            dpg.delete_item(modal_tag)
-
-        input_txt_tag = "input_json_import_str"
-        status_lbl_tag = "lbl_json_import_status"
-
-        def _do_import():
-            raw_str = dpg.get_value(input_txt_tag)
-            graph_dict, err = import_graph_json(raw_str)
-            if graph_dict:
-                self.import_graph_from_dict(graph_dict)
-                dpg.delete_item(modal_tag)
-            else:
-                dpg.set_value(status_lbl_tag, f"Import Error: {err}")
-                dpg.configure_item(status_lbl_tag, color=[255, 60, 60, 255])
-
-        with dpg.window(label="Import Graph JSON (AI / Presets)", tag=modal_tag, modal=True, show=True, width=720, height=540, pos=(240, 90)):
-            dpg.add_text("Paste Graph JSON Specification below to instantiate graph:", color=[0, 210, 255, 255])
-            dpg.add_text("Clears workspace and auto-arranges loaded layout automatically.", color=[140, 140, 140, 255])
-            dpg.add_spacer(height=4)
-            dpg.add_input_text(tag=input_txt_tag, multiline=True, default_value="", hint="Paste JSON specification here...", width=-1, height=390)
-            dpg.add_text("", tag=status_lbl_tag, color=[255, 200, 0, 255])
-            dpg.add_spacer(height=6)
-            with dpg.group(horizontal=True):
-                dpg.add_button(label="Load & Build Graph", width=160, callback=_do_import)
-                dpg.add_spacer(width=10)
-                dpg.add_button(label="Cancel", width=120, callback=lambda: dpg.delete_item(modal_tag))

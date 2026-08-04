@@ -9,16 +9,9 @@ import json
 from typing import Dict, Any, Tuple, List, Optional
 
 
-VALID_NODE_TYPES = {
-    "constant",
-    "float_constant",
-    "multiply",
-    "array_multiply",
-    "normalize",
-    "math",
-    "transform",
-    "shape"
-}
+from src.nodes.factory import NodeFactory
+
+VALID_NODE_TYPES = NodeFactory.get_registered_types()
 
 VALID_SENSOR_OUTPUTS = {
     "attr_out_abs", "attr_out_abs_l", "attr_out_abs_r",

@@ -89,6 +89,10 @@ class UDPServer:
             is_active = (time.time() - self._last_packet_time) < timeout if self._last_packet_time > 0 else False
             return is_active, self._last_packet_time, self._packet_count
 
+    def is_receiving(self, timeout: float = 1.0) -> bool:
+        """Retourne True si des paquets UDP ont été reçus récemment."""
+        return self.is_receiving_packets(timeout)[0]
+
     def stop(self) -> None:
         """Arrête le serveur UDP."""
         self._running = False
