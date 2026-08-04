@@ -73,13 +73,29 @@ class GraphCompiler:
             lines.extend(node_lines)
 
         # Output Motors (Multi-Input Summing Array clamped to [0, 1])
+        low_srcs = list(in_to_outs.get('attr_in_low', []))
+        high_srcs = list(in_to_outs.get('attr_in_high', []))
+        for ntag, ninfo in nodes.items():
+            if ninfo.get("type") == "output_xinput":
+                in_low = ninfo.get("in_low")
+                in_high = ninfo.get("in_high")
+                if in_low and in_low in in_to_outs:
+                    for s in in_to_outs[in_low]:
+                        if s not in low_srcs:
+                            low_srcs.append(s)
+                if in_high and in_high in in_to_outs:
+                    for s in in_to_outs[in_high]:
+                        if s not in high_srcs:
+                            high_srcs.append(s)
+
         lines.append("    # Output XInput Vibration Motors (Multi-Input Summing Array clamped to [0,1])")
-        lines.append(f"    low_srcs = {in_to_outs.get('attr_in_low', [])}")
-        lines.append(f"    high_srcs = {in_to_outs.get('attr_in_high', [])}")
+        lines.append(f"    low_srcs = {low_srcs}")
+        lines.append(f"    high_srcs = {high_srcs}")
         lines.append("    low_val = min(1.0, max(0.0, sum(val_map.get(s, 0.0) for s in low_srcs))) if low_srcs else 0.0")
         lines.append("    high_val = min(1.0, max(0.0, sum(val_map.get(s, 0.0) for s in high_srcs))) if high_srcs else 0.0")
         lines.append("    return low_val, high_val")
         lines.append("")
+
 
         return "\n".join(lines)
 

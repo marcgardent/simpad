@@ -26,7 +26,9 @@ class NodeGraphArranger:
                 pass
 
         # Specific known built-in nodes
-        if ntag == "node_sensors":
+        if ntag in ["node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und"]:
+            return 260.0, 135.0
+        elif ntag == "node_sensors":
             return 260.0, 480.0
         elif ntag == "node_xinput":
             return 230.0, 130.0
@@ -34,7 +36,9 @@ class NodeGraphArranger:
         # Custom nodes lookup
         if ntag in custom_nodes:
             ntype = custom_nodes[ntag].get("type")
-            if ntype in ["constant", "float_constant"]:
+            if ntype in ["sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer"]:
+                return 260.0, 135.0
+            elif ntype in ["constant", "float_constant"]:
                 return 200.0, 95.0
             elif ntype in ["multiply", "array_multiply"]:
                 return 220.0, 135.0
@@ -68,28 +72,35 @@ class NodeGraphArranger:
         # 1. Map attribute tags to node tags
         attr_to_node: Dict[str, str] = {}
 
-        # Sensor output pins
-        for s_pin in [
-            "attr_out_abs", "attr_out_abs_l", "attr_out_abs_r",
-            "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
-            "attr_out_over", "attr_out_over_l", "attr_out_over_r",
-            "attr_out_und", "attr_out_und_l", "attr_out_und_r"
-        ]:
-            attr_to_node[s_pin] = "node_sensors"
+        # Sensor output pins mapping to 4 distinct sensor nodes
+        for s_pin in ["attr_out_abs", "attr_out_abs_l", "attr_out_abs_r"]:
+            attr_to_node[s_pin] = "node_sensor_abs"
+        for s_pin in ["attr_out_tc", "attr_out_tc_l", "attr_out_tc_r"]:
+            attr_to_node[s_pin] = "node_sensor_tc"
+        for s_pin in ["attr_out_over", "attr_out_over_l", "attr_out_over_r"]:
+            attr_to_node[s_pin] = "node_sensor_over"
+        for s_pin in ["attr_out_und", "attr_out_und_l", "attr_out_und_r"]:
+            attr_to_node[s_pin] = "node_sensor_und"
 
         # Motor input pins
         for m_pin in ["attr_in_low", "attr_in_high"]:
-            attr_to_node[m_pin] = "node_xinput"
-
-        # Custom nodes pins
+            attr_to_node[m_pin] = "node_xinput"        # Collect built-in and custom node tags
         all_node_tags = []
-        if dpg.does_item_exist("node_sensors"):
-            all_node_tags.append("node_sensors")
+        sensor_node_tags = {"node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und", "node_sensors"}
+        output_node_tags = {"node_xinput"}
+        for s_tag in ["node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und", "node_sensors"]:
+            if dpg.does_item_exist(s_tag):
+                all_node_tags.append(s_tag)
 
         for ntag, ninfo in custom_nodes.items():
             if dpg.does_item_exist(ntag):
                 all_node_tags.append(ntag)
-                for key in ["out_attr", "in_a", "in_b", "in_attr", "in_on", "in_off", "in_freq"]:
+                ntype = ninfo.get("type", "")
+                if "sensor" in ntype:
+                    sensor_node_tags.add(ntag)
+                elif "output" in ntype or ntype == "output_xinput":
+                    output_node_tags.add(ntag)
+                for key in ["out_attr", "in_a", "in_b", "in_attr", "in_on", "in_off", "in_freq", "in_low", "in_high"]:
                     val = ninfo.get(key)
                     if val:
                         attr_to_node[val] = ntag
@@ -107,7 +118,9 @@ class NodeGraphArranger:
 
         # 3. Calculate topological depth for each node
         node_depths: Dict[str, int] = {ntag: 0 for ntag in all_node_tags}
-        node_depths["node_sensors"] = 0
+        for stag in sensor_node_tags:
+            if stag in node_depths:
+                node_depths[stag] = 0
 
         changed = True
         iterations = 0
@@ -115,7 +128,7 @@ class NodeGraphArranger:
             changed = False
             iterations += 1
             for ntag in all_node_tags:
-                if ntag == "node_sensors":
+                if ntag in sensor_node_tags:
                     continue
                 parents = incoming_nodes[ntag]
                 if parents:
@@ -127,8 +140,11 @@ class NodeGraphArranger:
                     node_depths[ntag] = new_depth
                     changed = True
 
-        max_inter_depth = max([d for n, d in node_depths.items() if n != "node_xinput"], default=1)
-        node_depths["node_xinput"] = max_inter_depth + 1
+        max_inter_depth = max([d for n, d in node_depths.items() if n not in output_node_tags], default=1)
+        for otag in output_node_tags:
+            if otag in node_depths:
+                node_depths[otag] = max_inter_depth + 1
+
 
         # 4. Group nodes by column layer
         columns: Dict[int, List[str]] = {}

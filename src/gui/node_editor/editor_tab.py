@@ -33,20 +33,21 @@ class NodeEditorTab:
         self._parent = parent_app
 
         with dpg.group(horizontal=False):
-            # Top Toolbar 1: Presets & Synthesizer Controls
+            # Top Toolbar 1: Profiles & Synthesizer Controls
             with dpg.child_window(height=42, border=True):
                 with dpg.group(horizontal=True):
-                    dpg.add_text("Presets:", color=[255, 200, 0, 255])
+                    dpg.add_text("Profiles:", color=[255, 200, 0, 255])
                     dpg.add_combo(
-                        items=self._profile_manager.list_names(),
-                        default_value=self._profile_manager._active_profile_name,
-                        width=140,
-                        tag="combo_preset_select",
+                        items=self._profile_manager.list_display_names(),
+                        default_value=self._profile_manager.get_display_name(self._profile_manager._active_profile_name),
+                        width=160,
+                        tag="combo_profile_select",
                         callback=self._cb_load_preset
                     )
-                    dpg.add_button(label="Save Preset", tag="btn_save_preset", callback=self._cb_save_preset)
-                    dpg.add_button(label="Clone", tag="btn_clone_preset", callback=self._cb_clone_preset)
-                    dpg.add_button(label="Delete", tag="btn_delete_preset", callback=self._cb_delete_preset)
+                    dpg.add_button(label="Save Profile", tag="btn_save_profile", callback=self._cb_save_preset)
+                    dpg.add_button(label="Rename", tag="btn_rename_profile", callback=self._open_rename_profile_modal)
+                    dpg.add_button(label="Clone Profile", tag="btn_clone_profile", callback=self._cb_clone_preset)
+                    dpg.add_button(label="Delete Profile", tag="btn_delete_profile", callback=self._cb_delete_preset)
 
                     dpg.add_spacer(width=15)
                     dpg.add_text("Frequency:", color=[0, 210, 255, 255])
@@ -65,21 +66,43 @@ class NodeEditorTab:
 
             dpg.add_spacer(height=2)
 
-            # Keyboard Handler: Bind Delete / Suppr key to delete selected nodes & links
+            # Keyboard Handler: Bind Delete / Suppr / F2 keys
             handler_tag = "node_editor_key_handler"
             if dpg.does_item_exist(handler_tag):
                 dpg.delete_item(handler_tag)
             with dpg.handler_registry(tag=handler_tag):
                 dpg.add_key_press_handler(dpg.mvKey_Delete, callback=lambda: self._delete_selected_items())
                 dpg.add_key_press_handler(dpg.mvKey_Back, callback=lambda: self._delete_selected_items())
+                dpg.add_key_press_handler(dpg.mvKey_F2, callback=lambda: self._open_rename_node_modal())
+
 
             with dpg.group(horizontal=True):
                 # 1. Left Sidebar: Vertical Node Creation Toolbox
-                with dpg.child_window(width=190, height=-1, border=True):
+                with dpg.child_window(width=195, height=-1, border=True):
                     dpg.add_text("Node Toolbox", color=[0, 210, 255, 255])
                     dpg.add_text("Click to add node:", color=[140, 140, 140, 255])
                     dpg.add_separator()
                     dpg.add_spacer(height=4)
+
+                    dpg.add_text("Telemetry Sensors", color=[255, 220, 0, 255])
+                    dpg.add_button(label="+ Over-Braking Sensor", width=-1, callback=lambda: self._add_node_sensor_abs())
+                    dpg.add_spacer(height=2)
+                    dpg.add_button(label="+ Over-Accel Sensor", width=-1, callback=lambda: self._add_node_sensor_tc())
+                    dpg.add_spacer(height=2)
+                    dpg.add_button(label="+ Oversteer Sensor", width=-1, callback=lambda: self._add_node_sensor_over())
+                    dpg.add_spacer(height=2)
+                    dpg.add_button(label="+ Understeer Sensor", width=-1, callback=lambda: self._add_node_sensor_und())
+                    dpg.add_spacer(height=6)
+                    dpg.add_separator()
+                    dpg.add_spacer(height=4)
+
+                    dpg.add_text("Haptic Motors (Outputs)", color=[255, 60, 60, 255])
+                    dpg.add_button(label="+ XInput Vibration", width=-1, callback=lambda: self._add_node_output_xinput())
+                    dpg.add_spacer(height=6)
+                    dpg.add_separator()
+                    dpg.add_spacer(height=4)
+
+                    dpg.add_text("Processing Nodes", color=[0, 210, 255, 255])
 
                     dpg.add_button(label="+ Constant [0,1]", width=-1, callback=lambda: self._add_node_constant())
                     dpg.add_spacer(height=2)
@@ -106,10 +129,9 @@ class NodeEditorTab:
                         width=-1,
                         height=-1,
                     ):
-                        # 1. INPUT NODE: Telemetry Sensors
-                        with dpg.node(label="Input: Telemetry Sensors", tag="node_sensors", pos=[30.0, 40.0]):
-                            with dpg.node_attribute(label="Over-Braking Header", attribute_type=dpg.mvNode_Attr_Static):
-                                dpg.add_text("--- Over-Braking ---", color=[140, 140, 140, 255])
+                        # 1. INPUT NODES: 4 Separate Telemetry Sensors
+                        # 1a. Over-Braking Sensor Node
+                        with dpg.node(label="Input: Over-Braking", tag="node_sensor_abs", pos=[30.0, 40.0]):
                             with dpg.node_attribute(label="Over-Braking Max", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_abs"):
                                 dpg.add_text("Over-Braking (Max)", color=[255, 220, 0, 255])
                             with dpg.node_attribute(label="Over-Braking Left", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_abs_l"):
@@ -117,8 +139,8 @@ class NodeEditorTab:
                             with dpg.node_attribute(label="Over-Braking Right", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_abs_r"):
                                 dpg.add_text("Over-Braking (Right)", color=[255, 220, 0, 255])
 
-                            with dpg.node_attribute(label="Over-Acceleration Header", attribute_type=dpg.mvNode_Attr_Static):
-                                dpg.add_text("--- Over-Acceleration ---", color=[140, 140, 140, 255])
+                        # 1b. Over-Acceleration Sensor Node
+                        with dpg.node(label="Input: Over-Acceleration", tag="node_sensor_tc", pos=[30.0, 160.0]):
                             with dpg.node_attribute(label="Over-Accel Max", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_tc"):
                                 dpg.add_text("Over-Accel (Max)", color=[255, 220, 0, 255])
                             with dpg.node_attribute(label="Over-Accel Left", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_tc_l"):
@@ -126,8 +148,8 @@ class NodeEditorTab:
                             with dpg.node_attribute(label="Over-Accel Right", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_tc_r"):
                                 dpg.add_text("Over-Accel (Right)", color=[255, 220, 0, 255])
 
-                            with dpg.node_attribute(label="Oversteer Header", attribute_type=dpg.mvNode_Attr_Static):
-                                dpg.add_text("--- Oversteer ---", color=[140, 140, 140, 255])
+                        # 1c. Oversteer Sensor Node
+                        with dpg.node(label="Input: Oversteer", tag="node_sensor_over", pos=[30.0, 280.0]):
                             with dpg.node_attribute(label="Oversteer Max", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_over"):
                                 dpg.add_text("Oversteer (Max)", color=[255, 220, 0, 255])
                             with dpg.node_attribute(label="Oversteer Left", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_over_l"):
@@ -135,8 +157,8 @@ class NodeEditorTab:
                             with dpg.node_attribute(label="Oversteer Right", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_over_r"):
                                 dpg.add_text("Oversteer (Right)", color=[255, 220, 0, 255])
 
-                            with dpg.node_attribute(label="Understeer Header", attribute_type=dpg.mvNode_Attr_Static):
-                                dpg.add_text("--- Understeer ---", color=[140, 140, 140, 255])
+                        # 1d. Understeer Sensor Node
+                        with dpg.node(label="Input: Understeer", tag="node_sensor_und", pos=[30.0, 400.0]):
                             with dpg.node_attribute(label="Understeer Max", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_und"):
                                 dpg.add_text("Understeer (Max)", color=[255, 220, 0, 255])
                             with dpg.node_attribute(label="Understeer Left", attribute_type=dpg.mvNode_Attr_Output, tag="attr_out_und_l"):
@@ -165,6 +187,7 @@ class NodeEditorTab:
 
                 # Right: Interactive Test Sidebar
                 self._sidebar.build_sidebar(self)
+
 
         # Load active preset on startup
         active_preset = self._profile_manager.get_active()
@@ -195,6 +218,21 @@ class NodeEditorTab:
         self._sidebar.reset_test_sensors(self._synth_engine)
 
     # ── Toolbox Callbacks ────────────────────────────────────────────────────
+    def _add_node_sensor_abs(self, pos=(30.0, 40.0)):
+        return self._factory.add_node_sensor_abs(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_tc(self, pos=(30.0, 160.0)):
+        return self._factory.add_node_sensor_tc(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_over(self, pos=(30.0, 280.0)):
+        return self._factory.add_node_sensor_over(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_und(self, pos=(30.0, 400.0)):
+        return self._factory.add_node_sensor_und(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_output_xinput(self, pos=(580.0, 120.0)):
+        return self._factory.add_node_output_xinput(self._custom_nodes, self.recompile_and_update_synth, pos)
+
     def _add_node_constant(self, val: float = 0.5, pos=(240.0, 280.0)):
         if not isinstance(val, (int, float)):
             val = 0.5
@@ -235,7 +273,7 @@ class NodeEditorTab:
         self._factory.delete_custom_node(self._custom_nodes, self._node_links, node_tag, self.recompile_and_update_synth)
 
     def _delete_selected_items(self):
-        """Keyboard Del / Suppr Key Handler: Deletes selected dynamic nodes and links."""
+        """Keyboard Del / Suppr Key Handler: Deletes selected nodes and links."""
         if not dpg.does_item_exist("node_editor_canvas"):
             return
 
@@ -247,7 +285,6 @@ class NodeEditorTab:
                 dpg.delete_item(link_id)
 
         selected_nodes = dpg.get_selected_nodes("node_editor_canvas")
-        protected_nodes = {"node_sensors", "node_xinput"}
         for node_id in selected_nodes:
             node_tag = None
             if node_id in self._custom_nodes:
@@ -258,8 +295,36 @@ class NodeEditorTab:
                         node_tag = ntag
                         break
 
-            if node_tag and node_tag not in protected_nodes:
+            if node_tag:
                 self._delete_custom_node(node_tag)
+            else:
+                target_tag = node_id
+                if not dpg.does_item_exist(target_tag):
+                    for btag in ["node_sensor_abs", "node_sensor_tc", "node_sensor_over", "node_sensor_und", "node_sensors", "node_xinput"]:
+                        if dpg.does_item_exist(btag) and dpg.get_alias_id(btag) == node_id:
+                            target_tag = btag
+                            break
+
+                if dpg.does_item_exist(target_tag):
+                    children = dpg.get_item_children(target_tag, slot=1) or []
+                    attr_ids = set(children)
+                    links_to_delete = []
+                    for link_id, (o, i) in list(self._node_links.items()):
+                        o_id = dpg.get_alias_id(o) if dpg.does_item_exist(o) else o
+                        i_id = dpg.get_alias_id(i) if dpg.does_item_exist(i) else i
+                        if o in attr_ids or i in attr_ids or o_id in attr_ids or i_id in attr_ids:
+                            links_to_delete.append(link_id)
+
+                    for lid in links_to_delete:
+                        if lid in self._node_links:
+                            del self._node_links[lid]
+                        if dpg.does_item_exist(lid):
+                            dpg.delete_item(lid)
+
+                    dpg.delete_item(target_tag)
+
+        self.recompile_and_update_synth()
+
 
         self.recompile_and_update_synth()
 
@@ -364,6 +429,11 @@ class NodeEditorTab:
                 ndata["freq"] = dpg.get_value(ninfo["freq_tag"]) if dpg.does_item_exist(ninfo["freq_tag"]) else 20.0
                 ndata["duty"] = dpg.get_value(ninfo["duty_tag"]) if dpg.does_item_exist(ninfo["duty_tag"]) else 0.40
 
+            if dpg.does_item_exist(ntag):
+                lbl = dpg.get_item_label(ntag)
+                if lbl:
+                    ndata["label"] = lbl
+
             nodes_dict[ntag] = ndata
 
         links_list = []
@@ -396,6 +466,7 @@ class NodeEditorTab:
         for old_ntag, ndata in nodes.items():
             ntype = ndata.get("type")
             pos = tuple(ndata.get("pos", [240, 100]))
+            new_ntag = None
 
             if ntype == "constant":
                 new_ntag = self._add_node_constant(val=ndata.get("val", 0.5), pos=pos)
@@ -443,9 +514,50 @@ class NodeEditorTab:
                 if "in_freq" in ndata: tag_remap[ndata["in_freq"]] = self._custom_nodes[new_ntag]["in_freq"]
                 tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
 
+            elif ntype == "sensor_over_braking":
+                new_ntag = self._add_node_sensor_abs(pos=pos)
+                if "out_attr" in ndata: tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
+                if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
+                if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
+
+            elif ntype == "sensor_over_accel":
+                new_ntag = self._add_node_sensor_tc(pos=pos)
+                if "out_attr" in ndata: tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
+                if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
+                if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
+
+            elif ntype == "sensor_oversteer":
+                new_ntag = self._add_node_sensor_over(pos=pos)
+                if "out_attr" in ndata: tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
+                if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
+                if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
+
+            elif ntype == "sensor_understeer":
+                new_ntag = self._add_node_sensor_und(pos=pos)
+                if "out_attr" in ndata: tag_remap[ndata["out_attr"]] = self._custom_nodes[new_ntag]["out_attr"]
+                if "out_l" in ndata: tag_remap[ndata["out_l"]] = self._custom_nodes[new_ntag]["out_l"]
+                if "out_r" in ndata: tag_remap[ndata["out_r"]] = self._custom_nodes[new_ntag]["out_r"]
+
+            elif ntype == "output_xinput":
+                new_ntag = self._add_node_output_xinput(pos=pos)
+                if "in_low" in ndata: tag_remap[ndata["in_low"]] = self._custom_nodes[new_ntag]["in_low"]
+                if "in_high" in ndata: tag_remap[ndata["in_high"]] = self._custom_nodes[new_ntag]["in_high"]
+
+            if new_ntag and "label" in ndata and dpg.does_item_exist(new_ntag):
+                dpg.configure_item(new_ntag, label=ndata["label"])
+                if new_ntag in self._custom_nodes:
+                    self._custom_nodes[new_ntag]["label"] = ndata["label"]
+
         # Base sensors & motors map to themselves
-        for base_tag in ["attr_out_abs", "attr_out_tc", "attr_out_over", "attr_out_und", "attr_out_const", "attr_in_low", "attr_in_high"]:
+        for base_tag in [
+            "attr_out_abs", "attr_out_abs_l", "attr_out_abs_r",
+            "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
+            "attr_out_over", "attr_out_over_l", "attr_out_over_r",
+            "attr_out_und", "attr_out_und_l", "attr_out_und_r",
+            "attr_out_const", "attr_in_low", "attr_in_high"
+        ]:
             tag_remap[base_tag] = base_tag
+
 
         # 3. Re-wire links
         links = graph_data.get("links", [])
@@ -469,40 +581,122 @@ class NodeEditorTab:
         except Exception as e:
             print(f"[NodeEditor] Graph compilation error: {e}")
 
-    # ── Preset Callbacks ──────────────────────────────────────────────────────
+    # ── Profile Callbacks & Modals ────────────────────────────────────────────
     def _cb_load_preset(self):
-        preset_name = dpg.get_value("combo_preset_select")
-        prof = self._profile_manager.get_profile(preset_name)
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
+        prof = self._profile_manager.get_profile(selected_display)
         if prof:
-            self._profile_manager.set_active(preset_name)
+            self._profile_manager.set_active(prof.name)
             self.import_graph_from_dict(prof.graph_data)
         self._update_preset_ui_state()
 
     def _cb_save_preset(self):
-        preset_name = dpg.get_value("combo_preset_select")
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
         graph_dict = self.export_graph_to_dict()
-        prof, msg = self._profile_manager.save_profile(preset_name, graph_dict)
+        prof, msg = self._profile_manager.save_profile(selected_display, graph_dict)
         if prof:
-            names = self._profile_manager.list_names()
-            dpg.configure_item("combo_preset_select", items=names, default_value=prof.name)
+            displays = self._profile_manager.list_display_names()
+            new_disp = self._profile_manager.get_display_name(prof.name)
+            dpg.configure_item("combo_profile_select", items=displays, default_value=new_disp)
             self._update_preset_ui_state()
 
     def _cb_clone_preset(self):
-        preset_name = dpg.get_value("combo_preset_select")
-        cloned_prof, msg = self._profile_manager.clone_profile(preset_name)
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
+        cloned_prof, msg = self._profile_manager.clone_profile(selected_display)
         if cloned_prof:
-            names = self._profile_manager.list_names()
-            dpg.configure_item("combo_preset_select", items=names, default_value=cloned_prof.name)
+            displays = self._profile_manager.list_display_names()
+            new_disp = self._profile_manager.get_display_name(cloned_prof.name)
+            dpg.configure_item("combo_profile_select", items=displays, default_value=new_disp)
             self.import_graph_from_dict(cloned_prof.graph_data)
             self._update_preset_ui_state()
 
     def _cb_delete_preset(self):
-        preset_name = dpg.get_value("combo_preset_select")
-        success, msg = self._profile_manager.delete_profile(preset_name)
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
+        success, msg = self._profile_manager.delete_profile(selected_display)
         if success:
-            active_name = self._profile_manager._active_profile_name
-            dpg.configure_item("combo_preset_select", items=self._profile_manager.list_names(), default_value=active_name)
+            displays = self._profile_manager.list_display_names()
+            active_disp = self._profile_manager.get_display_name(self._profile_manager._active_profile_name)
+            dpg.configure_item("combo_profile_select", items=displays, default_value=active_disp)
             self._cb_load_preset()
+
+    def _open_rename_profile_modal(self):
+        """Opens a DPG modal window allowing the user to rename the active user profile."""
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else ""
+        prof = self._profile_manager.get_profile(selected_display)
+        if not prof or prof.is_preset:
+            return
+
+        modal_tag = "modal_rename_profile"
+        if dpg.does_item_exist(modal_tag):
+            dpg.delete_item(modal_tag)
+
+        input_tag = "input_rename_profile_name"
+
+        def apply_profile_rename():
+            new_name = dpg.get_value(input_tag).strip()
+            if not new_name:
+                return
+            renamed_prof, msg = self._profile_manager.rename_profile(selected_display, new_name)
+            if renamed_prof:
+                displays = self._profile_manager.list_display_names()
+                new_disp = self._profile_manager.get_display_name(renamed_prof.name)
+                dpg.configure_item("combo_profile_select", items=displays, default_value=new_disp)
+                self._update_preset_ui_state()
+            if dpg.does_item_exist(modal_tag):
+                dpg.delete_item(modal_tag)
+
+        with dpg.window(label="Rename Profile", tag=modal_tag, modal=True, show=True, width=380, height=140, pos=(300, 200)):
+            dpg.add_text(f"Rename Profile '{prof.name}':", color=[255, 200, 0, 255])
+            dpg.add_spacer(height=4)
+            dpg.add_input_text(default_value=prof.name, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_profile_rename())
+            dpg.add_spacer(height=10)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Apply", width=110, callback=lambda: apply_profile_rename())
+                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+
+    def _open_rename_node_modal(self):
+        """Opens a DPG modal window allowing the user to rename the currently selected node (F2 key)."""
+        if not dpg.does_item_exist("node_editor_canvas"):
+            return
+
+        selected_nodes = dpg.get_selected_nodes("node_editor_canvas")
+        if not selected_nodes:
+            return
+
+        node_id = selected_nodes[0]
+        node_tag = node_id
+        if node_id not in self._custom_nodes:
+            for ntag in list(self._custom_nodes.keys()):
+                if dpg.does_item_exist(ntag) and (dpg.get_alias_id(ntag) == node_id or ntag == node_id):
+                    node_tag = ntag
+                    break
+
+        current_label = dpg.get_item_label(node_tag) if dpg.does_item_exist(node_tag) else "Node"
+
+        modal_tag = "modal_rename_node"
+        if dpg.does_item_exist(modal_tag):
+            dpg.delete_item(modal_tag)
+
+        input_tag = "input_rename_node_label"
+
+        def apply_node_rename():
+            new_label = dpg.get_value(input_tag).strip()
+            if new_label and dpg.does_item_exist(node_tag):
+                dpg.configure_item(node_tag, label=new_label)
+                if node_tag in self._custom_nodes:
+                    self._custom_nodes[node_tag]["label"] = new_label
+                self.recompile_and_update_synth()
+            if dpg.does_item_exist(modal_tag):
+                dpg.delete_item(modal_tag)
+
+        with dpg.window(label="Rename Node (F2)", tag=modal_tag, modal=True, show=True, width=380, height=140, pos=(300, 200)):
+            dpg.add_text("Enter new node display label:", color=[0, 210, 255, 255])
+            dpg.add_spacer(height=4)
+            dpg.add_input_text(default_value=current_label, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_node_rename())
+            dpg.add_spacer(height=10)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Apply", width=110, callback=lambda: apply_node_rename())
+                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
 
     def _cb_change_frequency(self, sender, app_data):
         freq_str = app_data
@@ -517,15 +711,18 @@ class NodeEditorTab:
             self._synth_engine.set_frequency(freq)
 
     def _update_preset_ui_state(self):
-        """Disables Save and Delete buttons if current profile is a read-only preset."""
-        selected_name = dpg.get_value("combo_preset_select") if dpg.does_item_exist("combo_preset_select") else self._profile_manager._active_profile_name
-        prof = self._profile_manager.get_profile(selected_name)
+        """Disables Save, Rename, and Delete buttons if current profile is a read-only preset."""
+        selected_display = dpg.get_value("combo_profile_select") if dpg.does_item_exist("combo_profile_select") else self._profile_manager._active_profile_name
+        prof = self._profile_manager.get_profile(selected_display)
         is_preset = prof.is_preset if prof else False
 
-        if dpg.does_item_exist("btn_save_preset"):
-            dpg.configure_item("btn_save_preset", enabled=not is_preset)
-        if dpg.does_item_exist("btn_delete_preset"):
-            dpg.configure_item("btn_delete_preset", enabled=not is_preset)
+        if dpg.does_item_exist("btn_save_profile"):
+            dpg.configure_item("btn_save_profile", enabled=not is_preset)
+        if dpg.does_item_exist("btn_rename_profile"):
+            dpg.configure_item("btn_rename_profile", enabled=not is_preset)
+        if dpg.does_item_exist("btn_delete_profile"):
+            dpg.configure_item("btn_delete_profile", enabled=not is_preset)
+
 
     def _show_python_code_modal(self):
         """Opens a DPG modal window displaying the standalone generated Python source code."""

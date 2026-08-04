@@ -12,6 +12,13 @@ from src.nodes.normalize import NormalizeNode
 from src.nodes.math import MathNode
 from src.nodes.transform import TransformNode
 from src.nodes.shape import ShapeNode
+from src.nodes.sensor import (
+    OverBrakingSensorNode,
+    OverAccelSensorNode,
+    OversteerSensorNode,
+    UndersteerSensorNode,
+)
+from src.nodes.output import XInputOutputNode
 
 
 class NodeFactory:
@@ -54,6 +61,13 @@ def _initialize_factory():
     NodeFactory.register(MathNode)
     NodeFactory.register(TransformNode)
     NodeFactory.register(ShapeNode)
+    NodeFactory.register(OverBrakingSensorNode)
+    NodeFactory.register(OverAccelSensorNode)
+    NodeFactory.register(OversteerSensorNode)
+    NodeFactory.register(UndersteerSensorNode)
+    NodeFactory.register(XInputOutputNode)
+
 
 
 _initialize_factory()
+

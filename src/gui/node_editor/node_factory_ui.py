@@ -93,6 +93,143 @@ class NodeUIFactory:
         return [float(x), float(y)]
 
     # ── Toolbox Node Creation Builders ───────────────────────────────────────
+    def add_node_sensor_abs(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 40.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_abs_{nid}"
+        out_max_tag = f"attr_out_dyn_abs_{nid}"
+        out_l_tag = f"attr_out_dyn_abs_l_{nid}"
+        out_r_tag = f"attr_out_dyn_abs_r_{nid}"
+
+        with dpg.node(label=f"Input: Over-Braking #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Over-Braking Max", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Over-Braking (Max)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Over-Braking Left", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Over-Braking (Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Over-Braking Right", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Over-Braking (Right)", color=[255, 220, 0, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_over_braking",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_tc(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 160.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_tc_{nid}"
+        out_max_tag = f"attr_out_dyn_tc_{nid}"
+        out_l_tag = f"attr_out_dyn_tc_l_{nid}"
+        out_r_tag = f"attr_out_dyn_tc_r_{nid}"
+
+        with dpg.node(label=f"Input: Over-Acceleration #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Over-Accel Max", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Over-Accel (Max)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Over-Accel Left", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Over-Accel (Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Over-Accel Right", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Over-Accel (Right)", color=[255, 220, 0, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_over_accel",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_over(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 280.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_over_{nid}"
+        out_max_tag = f"attr_out_dyn_over_{nid}"
+        out_l_tag = f"attr_out_dyn_over_l_{nid}"
+        out_r_tag = f"attr_out_dyn_over_r_{nid}"
+
+        with dpg.node(label=f"Input: Oversteer #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Oversteer Max", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Oversteer (Max)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Oversteer Left", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Oversteer (Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Oversteer Right", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Oversteer (Right)", color=[255, 220, 0, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_oversteer",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_und(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 400.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_und_{nid}"
+        out_max_tag = f"attr_out_dyn_und_{nid}"
+        out_l_tag = f"attr_out_dyn_und_l_{nid}"
+        out_r_tag = f"attr_out_dyn_und_r_{nid}"
+
+        with dpg.node(label=f"Input: Understeer #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Understeer Max", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Understeer (Max)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Understeer Left", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Understeer (Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Understeer Right", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Understeer (Right)", color=[255, 220, 0, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_understeer",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_output_xinput(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(580.0, 120.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_xinput_{nid}"
+        in_low_tag = f"attr_in_dyn_low_{nid}"
+        in_high_tag = f"attr_in_dyn_high_{nid}"
+
+        with dpg.node(label=f"Output: XInput Vibration #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Low Freq (Rumble)", attribute_type=dpg.mvNode_Attr_Input, tag=in_low_tag):
+                dpg.add_text("Low Freq Rumble (Left)", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="High Freq (Buzz)", attribute_type=dpg.mvNode_Attr_Input, tag=in_high_tag):
+                dpg.add_text("High Freq Buzz (Right)", color=[255, 220, 0, 255])
+
+        self.apply_pin_theme(in_low_tag, "sum_array")
+        self.apply_pin_theme(in_high_tag, "sum_array")
+
+        custom_nodes[node_tag] = {
+            "type": "output_xinput",
+            "in_low": in_low_tag,
+            "in_high": in_high_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+
     def add_node_constant(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], val: float = 0.5, pos=(240.0, 280.0)) -> str:
         if not isinstance(val, (int, float)):
             val = 0.5
@@ -404,7 +541,7 @@ class NodeUIFactory:
                 dpg.add_combo(items=["Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"], default_value=shape, width=170, tag=shape_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=4)
                 dpg.add_input_float(label="Freq (Hz)", default_value=freq, step=1.0, step_fast=5.0, format="%.1f", width=100, tag=freq_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
-                dpg.add_input_float(label="Duty % [0,1]", default_value=duty, step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_input_float(label="Duty", default_value=duty, step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=2)
                 dpg.add_text("ON: 20.0ms | OFF: 30.0ms", tag=ms_lbl_tag, color=[0, 210, 255, 255])
                 dpg.add_spacer(height=4)

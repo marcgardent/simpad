@@ -17,14 +17,16 @@ _VERSION = 2
 # TODO: [SRP] GraphProfile is a pure data class representing profile state and metadata serialization.
 class GraphProfile:
     """Encapsulates a graph profile model loaded from a JSON file."""
-    def __init__(self, name: str, graph_data: dict, is_preset: bool = False, created: str = ""):
+    def __init__(self, name: str, graph_data: dict, is_preset: bool = False, created: str = "", prof_id: str = ""):
         self.name = name
+        self.id = prof_id or name
         self.graph_data = graph_data
         self.is_preset = is_preset
         self.created = created or datetime.now().isoformat(timespec="seconds")
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "name": self.name,
             "preset": self.is_preset,
             "version": _VERSION,
@@ -35,15 +37,15 @@ class GraphProfile:
     @classmethod
     def from_dict(cls, data: dict, fallback_name: str = "Custom") -> "GraphProfile":
         name = data.get("name", fallback_name)
+        prof_id = data.get("id", name)
         is_preset = bool(data.get("preset", False))
         graph_data = data.get("graph_data", {"nodes": {}, "links": []})
         created = data.get("created", "")
-        return cls(name=name, graph_data=graph_data, is_preset=is_preset, created=created)
+        return cls(name=name, graph_data=graph_data, is_preset=is_preset, created=created, prof_id=prof_id)
 
 
-# TODO: [SRP] GraphProfileManager manages profile persistence, disk monitoring, and active profile selection.
 class GraphProfileManager:
-    """Manages profile loading, saving, cloning, and dynamic directory watching."""
+    """Manages profile loading, saving, cloning, renaming, and dynamic directory watching."""
 
     def __init__(self):
         _PROFILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,7 +55,6 @@ class GraphProfileManager:
 
         self.reload_all()
 
-    # TODO: [SLAP] Keep reload_all at a single level of abstraction by delegating file parsing to helper.
     def reload_all(self) -> bool:
         """Reloads all JSON profiles from the profiles/ directory."""
         self.profiles.clear()
@@ -108,42 +109,98 @@ class GraphProfileManager:
         return False
 
     def list_names(self) -> List[str]:
-        """Returns sorted list of available profile names."""
+        """Returns sorted list of available internal profile names."""
         return sorted(list(self.profiles.keys()))
 
-    def get_profile(self, name: str) -> Optional[GraphProfile]:
-        return self.profiles.get(name)
+    def list_display_names(self) -> List[str]:
+        """Returns list of profile names with a star indicator (★) for presets."""
+        display_list = []
+        for name in self.list_names():
+            prof = self.profiles[name]
+            if prof.is_preset:
+                display_list.append(f"★ {name}")
+            else:
+                display_list.append(name)
+        return display_list
+
+    def get_profile_name_from_display(self, display_name: str) -> str:
+        """Strips preset star prefix if present to return the internal profile name."""
+        if display_name.startswith("★ "):
+            return display_name[2:]
+        return display_name
+
+    def get_display_name(self, name: str) -> str:
+        """Returns display string with star indicator for a profile name."""
+        prof = self.profiles.get(name)
+        if prof and prof.is_preset:
+            return f"★ {name}"
+        return name
+
+    def get_profile(self, identifier: str) -> Optional[GraphProfile]:
+        clean_name = self.get_profile_name_from_display(identifier)
+        return self.profiles.get(clean_name)
 
     def get_active(self) -> GraphProfile:
         return self.profiles.get(self._active_profile_name) or next(iter(self.profiles.values()), GraphProfile("Default", {"nodes": {}, "links": []}, is_preset=True))
 
-    def set_active(self, name: str) -> bool:
-        if name in self.profiles:
-            self._active_profile_name = name
+    def set_active(self, identifier: str) -> bool:
+        clean_name = self.get_profile_name_from_display(identifier)
+        if clean_name in self.profiles:
+            self._active_profile_name = clean_name
             return True
         return False
 
-    # TODO: [DRY] save_profile and clone_profile delegate disk serialization to helper _write_profile_to_disk.
-    def save_profile(self, name: str, graph_data: dict) -> Tuple[Optional[GraphProfile], str]:
+    def save_profile(self, identifier: str, graph_data: dict) -> Tuple[Optional[GraphProfile], str]:
         """
         Saves profile to disk. Returns (profile, error_msg).
         Rejects saving if active profile is a read-only preset.
         """
-        existing = self.profiles.get(name)
+        clean_name = self.get_profile_name_from_display(identifier)
+        existing = self.profiles.get(clean_name)
         if existing and existing.is_preset:
-            return None, f"'{name}' is a read-only preset. Use Clone to create an editable copy."
+            return None, f"'{clean_name}' is a read-only preset. Use Clone to create an editable copy."
 
-        prof = GraphProfile(name=name, graph_data=graph_data, is_preset=False)
+        prof = GraphProfile(name=clean_name, graph_data=graph_data, is_preset=False, prof_id=existing.id if existing else clean_name)
         return self._write_profile_to_disk(prof)
 
-    def clone_profile(self, source_name: str, new_name: str = "") -> Tuple[Optional[GraphProfile], str]:
+    def rename_profile(self, identifier: str, new_name: str) -> Tuple[Optional[GraphProfile], str]:
+        """Renames a user profile. Rejects renaming if target profile is a read-only preset."""
+        clean_name = self.get_profile_name_from_display(identifier)
+        prof = self.profiles.get(clean_name)
+        if not prof:
+            return None, f"Profile '{clean_name}' does not exist."
+
+        if prof.is_preset:
+            return None, f"Cannot rename read-only preset '{clean_name}'."
+
+        new_name = new_name.strip()
+        if not new_name:
+            return None, "Profile name cannot be empty."
+
+        if new_name in self.profiles and new_name != clean_name:
+            return None, f"A profile named '{new_name}' already exists."
+
+        old_file_path = _PROFILES_DIR / f"{clean_name}.json"
+        del self.profiles[clean_name]
+        if old_file_path in self._file_mtimes:
+            del self._file_mtimes[old_file_path]
+        if old_file_path.exists():
+            try:
+                old_file_path.unlink()
+            except Exception as e:
+                return None, f"Error deleting old profile file: {e}"
+
+        prof.name = new_name
+        return self._write_profile_to_disk(prof)
+
+    def clone_profile(self, source_identifier: str, new_name: str = "") -> Tuple[Optional[GraphProfile], str]:
         """Clones an existing profile (preset or user profile) into a new editable profile."""
-        source_prof = self.get_profile(source_name)
+        source_prof = self.get_profile(source_identifier)
         if not source_prof:
-            return None, f"Source profile '{source_name}' not found."
+            return None, f"Source profile '{source_identifier}' not found."
 
         if not new_name:
-            base_name = f"{source_name} Copy"
+            base_name = f"{source_prof.name} Copy"
             new_name = base_name
             counter = 1
             while new_name in self.profiles:
@@ -154,7 +211,6 @@ class GraphProfileManager:
         cloned_prof = GraphProfile(name=new_name, graph_data=cloned_data, is_preset=False)
         return self._write_profile_to_disk(cloned_prof)
 
-    # TODO: [DRY] Private helper to write profile JSON to disk and register file modification time.
     def _write_profile_to_disk(self, prof: GraphProfile) -> Tuple[Optional[GraphProfile], str]:
         name = prof.name
         self.profiles[name] = prof
@@ -169,17 +225,18 @@ class GraphProfileManager:
         except Exception as e:
             return None, f"Failed to write file: {e}"
 
-    def delete_profile(self, name: str) -> Tuple[bool, str]:
+    def delete_profile(self, identifier: str) -> Tuple[bool, str]:
         """Deletes a user profile. Rejects deletion if it's a built-in preset."""
-        prof = self.profiles.get(name)
+        clean_name = self.get_profile_name_from_display(identifier)
+        prof = self.profiles.get(clean_name)
         if not prof:
-            return False, f"Profile '{name}' does not exist."
+            return False, f"Profile '{clean_name}' does not exist."
 
         if prof.is_preset:
-            return False, f"Cannot delete built-in preset '{name}'."
+            return False, f"Cannot delete built-in preset '{clean_name}'."
 
-        del self.profiles[name]
-        file_path = _PROFILES_DIR / f"{name}.json"
+        del self.profiles[clean_name]
+        file_path = _PROFILES_DIR / f"{clean_name}.json"
         if file_path.exists():
             try:
                 file_path.unlink()
@@ -189,7 +246,8 @@ class GraphProfileManager:
         if file_path in self._file_mtimes:
             del self._file_mtimes[file_path]
 
-        if self._active_profile_name == name:
+        if self._active_profile_name == clean_name:
             self._active_profile_name = next(iter(self.profiles.keys()), "Default")
 
         return True, "OK"
+

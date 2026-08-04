@@ -12,7 +12,12 @@ from src.nodes import (
     NormalizeNode,
     MathNode,
     TransformNode,
-    ShapeNode
+    ShapeNode,
+    OverBrakingSensorNode,
+    OverAccelSensorNode,
+    OversteerSensorNode,
+    UndersteerSensorNode,
+    XInputOutputNode,
 )
 from src.core.compiler import GraphCompiler
 
@@ -23,9 +28,21 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         registered_types = NodeFactory.get_registered_types()
         expected_types = {
             "constant", "float_constant", "multiply", "array_multiply",
-            "normalize", "math", "transform", "shape"
+            "normalize", "math", "transform", "shape",
+            "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
+            "output_xinput"
         }
         self.assertTrue(expected_types.issubset(registered_types))
+
+
+    def test_sensor_nodes_generation(self):
+        sensor_types = ["sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer"]
+        for stype in sensor_types:
+            node = NodeFactory.get_node(stype)
+            self.assertIsNotNone(node)
+            lines = node.generate_code(f"test_{stype}", {}, {})
+            code_str = "\n".join(lines)
+            self.assertIn("val_map[", code_str)
 
     def test_constant_node_generation(self):
         node = NodeFactory.get_node("constant")
@@ -65,6 +82,7 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         low_val, high_val = func({"abs": 0.5}, 0.0)
         self.assertAlmostEqual(low_val, 0.5, places=4)
         self.assertEqual(high_val, 0.0)
+
 
 
 if __name__ == "__main__":

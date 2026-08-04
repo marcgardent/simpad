@@ -12,6 +12,13 @@ from src.nodes.normalize import NormalizeNode
 from src.nodes.math import MathNode
 from src.nodes.transform import TransformNode
 from src.nodes.shape import ShapeNode
+from src.nodes.sensor import (
+    OverBrakingSensorNode,
+    OverAccelSensorNode,
+    OversteerSensorNode,
+    UndersteerSensorNode,
+)
+from src.nodes.output import XInputOutputNode
 
 __all__ = [
     "BaseNode",
@@ -24,4 +31,11 @@ __all__ = [
     "MathNode",
     "TransformNode",
     "ShapeNode",
+    "OverBrakingSensorNode",
+    "OverAccelSensorNode",
+    "OversteerSensorNode",
+    "UndersteerSensorNode",
+    "XInputOutputNode",
 ]
+
+

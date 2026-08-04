@@ -118,11 +118,12 @@ class NodeSidebarControl:
     def evaluate_graph(self, synth_engine: Any, profile_manager: Any, update_preset_ui_cb: Callable[[], None]) -> Tuple[float, float]:
         """Reads current output values from high-frequency synthesizer engine and polls profile directory changes."""
         if profile_manager and profile_manager.check_for_changes():
-            names = profile_manager.list_names()
-            active_name = profile_manager._active_profile_name
-            if dpg.does_item_exist("combo_preset_select"):
-                dpg.configure_item("combo_preset_select", items=names, default_value=active_name)
+            displays = profile_manager.list_display_names()
+            active_disp = profile_manager.get_display_name(profile_manager._active_profile_name)
+            if dpg.does_item_exist("combo_profile_select"):
+                dpg.configure_item("combo_profile_select", items=displays, default_value=active_disp)
             update_preset_ui_cb()
+
 
         if synth_engine:
             low_val, high_val = synth_engine.get_current_outputs()

@@ -33,9 +33,13 @@ class TestNodeArrangeLayout(unittest.TestCase):
     def test_node_dimension_estimator(self):
         """Test node dimension estimates for built-in and custom node types."""
         # Built-in sensors and motors
-        w_s, h_s = self.editor._get_node_dimensions("node_sensors")
-        self.assertGreater(w_s, 200)
-        self.assertGreater(h_s, 400)
+        w_abs, h_abs = self.editor._get_node_dimensions("node_sensor_abs")
+        self.assertGreater(w_abs, 200)
+        self.assertGreater(h_abs, 100)
+
+        w_tc, h_tc = self.editor._get_node_dimensions("node_sensor_tc")
+        self.assertGreater(w_tc, 200)
+        self.assertGreater(h_tc, 100)
 
         w_m, h_m = self.editor._get_node_dimensions("node_xinput")
         self.assertGreater(w_m, 200)
@@ -89,7 +93,7 @@ class TestNodeArrangeLayout(unittest.TestCase):
             placed_positions[ntag] = (x, y)
 
         # Ensure all nodes received positions
-        expected_nodes = {"node_sensors", "node_t1", "node_m1", "node_s1", "node_xinput"}
+        expected_nodes = {"node_sensor_abs", "node_t1", "node_m1", "node_s1", "node_xinput"}
         self.assertTrue(expected_nodes.issubset(set(placed_positions.keys())))
 
         # Verify bounding box separation for all pairs of nodes
@@ -119,6 +123,10 @@ class TestNodeArrangeLayout(unittest.TestCase):
         dpg_sender_id = 12485
 
         # Should not raise TypeError: 'int' object is not subscriptable
+        n_abs = self.editor._add_node_sensor_abs(dpg_sender_id)
+        n_tc  = self.editor._add_node_sensor_tc(dpg_sender_id)
+        n_ov  = self.editor._add_node_sensor_over(dpg_sender_id)
+        n_und = self.editor._add_node_sensor_und(dpg_sender_id)
         n1 = self.editor._add_node_constant(dpg_sender_id)
         n2 = self.editor._add_node_float_constant(dpg_sender_id)
         n3 = self.editor._add_node_multiply(dpg_sender_id)
@@ -128,6 +136,10 @@ class TestNodeArrangeLayout(unittest.TestCase):
         n7 = self.editor._add_node_transform(dpg_sender_id)
         n8 = self.editor._add_node_shape(dpg_sender_id)
 
+        self.assertIsNotNone(n_abs)
+        self.assertIsNotNone(n_tc)
+        self.assertIsNotNone(n_ov)
+        self.assertIsNotNone(n_und)
         self.assertIsNotNone(n1)
         self.assertIsNotNone(n2)
         self.assertIsNotNone(n3)
@@ -136,6 +148,7 @@ class TestNodeArrangeLayout(unittest.TestCase):
         self.assertIsNotNone(n6)
         self.assertIsNotNone(n7)
         self.assertIsNotNone(n8)
+
 
 
 if __name__ == "__main__":

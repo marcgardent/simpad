@@ -123,8 +123,12 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 
 ### 🧩 Node Types & Parameters
 
-| Node Type | Description | Key Parameters |
+| Node Type | Description | Key Parameters / Pins |
 | :--- | :--- | :--- |
+| `sensor_over_braking` | Over-Braking telemetry sensor input | Outputs: `attr_out_abs` (Max), `attr_out_abs_l` (Left), `attr_out_abs_r` (Right) |
+| `sensor_over_accel` | Over-Acceleration telemetry sensor input | Outputs: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right) |
+| `sensor_oversteer` | Oversteer telemetry sensor input | Outputs: `attr_out_over` (Max), `attr_out_over_l` (Left), `attr_out_over_r` (Right) |
+| `sensor_understeer` | Understeer telemetry sensor input | Outputs: `attr_out_und` (Max), `attr_out_und_l` (Left), `attr_out_und_r` (Right) |
 | `constant` | Normalized scalar `[0.0, 1.0]` | `"val"` (float) |
 | `float_constant` | Raw float value (ms/scalar) | `"val"` (float) |
 | `multiply` | Multiplies 2 inputs | `"in_a"`, `"in_b"`, `"out_attr"` |
