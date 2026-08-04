@@ -1,0 +1,61 @@
+{
+  "name": "Default Copy",
+  "preset": false,
+  "version": 2,
+  "created": "2026-08-04T11:57:23",
+  "graph_data": {
+    "nodes": {
+      "dynamic_node_tf_7": {
+        "type": "transform",
+        "out_attr": "attr_out_tf_7",
+        "pos": [
+          209,
+          -125
+        ],
+        "in_attr": "attr_in_tf_7",
+        "gain": 1.0199999809265137,
+        "gamma": 3.0,
+        "thresh": 0.0
+      },
+      "dynamic_node_shape_8": {
+        "type": "shape",
+        "out_attr": "attr_out_shape_8",
+        "pos": [
+          556,
+          -125
+        ],
+        "in_attr": "attr_in_shape_8",
+        "in_freq": "attr_in_shape_freq_8",
+        "shape": "Square (Pulsed)",
+        "freq": 65.0,
+        "duty": 0.5
+      },
+      "dynamic_node_tf_9": {
+        "type": "transform",
+        "out_attr": "attr_out_tf_9",
+        "pos": [
+          221,
+          219
+        ],
+        "in_attr": "attr_in_tf_9",
+        "gain": 1.0,
+        "gamma": 1.2000000476837158,
+        "thresh": 0.10000000149011612
+      }
+    },
+    "links": [
+      [
+        "attr_out_tf_7",
+        "attr_in_shape_8"
+      ],
+      [
+        "attr_out_abs_l",
+        "attr_in_tf_7"
+      ],
+      [
+        "attr_out_shape_8",
+        "attr_in_low"
+      ]
+    ]
+  }
+}
