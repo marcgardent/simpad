@@ -69,12 +69,12 @@ def is_lmu_foreground() -> bool:
     if sys.platform != "win32":
         return False
 
-    title = get_foreground_window_title()
-    if "le mans ultimate" in title.lower():
+    title = get_foreground_window_title().lower()
+    if any(k in title for k in ("le mans ultimate", "lemansultimate", "lmu", "rfactor2")):
         return True
 
-    proc_name = get_foreground_process_name()
-    if "lemansultimate" in proc_name or "le mans ultimate" in proc_name:
+    proc_name = get_foreground_process_name().lower()
+    if any(k in proc_name for k in ("lemansultimate", "le mans ultimate", "lmu", "rfactor2")):
         return True
 
     return False

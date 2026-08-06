@@ -61,6 +61,7 @@ class SimPadDPGApp:
         self._node_editor = NodeEditorTab()
         self._is_pinned = False
         self._auto_overlay_active = False
+        self._last_lmu_active_time = 0.0
 
     def run(self):
         from src.utils.window_utils import make_transparent_overlay
@@ -302,20 +303,23 @@ class SimPadDPGApp:
         on_track = latest.in_realtime if (latest and udp_recv) else False
 
         should_overlay = is_lmu_fg and on_track
+        now = time.time()
 
-        if should_overlay and not self._auto_overlay_active:
-            self._auto_overlay_active = True
-            try:
-                self._dashboard_mgr.set_display_mode("ingame")
-                print("[AUTO-OVERLAY] LMU InGame driving detected -> Switched to INGAME Mode.", flush=True)
-            except Exception as e:
-                print(f"[AUTO-OVERLAY] Error enabling ingame mode: {e}", flush=True)
+        if should_overlay:
+            self._last_lmu_active_time = now
+            if not self._auto_overlay_active:
+                self._auto_overlay_active = True
+                try:
+                    self._dashboard_mgr.set_display_mode("ingame")
+                    print("[AUTO-OVERLAY] LMU InGame driving detected -> Switched to INGAME Mode.", flush=True)
+                except Exception as e:
+                    print(f"[AUTO-OVERLAY] Error enabling ingame mode: {e}", flush=True)
 
-        elif not should_overlay and self._auto_overlay_active:
+        elif self._auto_overlay_active and (now - self._last_lmu_active_time > 1.5):
             self._auto_overlay_active = False
             try:
                 self._dashboard_mgr.set_display_mode("desktop")
-                print("[AUTO-OVERLAY] Exited LMU InGame state -> Switched to DESKTOP Mode.", flush=True)
+                print("[AUTO-OVERLAY] Exited LMU InGame state (debounced) -> Switched to DESKTOP Mode.", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error enabling desktop mode: {e}", flush=True)
 
