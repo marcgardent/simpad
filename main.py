@@ -10,5 +10,15 @@ if str(_PROJECT_ROOT) not in sys.path:
 from src.gui.dpg_app import SimPadDPGApp
 
 if __name__ == "__main__":
-    app = SimPadDPGApp()
-    app.run()
+    try:
+        app = SimPadDPGApp()
+        app.run()
+    except Exception as e:
+        import traceback
+        print(f"[FATAL] Error starting SimPad: {e}", flush=True)
+        traceback.print_exc()
+        try:
+            with open("simpad_error.log", "w", encoding="utf-8") as f:
+                traceback.print_exc(file=f)
+        except Exception:
+            pass

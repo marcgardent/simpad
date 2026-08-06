@@ -18,9 +18,10 @@ class MonitoringBoard(BaseDashboard):
     def __init__(self):
         super().__init__(name="monitoringBoard")
         self._window_tag = "monitoringBoard"
-        self._rect = get_3x3_grid_rect(col=1, row=0)  # Top-Middle (x, y, w, h)
+        self._rect = (0, 0, 400, 250)
 
     def build_ui(self) -> None:
+        self._rect = get_3x3_grid_rect(col=1, row=0)  # Top-Middle (x, y, w, h)
         x, y, w, h = self._rect
 
         # Si la fenêtre existe déjà, ne pas la récréer

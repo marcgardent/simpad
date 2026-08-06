@@ -109,7 +109,7 @@ def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     """
     try:
         import dearpygui.dearpygui as dpg
-        if dpg.is_viewport_ok():
+        if dpg.is_dearpygui_running():
             vw = dpg.get_viewport_width()
             vh = dpg.get_viewport_height()
             if vw > 100 and vh > 100:
