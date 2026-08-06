@@ -55,6 +55,12 @@ class NodeSidebarControl:
                 dpg.add_slider_float(label="L", tag="test_sensor_travel_l", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
                 dpg.add_slider_float(label="R", tag="test_sensor_travel_r", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
 
+            dpg.add_spacer(height=2)
+            dpg.add_text("Grip Fraction", color=[0, 255, 180, 255])
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="L", tag="test_sensor_grip_l", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="R", tag="test_sensor_grip_r", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda: self.on_test_sensor_change(parent_editor._synth_engine))
+
             dpg.add_spacer(height=10)
             dpg.add_separator()
             dpg.add_spacer(height=4)
@@ -102,7 +108,8 @@ class NodeSidebarControl:
             "test_sensor_over_l", "test_sensor_over_r",
             "test_sensor_und_l", "test_sensor_und_r",
             "test_sensor_over_rev", "test_sensor_under_rev",
-            "test_sensor_travel_l", "test_sensor_travel_r"
+            "test_sensor_travel_l", "test_sensor_travel_r",
+            "test_sensor_grip_l", "test_sensor_grip_r"
         ]:
             if dpg.does_item_exist(tag):
                 dpg.set_value(tag, 0.0)
@@ -135,13 +142,18 @@ class NodeSidebarControl:
             travel_r = dpg.get_value("test_sensor_travel_r") if dpg.does_item_exist("test_sensor_travel_r") else 0.0
             travel_val = max(travel_l, travel_r)
 
+            grip_l = dpg.get_value("test_sensor_grip_l") if dpg.does_item_exist("test_sensor_grip_l") else 0.0
+            grip_r = dpg.get_value("test_sensor_grip_r") if dpg.does_item_exist("test_sensor_grip_r") else 0.0
+            grip_val = min(grip_l, grip_r)
+
             synth_engine.update_telemetry(
                 abs_val=abs_val, abs_l=abs_l, abs_r=abs_r,
                 tc_val=tc_val, tc_l=tc_l, tc_r=tc_r,
                 over_val=over_val, over_l=over_l, over_r=over_r,
                 und_val=und_val, und_l=und_l, und_r=und_r,
                 over_rev=over_rev, under_rev=under_rev, rpm=rpm_val,
-                travel_val=travel_val, travel_l=travel_l, travel_r=travel_r
+                travel_val=travel_val, travel_l=travel_l, travel_r=travel_r,
+                grip_val=grip_val, grip_l=grip_l, grip_r=grip_r
             )
 
     def evaluate_graph(self, synth_engine: Any, profile_manager: Any, update_preset_ui_cb: Callable[[], None]) -> Tuple[float, float]:

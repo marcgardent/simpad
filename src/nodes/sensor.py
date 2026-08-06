@@ -124,7 +124,7 @@ class UndersteerSensorNode(BaseNode):
 
 
 class EngineRegimeSensorNode(BaseNode):
-    """Input sensor node for Engine Regime (Sur-régime / Sous-régime / RPM)."""
+    """Input sensor node for Engine Regime (Over-rev / Under-rev / RPM / Gear)."""
 
     @property
     def node_type(self) -> str:
@@ -138,15 +138,40 @@ class EngineRegimeSensorNode(BaseNode):
         out_over = ninfo.get("out_over_rev", "attr_out_over_rev")
         out_under = ninfo.get("out_under_rev", "attr_out_under_rev")
         out_rpm = ninfo.get("out_rpm", "attr_out_rpm")
+        out_gear = ninfo.get("out_gear", "attr_out_gear")
         lines = [
             f"    # Sensor Node: Engine Regime ({ntag})",
             "    val_map['attr_out_over_rev'] = over_rev",
             "    val_map['attr_out_under_rev'] = under_rev",
             "    val_map['attr_out_rpm'] = rpm_val",
+            "    val_map['attr_out_gear'] = gear_val",
         ]
         if out_over != "attr_out_over_rev": lines.append(f"    val_map['{out_over}'] = over_rev")
         if out_under != "attr_out_under_rev": lines.append(f"    val_map['{out_under}'] = under_rev")
         if out_rpm != "attr_out_rpm": lines.append(f"    val_map['{out_rpm}'] = rpm_val")
+        if out_gear != "attr_out_gear": lines.append(f"    val_map['{out_gear}'] = gear_val")
+        lines.append("")
+        return lines
+
+
+class GearSensorNode(BaseNode):
+    """Input sensor node for Vehicle Gear / Speed."""
+
+    @property
+    def node_type(self) -> str:
+        return "sensor_gear"
+
+    @property
+    def display_name(self) -> str:
+        return "Input: Gear"
+
+    def generate_code(self, ntag: str, ninfo: dict, in_to_outs: Dict[str, List[str]]) -> List[str]:
+        out_gear = ninfo.get("out_gear", "attr_out_gear")
+        lines = [
+            f"    # Sensor Node: Gear ({ntag})",
+            "    val_map['attr_out_gear'] = gear_val",
+        ]
+        if out_gear != "attr_out_gear": lines.append(f"    val_map['{out_gear}'] = gear_val")
         lines.append("")
         return lines
 
@@ -189,4 +214,33 @@ class WheelTravelSensorNode(BaseNode):
         if out_rr != "attr_out_travel_rr": lines.append(f"    val_map['{out_rr}'] = trv_rr")
         lines.append("")
         return lines
+
+
+class GripFractSensorNode(BaseNode):
+    """Input sensor node for Tire Grip Fraction (unified 4 wheels, left, right clamped 0.0-1.0)."""
+
+    @property
+    def node_type(self) -> str:
+        return "sensor_grip_fract"
+
+    @property
+    def display_name(self) -> str:
+        return "Input: Grip Fraction"
+
+    def generate_code(self, ntag: str, ninfo: dict, in_to_outs: Dict[str, List[str]]) -> List[str]:
+        out_max = ninfo.get("out_attr", "attr_out_grip")
+        out_l = ninfo.get("out_l", "attr_out_grip_l")
+        out_r = ninfo.get("out_r", "attr_out_grip_r")
+        lines = [
+            f"    # Sensor Node: Grip Fraction ({ntag})",
+            "    val_map['attr_out_grip'] = grip_val",
+            "    val_map['attr_out_grip_l'] = grip_l",
+            "    val_map['attr_out_grip_r'] = grip_r",
+        ]
+        if out_max != "attr_out_grip": lines.append(f"    val_map['{out_max}'] = grip_val")
+        if out_l != "attr_out_grip_l": lines.append(f"    val_map['{out_l}'] = grip_l")
+        if out_r != "attr_out_grip_r": lines.append(f"    val_map['{out_r}'] = grip_r")
+        lines.append("")
+        return lines
+
 

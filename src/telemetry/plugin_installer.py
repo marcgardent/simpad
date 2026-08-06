@@ -44,7 +44,7 @@ class LMUPluginManager:
     @classmethod
     def get_source_dll(cls, project_root: Path) -> Optional[Path]:
         """Find source plugin DLL in project root."""
-        candidate = project_root / "assets" / "plugins" / "lmu" / "LeMansUltimateTelemetryPlugin.dll"
+        candidate = project_root / "assets" / "plugins" / "lmu" /"LeMansUltimateTelemetryPlugin" / "LeMansUltimateTelemetryPlugin.dll"
         if candidate.exists():
             return candidate
         return None

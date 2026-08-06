@@ -212,23 +212,127 @@ class NodeUIFactory:
         out_over_tag = f"attr_out_dyn_over_rev_{nid}"
         out_under_tag = f"attr_out_dyn_under_rev_{nid}"
         out_rpm_tag = f"attr_out_dyn_rpm_{nid}"
+        out_gear_tag = f"attr_out_dyn_gear_{nid}"
 
         with dpg.node(label=f"Input: Engine Regime #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
-            with dpg.node_attribute(label="Sur-régime (Upshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_over_tag):
-                dpg.add_text("Sur-régime (Upshift)", color=[255, 100, 100, 255])
-            with dpg.node_attribute(label="Sous-régime (Downshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_under_tag):
-                dpg.add_text("Sous-régime (Downshift)", color=[100, 200, 255, 255])
+            with dpg.node_attribute(label="Over-rev (Upshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_over_tag):
+                dpg.add_text("Over-rev (Upshift)", color=[255, 100, 100, 255])
+            with dpg.node_attribute(label="Under-rev (Downshift)", attribute_type=dpg.mvNode_Attr_Output, tag=out_under_tag):
+                dpg.add_text("Under-rev (Downshift)", color=[100, 200, 255, 255])
             with dpg.node_attribute(label="Engine RPM Ratio", attribute_type=dpg.mvNode_Attr_Output, tag=out_rpm_tag):
                 dpg.add_text("Engine RPM Ratio", color=[255, 220, 0, 255])
+            with dpg.node_attribute(label="Gear", attribute_type=dpg.mvNode_Attr_Output, tag=out_gear_tag):
+                dpg.add_text("Gear", color=[0, 220, 255, 255])
 
         for pin in [out_over_tag, out_under_tag, out_rpm_tag]:
             self.apply_pin_theme(pin, "normalized")
+        self.apply_pin_theme(out_gear_tag, "float")
 
         custom_nodes[node_tag] = {
             "type": "sensor_engine_regime",
             "out_over_rev": out_over_tag,
             "out_under_rev": out_under_tag,
             "out_rpm": out_rpm_tag,
+            "out_gear": out_gear_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_gear(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 760.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_gear_{nid}"
+        out_gear_tag = f"attr_out_dyn_gear_{nid}"
+
+        with dpg.node(label=f"Input: Gear #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Gear", attribute_type=dpg.mvNode_Attr_Output, tag=out_gear_tag):
+                dpg.add_text("Gear", color=[0, 220, 255, 255])
+
+        self.apply_pin_theme(out_gear_tag, "float")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_gear",
+            "out_gear": out_gear_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_boolean(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], op="AND", val_a=0.0, val_b=0.0, pos=(240.0, 80.0)) -> str:
+        if not isinstance(op, str):
+            op = "AND"
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_bool_{nid}"
+        in_a_tag = f"attr_in_bool_a_{nid}"
+        in_b_tag = f"attr_in_bool_b_{nid}"
+        out_tag  = f"attr_out_bool_{nid}"
+        op_tag   = f"op_bool_{nid}"
+        val_a_tag = f"val_bool_a_{nid}"
+        lbl_a_tag = f"lbl_bool_a_{nid}"
+        val_b_tag = f"val_bool_b_{nid}"
+        lbl_b_tag = f"lbl_bool_b_{nid}"
+
+        with dpg.node(label=f"Boolean Logic #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Operator", attribute_type=dpg.mvNode_Attr_Static):
+                dpg.add_combo(items=["AND", "OR", "XOR", "NOT", "NAND", "NOR"], default_value=op, width=110, tag=op_tag, callback=lambda: recompile_cb())
+            with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
+                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input A", tag=lbl_a_tag, show=False)
+            with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
+                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input B", tag=lbl_b_tag, show=False)
+            with dpg.node_attribute(label="Output (0/1)", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+                dpg.add_text("Bool Out (0/1)")
+
+        self.apply_pin_theme(in_a_tag, "compatible")
+        self.apply_pin_theme(in_b_tag, "compatible")
+        self.apply_pin_theme(out_tag, "compatible")
+
+        custom_nodes[node_tag] = {
+            "type": "logic_bool",
+            "in_a": in_a_tag,
+            "in_b": in_b_tag,
+            "out_attr": out_tag,
+            "op_tag": op_tag,
+            "val_a_tag": val_a_tag,
+            "val_b_tag": val_b_tag,
+            "input_controls": [
+                {"attr": in_a_tag, "widget": val_a_tag, "label": lbl_a_tag},
+                {"attr": in_b_tag, "widget": val_b_tag, "label": lbl_b_tag},
+            ]
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_invert(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], val_in=0.0, pos=(240.0, 120.0)) -> str:
+        if not isinstance(val_in, (int, float)):
+            val_in = 0.0
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_invert_{nid}"
+        in_tag = f"attr_in_invert_{nid}"
+        out_tag = f"attr_out_invert_{nid}"
+        val_in_tag = f"val_invert_in_{nid}"
+        lbl_in_tag = f"lbl_invert_in_{nid}"
+
+        with dpg.node(label=f"Invert (1 - x) #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Signal In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
+            with dpg.node_attribute(label="Inverted Out (1-x)", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+                dpg.add_text("Inverted Out (1-x)")
+
+        self.apply_pin_theme(in_tag, "normalized")
+        self.apply_pin_theme(out_tag, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "invert",
+            "in_attr": in_tag,
+            "out_attr": out_tag,
+            "val_in_tag": val_in_tag,
+            "input_controls": [
+                {"attr": in_tag, "widget": val_in_tag, "label": lbl_in_tag}
+            ]
         }
         recompile_cb()
         return node_tag
@@ -273,6 +377,34 @@ class NodeUIFactory:
             "out_fr": out_fr_tag,
             "out_rl": out_rl_tag,
             "out_rr": out_rr_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_grip(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 700.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_grip_{nid}"
+        out_max_tag = f"attr_out_dyn_grip_{nid}"
+        out_l_tag = f"attr_out_dyn_grip_l_{nid}"
+        out_r_tag = f"attr_out_dyn_grip_r_{nid}"
+
+        with dpg.node(label=f"Input: Grip Fraction #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Grip Fraction (Unified)", attribute_type=dpg.mvNode_Attr_Output, tag=out_max_tag):
+                dpg.add_text("Grip Fraction (Unified)", color=[0, 255, 180, 255])
+            with dpg.node_attribute(label="Grip Fraction (Left)", attribute_type=dpg.mvNode_Attr_Output, tag=out_l_tag):
+                dpg.add_text("Grip Fraction (Left)", color=[0, 255, 180, 255])
+            with dpg.node_attribute(label="Grip Fraction (Right)", attribute_type=dpg.mvNode_Attr_Output, tag=out_r_tag):
+                dpg.add_text("Grip Fraction (Right)", color=[0, 255, 180, 255])
+
+        for pin in [out_max_tag, out_l_tag, out_r_tag]:
+            self.apply_pin_theme(pin, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_grip_fract",
+            "out_attr": out_max_tag,
+            "out_l": out_l_tag,
+            "out_r": out_r_tag,
         }
         recompile_cb()
         return node_tag
@@ -346,19 +478,25 @@ class NodeUIFactory:
         recompile_cb()
         return node_tag
 
-    def add_node_multiply(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(240.0, 40.0)) -> str:
+    def add_node_multiply(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], val_a=1.0, val_b=1.0, pos=(240.0, 40.0)) -> str:
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)
         node_tag = f"dynamic_node_mult_{nid}"
         in_a_tag = f"attr_in_mult_a_{nid}"
         in_b_tag = f"attr_in_mult_b_{nid}"
         out_tag  = f"attr_out_mult_{nid}"
+        val_a_tag = f"val_mult_a_{nid}"
+        lbl_a_tag = f"lbl_mult_a_{nid}"
+        val_b_tag = f"val_mult_b_{nid}"
+        lbl_b_tag = f"lbl_mult_b_{nid}"
 
         with dpg.node(label=f"Multiply [0,1] #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
-                dpg.add_text("Input A")
+                dpg.add_drag_float(label="Factor A", default_value=float(val_a), min_value=0.0, max_value=1.0, width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input A", tag=lbl_a_tag, show=False)
             with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
-                dpg.add_text("Input B")
+                dpg.add_drag_float(label="Factor B", default_value=float(val_b), min_value=0.0, max_value=1.0, width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input B", tag=lbl_b_tag, show=False)
             with dpg.node_attribute(label="Product Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Product Out")
 
@@ -371,6 +509,12 @@ class NodeUIFactory:
             "in_a": in_a_tag,
             "in_b": in_b_tag,
             "out_attr": out_tag,
+            "val_a_tag": val_a_tag,
+            "val_b_tag": val_b_tag,
+            "input_controls": [
+                {"attr": in_a_tag, "widget": val_a_tag, "label": lbl_a_tag},
+                {"attr": in_b_tag, "widget": val_b_tag, "label": lbl_b_tag},
+            ]
         }
         recompile_cb()
         return node_tag
@@ -400,13 +544,15 @@ class NodeUIFactory:
         recompile_cb()
         return node_tag
 
-    def add_node_normalize(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], min_val=0.0, max_val=100.0, clamp=True, pos=(240.0, 100.0)) -> str:
+    def add_node_normalize(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], min_val=0.0, max_val=100.0, clamp=True, val_in=0.0, pos=(240.0, 100.0)) -> str:
         if not isinstance(min_val, (int, float)):
             min_val = 0.0
         if not isinstance(max_val, (int, float)):
             max_val = 100.0
         if not isinstance(clamp, bool):
             clamp = True
+        if not isinstance(val_in, (int, float)):
+            val_in = 0.0
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)
         node_tag = f"dynamic_node_norm_{nid}"
@@ -415,6 +561,8 @@ class NodeUIFactory:
         min_tag = f"min_norm_{nid}"
         max_tag = f"max_norm_{nid}"
         clamp_tag = f"clamp_norm_{nid}"
+        val_in_tag = f"val_norm_in_{nid}"
+        lbl_in_tag = f"lbl_norm_in_{nid}"
 
         with dpg.node(label=f"Normalize #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Range", attribute_type=dpg.mvNode_Attr_Static):
@@ -423,7 +571,8 @@ class NodeUIFactory:
                 dpg.add_checkbox(label="Clamp [0, 1]", default_value=bool(clamp), tag=clamp_tag, callback=lambda: recompile_cb())
 
             with dpg.node_attribute(label="Float In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_text("Float In")
+                dpg.add_drag_float(label="Float In", default_value=float(val_in), format="%.2f", width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Float In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Signal Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Signal Out")
 
@@ -437,11 +586,15 @@ class NodeUIFactory:
             "min_tag": min_tag,
             "max_tag": max_tag,
             "clamp_tag": clamp_tag,
+            "val_in_tag": val_in_tag,
+            "input_controls": [
+                {"attr": in_tag, "widget": val_in_tag, "label": lbl_in_tag}
+            ]
         }
         recompile_cb()
         return node_tag
 
-    def add_node_math(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], op="Multiply (*)", pos=(240.0, 40.0)) -> str:
+    def add_node_math(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], op="Multiply (*)", val_a=0.0, val_b=0.0, pos=(240.0, 40.0)) -> str:
         if not isinstance(op, str):
             op = "Multiply (*)"
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
@@ -451,14 +604,20 @@ class NodeUIFactory:
         in_b_tag = f"attr_in_math_b_{nid}"
         out_tag  = f"attr_out_math_{nid}"
         op_tag   = f"op_math_{nid}"
+        val_a_tag = f"val_math_a_{nid}"
+        lbl_a_tag = f"lbl_math_a_{nid}"
+        val_b_tag = f"val_math_b_{nid}"
+        lbl_b_tag = f"lbl_math_b_{nid}"
 
         with dpg.node(label=f"Math Mix #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Op", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_combo(items=["Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)"], default_value=op, width=120, tag=op_tag, callback=lambda: recompile_cb())
+                dpg.add_combo(items=["Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)", "Min (min)", "Max (max)"], default_value=op, width=120, tag=op_tag, callback=lambda: recompile_cb())
             with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
-                dpg.add_text("Input A")
+                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input A", tag=lbl_a_tag, show=False)
             with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
-                dpg.add_text("Input B")
+                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Input B", tag=lbl_b_tag, show=False)
             with dpg.node_attribute(label="Result Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Output")
 
@@ -471,18 +630,26 @@ class NodeUIFactory:
             "in_a": in_a_tag,
             "in_b": in_b_tag,
             "out_attr": out_tag,
-            "op_tag": op_tag
+            "op_tag": op_tag,
+            "val_a_tag": val_a_tag,
+            "val_b_tag": val_b_tag,
+            "input_controls": [
+                {"attr": in_a_tag, "widget": val_a_tag, "label": lbl_a_tag},
+                {"attr": in_b_tag, "widget": val_b_tag, "label": lbl_b_tag},
+            ]
         }
         recompile_cb()
         return node_tag
 
-    def add_node_transform(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], thresh=0.15, gain=1.0, gamma=1.0, pos=(240.0, 160.0)) -> str:
+    def add_node_transform(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], thresh=0.15, gain=1.0, gamma=1.0, val_in=0.0, pos=(240.0, 160.0)) -> str:
         if not isinstance(thresh, (int, float)):
             thresh = 0.15
         if not isinstance(gain, (int, float)):
             gain = 1.0
         if not isinstance(gamma, (int, float)):
             gamma = 1.0
+        if not isinstance(val_in, (int, float)):
+            val_in = 0.0
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)
         node_tag = f"dynamic_node_tf_{nid}"
@@ -491,6 +658,8 @@ class NodeUIFactory:
         gain_tag  = f"gain_tf_{nid}"
         gamma_tag = f"gamma_tf_{nid}"
         thresh_tag = f"thresh_tf_{nid}"
+        val_in_tag = f"val_tf_in_{nid}"
+        lbl_in_tag = f"lbl_tf_in_{nid}"
 
         plot_tag   = f"plot_tf_{nid}"
         xaxis_tag  = f"xaxis_tf_{nid}"
@@ -516,7 +685,8 @@ class NodeUIFactory:
                         dpg.add_line_series([-1, -1], [0, 1], tag=cursor_tag)
 
             with dpg.node_attribute(label="Input Signal", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_text("Signal In")
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Transformed Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Signal Out")
 
@@ -530,9 +700,13 @@ class NodeUIFactory:
             "gain_tag": gain_tag,
             "gamma_tag": gamma_tag,
             "thresh_tag": thresh_tag,
+            "val_in_tag": val_in_tag,
             "cursor_tag": cursor_tag,
             "series_tag": series_tag,
-            "nid": nid
+            "nid": nid,
+            "input_controls": [
+                {"attr": in_tag, "widget": val_in_tag, "label": lbl_in_tag}
+            ]
         }
         recompile_cb()
         return node_tag
@@ -541,14 +715,16 @@ class NodeUIFactory:
         gain_tag = f"gain_tf_{nid}"
         gamma_tag = f"gamma_tf_{nid}"
         thresh_tag = f"thresh_tf_{nid}"
-        series_tag = f"series_tf_{nid}"
+        series_tag = f"series_shape_{nid}"
+        series_tag_tf = f"series_tf_{nid}"
+        target_series = series_tag_tf if dpg.does_item_exist(series_tag_tf) else series_tag
         if dpg.does_item_exist(gain_tag):
             g = dpg.get_value(gain_tag)
             gm = dpg.get_value(gamma_tag)
             th = dpg.get_value(thresh_tag)
             xs = [x / 100.0 for x in range(101)]
             ys = [apply_response_curve(x, gm, g, th) for x in xs]
-            dpg.set_value(series_tag, [xs, ys])
+            dpg.set_value(target_series, [xs, ys])
 
     def update_shape_plot(self, nid: int):
         freq_tag   = f"freq_shape_{nid}"
@@ -591,7 +767,15 @@ class NodeUIFactory:
             if dpg.does_item_exist(series_tag):
                 dpg.set_value(series_tag, [xs, ys])
 
-    def add_node_shape(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], shape="Square (Pulsed)", freq=20.0, duty=0.40, pos=(240.0, 420.0)) -> str:
+    def add_node_shape(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], shape="Square (Pulsed)", freq=20.0, duty=0.40, val_in=0.0, pos=(240.0, 420.0)) -> str:
+        if not isinstance(shape, str):
+            shape = "Square (Pulsed)"
+        if not isinstance(freq, (int, float)):
+            freq = 20.0
+        if not isinstance(duty, (int, float)):
+            duty = 0.40
+        if not isinstance(val_in, (int, float)):
+            val_in = 0.0
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)
         node_tag    = f"dynamic_node_shape_{nid}"
@@ -602,6 +786,9 @@ class NodeUIFactory:
         freq_tag    = f"freq_shape_{nid}"
         duty_tag    = f"duty_shape_{nid}"
         ms_lbl_tag  = f"lbl_shape_ms_{nid}"
+        val_in_tag  = f"val_shape_in_{nid}"
+        lbl_in_tag  = f"lbl_shape_in_{nid}"
+        lbl_freq_tag= f"lbl_shape_freq_{nid}"
 
         plot_tag    = f"plot_shape_{nid}"
         xaxis_tag   = f"xaxis_shape_{nid}"
@@ -612,8 +799,7 @@ class NodeUIFactory:
             with dpg.node_attribute(label="Parameters", attribute_type=dpg.mvNode_Attr_Static):
                 dpg.add_combo(items=["Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"], default_value=shape, width=170, tag=shape_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=4)
-                dpg.add_input_float(label="Freq (Hz)", default_value=freq, step=1.0, step_fast=5.0, format="%.1f", width=100, tag=freq_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
-                dpg.add_input_float(label="Duty", default_value=duty, step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_input_float(label="Duty", default_value=float(duty), step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=2)
                 dpg.add_text("ON: 20.0ms | OFF: 30.0ms", tag=ms_lbl_tag, color=[0, 210, 255, 255])
                 dpg.add_spacer(height=4)
@@ -626,9 +812,11 @@ class NodeUIFactory:
                         dpg.add_line_series([], [], tag=series_tag)
 
             with dpg.node_attribute(label="Signal In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_text("Signal In")
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Freq In (Hz)", attribute_type=dpg.mvNode_Attr_Input, tag=in_freq_tag):
-                dpg.add_text("Freq In (Hz)")
+                dpg.add_input_float(label="Freq (Hz)", default_value=float(freq), step=1.0, step_fast=5.0, format="%.1f", width=100, tag=freq_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_text("Freq In (Hz)", tag=lbl_freq_tag, show=False)
             with dpg.node_attribute(label="Shaped Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Shaped Out")
 
@@ -644,8 +832,13 @@ class NodeUIFactory:
             "shape_tag": shape_tag,
             "freq_tag": freq_tag,
             "duty_tag": duty_tag,
+            "val_in_tag": val_in_tag,
             "series_tag": series_tag,
-            "nid": nid
+            "nid": nid,
+            "input_controls": [
+                {"attr": in_tag, "widget": val_in_tag, "label": lbl_in_tag},
+                {"attr": in_freq_tag, "widget": freq_tag, "label": lbl_freq_tag},
+            ]
         }
 
         self.update_shape_plot(nid)

@@ -23,11 +23,12 @@ class TransformNode(BaseNode):
         gain = float(ninfo.get("gain", 1.0))
         gamma = float(ninfo.get("gamma", 1.0))
         thresh = float(ninfo.get("thresh", 0.0))
+        val_in = float(ninfo.get("val_in", 0.0))
 
         return [
             f"    # Transform & Curve Node {ntag}",
             f"    in_src_{ntag} = {in_to_outs.get(in_attr, [None])}",
-            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], 0.0) if in_src_{ntag} else 0.0",
+            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], {val_in}) if in_src_{ntag} and in_src_{ntag}[0] else {val_in}",
             f"    if vin_{ntag} < {thresh}:",
             f"        res_{ntag} = 0.0",
             f"    else:",

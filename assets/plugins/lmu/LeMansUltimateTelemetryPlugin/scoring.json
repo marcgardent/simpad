@@ -1,0 +1,1621 @@
+{
+  "Type": "ScoringInfoV01",
+  "mAmbientTemp": 11,
+  "mAvgPathWetness": 0,
+  "mCurrentET": 1.6,
+  "mDarkCloud": 0,
+  "mEndET": 3605,
+  "mGameMode": 0,
+  "mGamePhase": 0,
+  "mInRealtime": false,
+  "mIsPasswordProtected": false,
+  "mLapDist": 6981.6005859375,
+  "mMaxLaps": 2147483647,
+  "mMaxPathWetness": 0,
+  "mMaxPlayers": 0,
+  "mMinPathWetness": 0,
+  "mNumRedLights": 5,
+  "mNumVehicles": 19,
+  "mPlayerName": "F Ernst",
+  "mPlrFileName": "Settings",
+  "mRaining": 0,
+  "mResultsStream": "",
+  "mSectorFlag": [
+    11,
+    11,
+    11
+  ],
+  "mServerName": "-none-",
+  "mServerPort": 0,
+  "mServerPublicIP": 0,
+  "mSession": 1,
+  "mStartET": 41400,
+  "mStartLight": 0,
+  "mTrackName": "Circuit de Spa-Francorchamps",
+  "mTrackTemp": 19.999993896484398,
+  "mVehicles": [
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Ian James",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 1,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -90.33935546875,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.0000010023454706242774,
+        0.00003215750984963961,
+        1.1852927883637676e-7
+      ],
+      "mLocalRot": [
+        2.2334185700856324e-7,
+        -0.00000561153228773037,
+        -0.000001920235035868245
+      ],
+      "mLocalRotAccel": [
+        -0.000028456899599405006,
+        8.596641976055253e-8,
+        -0.00007228885806398466
+      ],
+      "mLocalVel": [
+        0.0034236155916005373,
+        -0.00007379868475254625,
+        -0.003466988680884242
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360835790634155,
+          -0.004333009477704763,
+          0.8441537618637085
+        ],
+        [
+          -0.0014819459756836295,
+          0.9999804496765137,
+          0.006073978263884783
+        ],
+        [
+          -0.8441635966300964,
+          -0.004507150501012802,
+          0.5360667109489441
+        ]
+      ],
+      "mPathLateral": 14.118429183959961,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6893.2958984375,
+      "mPitState": 5,
+      "mPlace": 7,
+      "mPos": [
+        -150.83409118652344,
+        21.103759765625,
+        667.6402587890625
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 5.436691761016846,
+      "mTimeBehindNext": 2.0285425186157227,
+      "mTimeIntoLap": 4.964321613311768,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Heart of Racing Team 2024 #27:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Darren Leung",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 2,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -113.7490234375,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.0019905269145965576,
+        0.00002419613338133786,
+        0.001274565001949668
+      ],
+      "mLocalRot": [
+        -0.000004365741915535182,
+        0.0000030483806767733768,
+        -0.000030422539566643536
+      ],
+      "mLocalRotAccel": [
+        -0.00031008583027869463,
+        0.0019455136498436332,
+        -0.0015922781312838197
+      ],
+      "mLocalVel": [
+        0.0024936783593147993,
+        0.00012135816359659657,
+        -0.001448612310923636
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360741019248962,
+          -0.004795214626938105,
+          0.8441572785377502
+        ],
+        [
+          -0.0007421181071549654,
+          0.9999808073043823,
+          0.0061516412533819675
+        ],
+        [
+          -0.8441705703735352,
+          -0.003924199845641851,
+          0.5360602736473083
+        ]
+      ],
+      "mPathLateral": 14.356584548950195,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6869.87890625,
+      "mPitState": 5,
+      "mPlace": 16,
+      "mPos": [
+        -137.05874633789062,
+        20.89866828918457,
+        646.1572265625
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 6.970560550689697,
+      "mTimeBehindNext": 3.656094551086426,
+      "mTimeIntoLap": 3.430452823638916,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Team WRT 2024 #31:WEC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Ahmad Al Harthy",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 3,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -108.35595703125,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.0018888586200773716,
+        -0.000018928947611129843,
+        0.0012115940917283297
+      ],
+      "mLocalRot": [
+        -0.000005683271410816815,
+        -0.000017120390111813322,
+        -0.00004457319664652459
+      ],
+      "mLocalRotAccel": [
+        -0.00022270686167757958,
+        -0.001643733587116003,
+        -0.0009615806629881263
+      ],
+      "mLocalVel": [
+        0.0032075427006930113,
+        0.00010816310532391071,
+        -0.000924053369089961
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360945463180542,
+          -0.004119303077459335,
+          0.8441479206085205
+        ],
+        [
+          -0.0011513129575178027,
+          0.9999836087226868,
+          0.00561092235147953
+        ],
+        [
+          -0.8441571593284607,
+          -0.003979863133281469,
+          0.5360810160636902
+        ]
+      ],
+      "mPathLateral": 14.329208374023438,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6875.69921875,
+      "mPitState": 5,
+      "mPlace": 17,
+      "mPos": [
+        -140.17823791503906,
+        20.90333366394043,
+        651.068115234375
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 6.621124267578125,
+      "mTimeBehindNext": -0.34943628311157227,
+      "mTimeIntoLap": 3.7798891067504883,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Team WRT 2024 #46:WEC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Francesco Castellacci",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 4,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -101.3408203125,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.0001901771902339533,
+        -0.000016776953998487443,
+        -0.000289277610136196
+      ],
+      "mLocalRot": [
+        4.2303537384213996e-7,
+        -0.000011262716725468636,
+        -0.0000015140331015572883
+      ],
+      "mLocalRotAccel": [
+        -0.000017988129911827855,
+        -0.0001007246901281178,
+        0.00005163392052054405
+      ],
+      "mLocalVel": [
+        0.0025592041201889515,
+        0.00003429757271078415,
+        0.0005060669500380754
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360397696495056,
+          -0.0014682807959616184,
+          0.8441914319992065
+        ],
+        [
+          -0.0014425088884308934,
+          0.9999954104423523,
+          0.0026552227791398764
+        ],
+        [
+          -0.8441914916038513,
+          -0.002641058759763837,
+          0.5360352396965027
+        ]
+      ],
+      "mPathLateral": 14.456422805786133,
+      "mPitGroup": "Group0",
+      "mPitLapDist": 6881.97265625,
+      "mPitState": 5,
+      "mPlace": 14,
+      "mPos": [
+        -143.80841064453125,
+        20.880542755126953,
+        657.0731201171875
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 6.200198173522949,
+      "mTimeBehindNext": 5.083471298217773,
+      "mTimeIntoLap": 4.200815200805664,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Vista AF Corse 2024 #54:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "François Heriau",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 5,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -84.92431640625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00006810812192270532,
+        0.00012478858116082847,
+        0.00010414444113848731
+      ],
+      "mLocalRot": [
+        -5.838520564793725e-7,
+        0.0000065724852902349085,
+        0.0000016216478115893551
+      ],
+      "mLocalRotAccel": [
+        0.00009353827772429213,
+        0.000033765209082048386,
+        0.00002695930379559286
+      ],
+      "mLocalVel": [
+        0.002184283686801791,
+        -0.00001948609497048892,
+        -0.0002769471611827612
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360754132270813,
+          -0.002227925229817629,
+          0.844167172908783
+        ],
+        [
+          -0.0012582127237692475,
+          0.9999933242797852,
+          0.0034381900914013386
+        ],
+        [
+          -0.8441691994667053,
+          -0.002905271016061306,
+          0.5360689759254456
+        ]
+      ],
+      "mPathLateral": 14.354386329650879,
+      "mPitGroup": "Group0",
+      "mPitLapDist": 6899.416015625,
+      "mPitState": 5,
+      "mPlace": 12,
+      "mPos": [
+        -153.74696350097656,
+        21.063087463378906,
+        672.7322387695312
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 5.085893630981445,
+      "mTimeBehindNext": 2.543288230895996,
+      "mTimeIntoLap": 5.315119743347168,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Vista AF Corse 2024 #55:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "James Cottingham",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 6,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -36.431640625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00003690990706672892,
+        0.00003927102807210758,
+        -0.00006364156433846802
+      ],
+      "mLocalRot": [
+        -4.088514060640591e-8,
+        -0.00000973201804299606,
+        8.669765065860702e-7
+      ],
+      "mLocalRotAccel": [
+        -0.00010391022078692913,
+        -0.000030295395845314488,
+        0.00006302668043645099
+      ],
+      "mLocalVel": [
+        0.003299616975709796,
+        -0.00014520825061481446,
+        -0.0017312169075012207
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360875725746155,
+          -0.006515716202557087,
+          0.8441371917724609
+        ],
+        [
+          0.00035687140189111233,
+          0.999971866607666,
+          0.00749193225055933
+        ],
+        [
+          -0.8441622853279114,
+          -0.0037150834687054157,
+          0.5360748171806335
+        ]
+      ],
+      "mPathLateral": 14.112900733947754,
+      "mPitGroup": "Group31",
+      "mPitLapDist": 6947.5068359375,
+      "mPitState": 5,
+      "mPlace": 18,
+      "mPos": [
+        -182.34417724609375,
+        21.60296630859375,
+        717.7576293945312
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 1.891866683959961,
+      "mTimeBehindNext": -4.729257583618164,
+      "mTimeIntoLap": 8.509146690368652,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.850000381469727,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "United Autosports 2024 #59:EC2"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Claudio Schiavoni",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 7,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -95.90576171875,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.000004013425950688543,
+        -0.0000019469789549475536,
+        0.000003545377921909676
+      ],
+      "mLocalRot": [
+        -0.000004684849045588635,
+        4.7115509005379863e-7,
+        -0.0000011105447583759087
+      ],
+      "mLocalRotAccel": [
+        0.0000025591766643628944,
+        -0.0005138127016834915,
+        -0.000008397280907956883
+      ],
+      "mLocalVel": [
+        0.0026205286849290133,
+        -0.0001735365658532828,
+        -0.0032761278562247753
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360658764839172,
+          -0.004160000942647457,
+          0.8441659212112427
+        ],
+        [
+          -0.0012405719608068466,
+          0.9999828934669495,
+          0.00571565143764019
+        ],
+        [
+          -0.8441752791404724,
+          -0.0041112145408988,
+          0.5360515117645264
+        ]
+      ],
+      "mPathLateral": 14.500991821289062,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6887.798828125,
+      "mPitState": 5,
+      "mPlace": 5,
+      "mPos": [
+        -146.9018096923828,
+        21.106428146362305,
+        662.0612182617188
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 5.848240852355957,
+      "mTimeBehindNext": 1.4271340370178223,
+      "mTimeIntoLap": 4.552772521972656,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Iron Lynx 2024 #60:WEC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Ben Barker",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 8,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -74.27490234375,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.0006585491355508566,
+        -0.000040267907024826854,
+        -0.000428383587859571
+      ],
+      "mLocalRot": [
+        0.000004433133653947152,
+        9.130826583714224e-8,
+        0.000026121389964828268
+      ],
+      "mLocalRotAccel": [
+        0.0000790849735494703,
+        -0.0005849553272128105,
+        0.00006682424282189459
+      ],
+      "mLocalVel": [
+        0.005999727174639702,
+        -0.00014110621123109013,
+        -0.0026008118875324726
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360764265060425,
+          -0.006813925690948963,
+          0.844141960144043
+        ],
+        [
+          -0.0016125256661325693,
+          0.9999573230743408,
+          0.009095711633563042
+        ],
+        [
+          -0.844167947769165,
+          -0.0062371972016990185,
+          0.5360425710678101
+        ]
+      ],
+      "mPathLateral": 14.155905723571777,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6908.6416015625,
+      "mPitState": 5,
+      "mPlace": 4,
+      "mPos": [
+        -159.78118896484375,
+        21.25767707824707,
+        681.9974365234375
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 4.421106815338135,
+      "mTimeBehindNext": 1.534393310546875,
+      "mTimeIntoLap": 5.9799065589904785,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Proton Racing 2024 #77:WEC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Arnold Robin",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 9,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -69.03369140625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00126891047693789,
+        0.000057648700021672994,
+        -0.0008142018341459334
+      ],
+      "mLocalRot": [
+        0.000004609361894836184,
+        -0.000026510573661653325,
+        0.000020106584997847676
+      ],
+      "mLocalRotAccel": [
+        0.000041305804188596085,
+        -0.0010590327437967062,
+        -0.00011597607226576656
+      ],
+      "mLocalVel": [
+        0.0069105178117752075,
+        0.00027110305381938815,
+        -0.0029158499091863632
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.536099910736084,
+          -0.006321709603071213,
+          0.8441308736801147
+        ],
+        [
+          -0.0017117034876719117,
+          0.9999617338180542,
+          0.008575817570090294
+        ],
+        [
+          -0.8441528081893921,
+          -0.006042396649718285,
+          0.5360686182975769
+        ]
+      ],
+      "mPathLateral": 14.092521667480469,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6915.0546875,
+      "mPitState": 5,
+      "mPlace": 9,
+      "mPos": [
+        -162.8367156982422,
+        21.297014236450195,
+        686.7794799804688
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 4.080740451812744,
+      "mTimeBehindNext": 3.302795886993408,
+      "mTimeIntoLap": 6.320272922515869,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.75,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Akkodis ASP Team 2024 #78:EC2"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Tom Van Rompuy",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 10,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": 139.71974182128906,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.0001096187625080347,
+        0.0016182037070393562,
+        -0.00010086547263199463
+      ],
+      "mLocalRot": [
+        -0.0002817308413796127,
+        -0.000013018952813581564,
+        -2.1949284700895078e-7
+      ],
+      "mLocalRotAccel": [
+        0.0005373074673116207,
+        -0.000017996457245317288,
+        -0.000048280951887136325
+      ],
+      "mLocalVel": [
+        0.0013295951066538692,
+        -0.0002968304615933448,
+        -0.004593341611325741
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5369410514831543,
+          -0.006841596215963364,
+          0.8435920476913452
+        ],
+        [
+          -0.0012998555321246386,
+          0.9999592304229736,
+          0.00893709622323513
+        ],
+        [
+          -0.8436187505722046,
+          -0.005895241163671017,
+          0.5369102358818054
+        ]
+      ],
+      "mPathLateral": 15.856245040893555,
+      "mPitGroup": "Group18",
+      "mPitLapDist": 143.15386962890625,
+      "mPitState": 5,
+      "mPlace": 6,
+      "mPos": [
+        -266.3271789550781,
+        22.858165740966797,
+        853.001220703125
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 3.408149242401123,
+      "mTimeBehindNext": -2.440091609954834,
+      "mTimeIntoLap": 6.99286413192749,
+      "mTotalLaps": 0,
+      "mTrackEdge": 10.774999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "TF Sport #81:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Hiroshi Koizumi",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 11,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -63.26708984375,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.0007554996409453452,
+        0.0013626469299197197,
+        -0.0008753783185966313
+      ],
+      "mLocalRot": [
+        -0.0002865406859200448,
+        -0.00002661892540345434,
+        0.0000031500198929279577
+      ],
+      "mLocalRotAccel": [
+        0.0007061052019707859,
+        -0.0008031337638385594,
+        -0.00013207893061917275
+      ],
+      "mLocalVel": [
+        0.0032157558016479015,
+        -0.00033639540197327733,
+        -0.003854684066027403
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5361111760139465,
+          -0.005974727217108011,
+          0.8441262245178223
+        ],
+        [
+          -0.001818764372728765,
+          0.9999644756317139,
+          0.008232861757278442
+        ],
+        [
+          -0.8441454172134399,
+          -0.00594899570569396,
+          0.5360812544822693
+        ]
+      ],
+      "mPathLateral": 14.30068588256836,
+      "mPitGroup": "Group18",
+      "mPitLapDist": 6920.3720703125,
+      "mPitState": 5,
+      "mPlace": 10,
+      "mPos": [
+        -166.4214324951172,
+        21.24574851989746,
+        692.8931274414062
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 3.6571784019470215,
+      "mTimeBehindNext": -0.42356204986572266,
+      "mTimeIntoLap": 6.743834972381592,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.725000381469727,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "TF Sport #82:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Sarah Bovy",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 12,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -57.98681640625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.000022782729502068833,
+        -0.0001826915395213291,
+        -0.00009829329064814374
+      ],
+      "mLocalRot": [
+        -0.00000491217815579148,
+        0.0000430580839747563,
+        -8.693945687809901e-7
+      ],
+      "mLocalRotAccel": [
+        0.0001403281930834055,
+        0.0005363813252188265,
+        0.000009385196790390182
+      ],
+      "mLocalVel": [
+        0.0030807671137154102,
+        -0.0001734499237500131,
+        -0.003549041459336877
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360623002052307,
+          -0.004193699453026056,
+          0.8441680073738098
+        ],
+        [
+          -0.0011443857802078128,
+          0.9999831318855286,
+          0.005694471765309572
+        ],
+        [
+          -0.8441776633262634,
+          -0.004018645267933607,
+          0.5360484719276428
+        ]
+      ],
+      "mPathLateral": 14.212660789489746,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6926.62353515625,
+      "mPitState": 5,
+      "mPlace": 15,
+      "mPos": [
+        -169.53453063964844,
+        21.476455688476562,
+        697.6934814453125
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 3.3144659996032715,
+      "mTimeBehindNext": -2.8857321739196777,
+      "mTimeIntoLap": 7.086547374725342,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.725000381469727,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Iron Dames 2024 #85:EC2"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Takeshi Kimura",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 13,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -50.857421875,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.00047734755207784474,
+        0.00003513979754643515,
+        0.0003144642396364361
+      ],
+      "mLocalRot": [
+        -0.000002188093276345171,
+        0.000022914970031706616,
+        -0.000004546802756522084
+      ],
+      "mLocalRotAccel": [
+        -0.00014601121074520051,
+        -0.0005550936330109835,
+        -0.0006866519688628614
+      ],
+      "mLocalVel": [
+        0.005897446069866419,
+        -0.00020296544244047254,
+        -0.002055071061477065
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.536081075668335,
+          -0.007047013379633427,
+          0.8441370725631714
+        ],
+        [
+          -0.0014355031307786703,
+          0.9999560713768005,
+          0.00925945583730936
+        ],
+        [
+          -0.8441652655601501,
+          -0.006175580434501171,
+          0.5360473990440369
+        ]
+      ],
+      "mPathLateral": 13.98603630065918,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6932.58837890625,
+      "mPitState": 5,
+      "mPlace": 3,
+      "mPos": [
+        -173.5201416015625,
+        21.486120223999023,
+        703.6090698242188
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 2.8867135047912598,
+      "mTimeBehindNext": 1.348900318145752,
+      "mTimeIntoLap": 7.5142998695373535,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.725000381469727,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Akkodis ASP Team 2024 #87:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Giorgio Roda",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 14,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -45.5537109375,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        3.670800481359038e-7,
+        0.00013293464144226164,
+        0.0000023916968530102167
+      ],
+      "mLocalRot": [
+        0.000001596603055986634,
+        -0.000006128033419372514,
+        2.760717165983806e-8
+      ],
+      "mLocalRotAccel": [
+        -0.00010034951264970005,
+        -1.2771636193065206e-7,
+        0.0001140254971687682
+      ],
+      "mLocalVel": [
+        0.0044591231271624565,
+        -0.0001881119387689978,
+        -0.0015173028223216534
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360816717147827,
+          -0.007063067052513361,
+          0.8441365957260132
+        ],
+        [
+          -0.0005686289514414966,
+          0.9999617338180542,
+          0.00872800499200821
+        ],
+        [
+          -0.8441659212112427,
+          -0.0051589240320026875,
+          0.5360571146011353
+        ]
+      ],
+      "mPathLateral": 13.979049682617188,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6938.171875,
+      "mPitState": 5,
+      "mPlace": 11,
+      "mPos": [
+        -176.59442138671875,
+        21.46061134338379,
+        708.4728393554688
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 2.542605400085449,
+      "mTimeBehindNext": -1.1145730018615723,
+      "mTimeIntoLap": 7.858407974243164,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.75,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Proton Racing 2024 #88:WEC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Yasser Shahin",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 15,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -30.9619140625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00007745911716483533,
+        -9.889306511468021e-7,
+        0.00010248309263261035
+      ],
+      "mLocalRot": [
+        -0.000003719245114552905,
+        0.000007639860086783301,
+        8.673412708049e-7
+      ],
+      "mLocalRotAccel": [
+        0.000004422772235557204,
+        0.0000752195410314016,
+        -0.000004928195266984403
+      ],
+      "mLocalVel": [
+        0.0013301626313477755,
+        -0.00015749908925499767,
+        -0.002211903687566519
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5361044406890869,
+          -0.005129506345838308,
+          0.8441360592842102
+        ],
+        [
+          -0.0010339521104469895,
+          0.9999768137931824,
+          0.006733148358762264
+        ],
+        [
+          -0.8441510200500488,
+          -0.004482467193156481,
+          0.5360867381095886
+        ]
+      ],
+      "mPathLateral": 14.071910858154297,
+      "mPitGroup": "Group31",
+      "mPitLapDist": 6953.47607421875,
+      "mPitState": 5,
+      "mPlace": 2,
+      "mPos": [
+        -185.5504608154297,
+        21.55245590209961,
+        722.7069702148438
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 1.5378131866455078,
+      "mTimeBehindNext": 1.5378131866455078,
+      "mTimeIntoLap": 8.863200187683105,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.899999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Manthey Ema 2024 #91:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Aliaksandr Malykhin",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 16,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -23.94384765625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00011227011418668553,
+        0.0000013185742773202946,
+        -0.00006340874097077176
+      ],
+      "mLocalRot": [
+        -8.948980507739179e-7,
+        0.000008480918950226624,
+        4.2658751908675185e-7
+      ],
+      "mLocalRotAccel": [
+        -0.000003095940655839513,
+        0.00005449409945867956,
+        -0.000008960354534792714
+      ],
+      "mLocalVel": [
+        0.0011943753343075514,
+        -0.00016228193999268115,
+        -0.0015291613526642323
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5360655784606934,
+          -0.005365409888327122,
+          0.8441593050956726
+        ],
+        [
+          -0.0004807141376659274,
+          0.999977707862854,
+          0.006661047227680683
+        ],
+        [
+          -0.844176173210144,
+          -0.003976557403802872,
+          0.5360510945320129
+        ]
+      ],
+      "mPathLateral": 14.081686019897461,
+      "mPitGroup": "Group31",
+      "mPitLapDist": 6959.4111328125,
+      "mPitState": 5,
+      "mPlace": 13,
+      "mPos": [
+        -189.3146514892578,
+        21.558320999145508,
+        728.6303100585938
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 1.1167268753051758,
+      "mTimeBehindNext": -3.9691667556762695,
+      "mTimeIntoLap": 9.284286499023438,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.899999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "Manthey PureRxcing 2024 #92:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Josh Caygill",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 17,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -18.728515625,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        -0.0004284127790015191,
+        -0.0001623202406335622,
+        0.00046258766087703407
+      ],
+      "mLocalRot": [
+        -0.000003640946943050949,
+        0.000006983495950407814,
+        -0.00000830235057946993
+      ],
+      "mLocalRotAccel": [
+        0.00026385579258203506,
+        0.0006777418311685324,
+        0.0001023510194499977
+      ],
+      "mLocalVel": [
+        0.0010690962662920356,
+        -0.00014163913147058338,
+        -0.002903642598539591
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5368998050689697,
+          -0.005355725064873695,
+          0.843629002571106
+        ],
+        [
+          -0.00033625485957600176,
+          0.9999784231185913,
+          0.006562297698110342
+        ],
+        [
+          -0.8436459302902222,
+          -0.0038069707807153463,
+          0.5368863940238953
+        ]
+      ],
+      "mPathLateral": 14.140993118286133,
+      "mPitGroup": "Group31",
+      "mPitLapDist": 6965.45263671875,
+      "mPitState": 5,
+      "mPlace": 8,
+      "mPos": [
+        -192.3005828857422,
+        21.783740997314453,
+        733.4266357421875
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 0.7779445648193359,
+      "mTimeBehindNext": -4.65874719619751,
+      "mTimeIntoLap": 9.623068809509277,
+      "mTotalLaps": 0,
+      "mTrackEdge": 9.925000190734863,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "United Autosports 2024 #95:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "Erwan Bastard",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 18,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": false,
+      "mLapDist": -12.8740234375,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.00007293061207747087,
+        0.000031332958315033466,
+        0.0001136592763941735
+      ],
+      "mLocalRot": [
+        -0.0000013110409327055095,
+        -0.000007615342838107608,
+        0.0000019518247427185997
+      ],
+      "mLocalRotAccel": [
+        0.000037212867027847096,
+        -0.00003299913078080863,
+        0.0000696311763022095
+      ],
+      "mLocalVel": [
+        0.0025080954656004906,
+        -0.00007679902046220377,
+        -0.0016278291586786509
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5369390845298767,
+          -0.0054270620457828045,
+          0.8436035513877869
+        ],
+        [
+          -0.000010655146979843266,
+          0.9999792575836182,
+          0.00643983855843544
+        ],
+        [
+          -0.843621015548706,
+          -0.0034667898435145617,
+          0.5369279384613037
+        ]
+      ],
+      "mPathLateral": 13.879508018493652,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6971.15673828125,
+      "mPitState": 5,
+      "mPlace": 19,
+      "mPos": [
+        -196.34677124023438,
+        21.8067626953125,
+        739.2945556640625
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 0.3490266799926758,
+      "mTimeBehindNext": -1.5428400039672852,
+      "mTimeIntoLap": 10.051986694335938,
+      "mTotalLaps": 0,
+      "mTrackEdge": 10.024999618530273,
+      "mUnderYellow": false,
+      "mVehicleClass": "GT3",
+      "mVehicleName": "D'Station Racing 2024 #777:EC"
+    },
+    {
+      "mBestLapTime": -1,
+      "mBestSector1": -1,
+      "mBestSector2": -1,
+      "mControl": 1,
+      "mCountLapFlag": 1,
+      "mCurSector1": -1,
+      "mCurSector2": -1,
+      "mDriverName": "F Ernst",
+      "mEstimatedLapTime": 125.00829315185547,
+      "mFinishStatus": 0,
+      "mFlag": 0,
+      "mHeadlights": 0,
+      "mID": 0,
+      "mInGarageStall": true,
+      "mInPits": true,
+      "mIsPlayer": true,
+      "mLapDist": -7.486328125,
+      "mLapStartET": 0,
+      "mLapsBehindLeader": 0,
+      "mLapsBehindNext": 0,
+      "mLastLapTime": 0,
+      "mLastSector1": 0,
+      "mLastSector2": 0,
+      "mLocalAccel": [
+        0.0015872636577114463,
+        -0.00019237141532357782,
+        -0.0010078403865918517
+      ],
+      "mLocalRot": [
+        0.00000264298410002084,
+        0.00003560379991540685,
+        0.000018445502064423636
+      ],
+      "mLocalRotAccel": [
+        -0.00003220614598831162,
+        0.0011960533447563648,
+        -0.0014053364284336567
+      ],
+      "mLocalVel": [
+        0.0010593291372060776,
+        -0.000057270837714895606,
+        -0.0027489978820085526
+      ],
+      "mNumPenalties": 0,
+      "mNumPitstops": 0,
+      "mOri": [
+        [
+          0.5369498133659363,
+          -0.00704767182469368,
+          0.8435847759246826
+        ],
+        [
+          -0.0006239425856620073,
+          0.9999614953994751,
+          0.00875125639140606
+        ],
+        [
+          -0.8436139822006226,
+          -0.005225333850830793,
+          0.5369247198104858
+        ]
+      ],
+      "mPathLateral": 14.344722747802734,
+      "mPitGroup": "Group1",
+      "mPitLapDist": 6977.2021484375,
+      "mPitState": 5,
+      "mPlace": 1,
+      "mPos": [
+        -199.0790557861328,
+        21.769512176513672,
+        744.4647827148438
+      ],
+      "mSector": 1,
+      "mTimeBehindLeader": 0,
+      "mTimeBehindNext": 0,
+      "mTimeIntoLap": 10.401013374328613,
+      "mTotalLaps": 0,
+      "mTrackEdge": 10.050000190734863,
+      "mUnderYellow": false,
+      "mVehicleClass": "Hyper",
+      "mVehicleName": "Alpine Endurance Team 2024 #35:LM"
+    }
+  ],
+  "mWind": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "mYellowFlagState": 0
+}

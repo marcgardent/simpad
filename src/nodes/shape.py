@@ -22,6 +22,7 @@ class ShapeNode(BaseNode):
         shape_choice = ninfo.get("shape", "Square (Pulsed)")
         base_freq = float(ninfo.get("freq", 20.0))
         base_duty = float(ninfo.get("duty", 0.40))
+        val_in = float(ninfo.get("val_in", 0.0))
         in_attr = ninfo.get("in_attr")
         in_freq = ninfo.get("in_freq")
 
@@ -29,8 +30,8 @@ class ShapeNode(BaseNode):
             f"    # Waveform Shape Node {ntag} ({shape_choice})",
             f"    in_src_{ntag} = {in_to_outs.get(in_attr, [None])}",
             f"    in_freq_src_{ntag} = {in_to_outs.get(in_freq, [None])}",
-            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], 0.0) if in_src_{ntag} else 0.0",
-            f"    freq_{ntag} = float(val_map.get(in_freq_src_{ntag}[0], {base_freq})) if in_freq_src_{ntag} else {base_freq}",
+            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], {val_in}) if in_src_{ntag} and in_src_{ntag}[0] else {val_in}",
+            f"    freq_{ntag} = float(val_map.get(in_freq_src_{ntag}[0], {base_freq})) if in_freq_src_{ntag} and in_freq_src_{ntag}[0] else {base_freq}",
             f"    freq_{ntag} = max(0.1, freq_{ntag})",
             f"    duty_{ntag} = max(0.01, min(1.0, {base_duty:.4f}))",
             f"    if vin_{ntag} > 0.01:",

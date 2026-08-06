@@ -42,16 +42,22 @@ class SimPadDPGApp:
         # Data history
         self._xs_200 = [x / 200.0 for x in range(201)]
         self._t = deque([-(HISTORY - i) * 0.05 for i in range(HISTORY)], maxlen=HISTORY)
-        self._d_abs  = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_tc   = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_over = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_und  = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_low  = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_high = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._start_time = time.time()
+        self._d_abs       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_tc        = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_over      = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_und       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_over_rev  = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_under_rev = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_rpm       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_travel    = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_grip      = deque([1.0] * HISTORY, maxlen=HISTORY)
+        self._d_low       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_high      = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._start_time  = time.time()
 
         # Node Editor Sub-Module
         self._node_editor = NodeEditorTab()
+        self._is_pinned = False
 
     def run(self):
         dpg.create_context()
@@ -59,6 +65,7 @@ class SimPadDPGApp:
         dpg.setup_dearpygui()
 
         self._apply_theme()
+        self._setup_key_handlers()
         self._build_gui()
 
         dpg.show_viewport()
@@ -73,6 +80,14 @@ class SimPadDPGApp:
 
         self._on_close()
         dpg.destroy_context()
+
+    def _setup_key_handlers(self):
+        with dpg.handler_registry():
+            dpg.add_key_release_handler(key=dpg.mvKey_F5, callback=self._toggle_pin)
+
+    def _toggle_pin(self, sender=None, app_data=None, user_data=None):
+        self._is_pinned = not self._is_pinned
+        dpg.configure_viewport(0, always_on_top=self._is_pinned, decorated=not self._is_pinned)
 
     # ── Background Backends Init ──────────────────────────────────────────────
     def _init_backends(self):
@@ -192,9 +207,9 @@ class SimPadDPGApp:
 
     # ── Monitor Tab Layout ────────────────────────────────────────────────────
     def _build_monitor_tab(self):
-        with dpg.child_window(height=520, border=True):
+        with dpg.child_window(width=-1, height=-1, border=False):
             dpg.add_text("Live Telemetry Signal Monitor (20 Hz)", color=[0, 210, 255, 255])
-            with dpg.plot(no_title=True, height=460, width=-1, tag="mon_plot"):
+            with dpg.plot(no_title=True, height=-1, width=-1, tag="mon_plot"):
                 dpg.add_plot_legend()
                 dpg.add_plot_axis(dpg.mvXAxis, label="Time (s)", tag="mon_xaxis")
                 with dpg.plot_axis(dpg.mvYAxis, label="Intensity [0.0 - 1.0]", tag="mon_yaxis"):
@@ -203,6 +218,11 @@ class SimPadDPGApp:
                     dpg.add_line_series([], [], label="Traction (Spin)", tag="mon_series_tc")
                     dpg.add_line_series([], [], label="Oversteer", tag="mon_series_over")
                     dpg.add_line_series([], [], label="Understeer", tag="mon_series_und")
+                    dpg.add_line_series([], [], label="Over-Rev (Sur-régime)", tag="mon_series_over_rev")
+                    dpg.add_line_series([], [], label="Under-Rev (Sous-régime)", tag="mon_series_under_rev")
+                    dpg.add_line_series([], [], label="Engine RPM", tag="mon_series_rpm")
+                    dpg.add_line_series([], [], label="Wheel Travel (Curbs)", tag="mon_series_travel")
+                    dpg.add_line_series([], [], label="Grip Fraction", tag="mon_series_grip")
                     dpg.add_line_series([], [], label="Motor Low (Left)", tag="mon_series_low")
                     dpg.add_line_series([], [], label="Motor High (Right)", tag="mon_series_high")
 
@@ -227,11 +247,18 @@ class SimPadDPGApp:
 
         if self._udp and self._udp.is_receiving() and self._telemetry_enabled:
             data = self._udp.get_latest_data()
-            if data:
+            if data and data.in_realtime:
                 self._process_telemetry_frame(data)
+            else:
+                self._clear_telemetry_frame()
         else:
-            if hasattr(self, "_node_editor"):
-                self._node_editor.evaluate_graph()
+            self._clear_telemetry_frame()
+
+    def _clear_telemetry_frame(self):
+        if self._synth:
+            self._synth.update_telemetry(in_realtime=False)
+        if hasattr(self, "_node_editor"):
+            self._node_editor.evaluate_graph()
 
     def _update_status_indicators(self):
         if dpg.does_item_exist("lbl_lmu_status"):
@@ -241,8 +268,19 @@ class SimPadDPGApp:
 
         if dpg.does_item_exist("lbl_udp_status"):
             udp_recv = self._udp and self._udp.is_receiving()
-            dpg.set_value("lbl_udp_status", "Active" if udp_recv else "Waiting...")
-            dpg.configure_item("lbl_udp_status", color=[46, 204, 113, 255] if udp_recv else [231, 76, 60, 255])
+            latest = self._udp.get_latest_data() if self._udp else None
+            on_track = latest.in_realtime if latest else False
+            if udp_recv and on_track:
+                status_str = "On Track (Active)"
+                status_col = [46, 204, 113, 255]
+            elif udp_recv and not on_track:
+                status_str = "In Menu (Standby)"
+                status_col = [241, 196, 15, 255]
+            else:
+                status_str = "Waiting..."
+                status_col = [231, 76, 60, 255]
+            dpg.set_value("lbl_udp_status", status_str)
+            dpg.configure_item("lbl_udp_status", color=status_col)
 
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()
@@ -263,6 +301,7 @@ class SimPadDPGApp:
                 over_rev=sensors.overrev_intensity,
                 under_rev=sensors.underrev_intensity,
                 rpm=sensors.rpm_ratio,
+                gear=sensors.gear,
                 travel_val=sensors.travel_intensity,
                 travel_l=sensors.travel_left,
                 travel_r=sensors.travel_right,
@@ -270,6 +309,10 @@ class SimPadDPGApp:
                 travel_fr=sensors.front_right_travel,
                 travel_rl=sensors.rear_left_travel,
                 travel_rr=sensors.rear_right_travel,
+                grip_val=sensors.grip_intensity,
+                grip_l=sensors.grip_left,
+                grip_r=sensors.grip_right,
+                in_realtime=sensors.in_realtime,
             )
 
         al, ar, bgl, bgr = data.longitudinal_patch_vel
@@ -279,10 +322,15 @@ class SimPadDPGApp:
         low_val, high_val = self._node_editor.evaluate_graph()
 
         self._t.append(now)
-        self._d_abs.append(min(1.0, max(abs(al), abs(ar))))
-        self._d_tc.append(min(1.0, max(abs(bgl), abs(bgr))))
-        self._d_over.append(min(1.0, max(abs(crl), abs(crr))))
-        self._d_und.append(min(1.0, max(abs(cll), abs(clr))))
+        self._d_abs.append(sensors.lock_intensity)
+        self._d_tc.append(sensors.spin_intensity)
+        self._d_over.append(sensors.oversteer_intensity)
+        self._d_und.append(sensors.understeer_intensity)
+        self._d_over_rev.append(sensors.overrev_intensity)
+        self._d_under_rev.append(sensors.underrev_intensity)
+        self._d_rpm.append(sensors.rpm_ratio)
+        self._d_travel.append(sensors.travel_intensity)
+        self._d_grip.append(sensors.grip_intensity)
         self._d_low.append(low_val)
         self._d_high.append(high_val)
 
@@ -295,6 +343,11 @@ class SimPadDPGApp:
             dpg.set_value("mon_series_tc", [t_list, list(self._d_tc)])
             dpg.set_value("mon_series_over", [t_list, list(self._d_over)])
             dpg.set_value("mon_series_und", [t_list, list(self._d_und)])
+            dpg.set_value("mon_series_over_rev", [t_list, list(self._d_over_rev)])
+            dpg.set_value("mon_series_under_rev", [t_list, list(self._d_under_rev)])
+            dpg.set_value("mon_series_rpm", [t_list, list(self._d_rpm)])
+            dpg.set_value("mon_series_travel", [t_list, list(self._d_travel)])
+            dpg.set_value("mon_series_grip", [t_list, list(self._d_grip)])
             dpg.set_value("mon_series_low", [t_list, list(self._d_low)])
             dpg.set_value("mon_series_high", [t_list, list(self._d_high)])
             if t_list:

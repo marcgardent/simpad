@@ -43,8 +43,18 @@ class VehicleSensors:
     rear_left_travel: float = 0.0
     rear_right_travel: float = 0.0
 
+    # 6. Adhérence Pneumatique / Grip Fraction (FL, FR, RL, RR) [0.0 à 1.0]
+    front_left_grip: float = 1.0
+    front_right_grip: float = 1.0
+    rear_left_grip: float = 1.0
+    rear_right_grip: float = 1.0
+
     # Vitesse du véhicule (m/s)
     vehicle_speed: float = 0.0
+
+    # État en piste et rapport engagé
+    in_realtime: bool = True
+    gear: int = 0
 
     @classmethod
     def from_wheel_velocities(
@@ -56,10 +66,17 @@ class VehicleSensors:
         engine_rpm: float = 0.0,
         engine_max_rpm: float = 7500.0,
         suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+        suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+        in_realtime: bool = True,
+        gear: int = 0,
     ) -> "VehicleSensors":
+        if not in_realtime:
+            return cls(in_realtime=False, gear=gear)
+
         locks = []
         spins = []
         lats = []
+        grips = []
 
         avg_speed = sum(abs(v) for v in long_ground_vels) / 4.0
 
@@ -68,27 +85,46 @@ class VehicleSensors:
             lgv = float(long_ground_vels[i]) if i < len(long_ground_vels) else 0.0
             lat_pv = float(lat_patch_vels[i]) if i < len(lat_patch_vels) else 0.0
 
-            speed = abs(lgv)
-            if speed > 0.5:
-                # Dimenssionless relative slip ratio
-                long_slip = (lpv - lgv) / speed
-                lat_slip = abs(lat_pv) / speed
+            lpv_mag = abs(lpv)
+            lgv_mag = abs(lgv)
+            lat_pv_mag = abs(lat_pv)
+
+            # Effective speed for slip ratio calculation
+            speed = max(0.5, lgv_mag, lpv_mag)
+
+            # Wheel Lockup (Over-braking): Ground speed > Patch speed par au moins 5% pour filtrer les micro-reliefs de piste
+            if lgv_mag > 1.0 and lgv_mag > (lpv_mag * 1.05):
+                raw_lock = (lgv_mag - lpv_mag) / lgv_mag
             else:
-                # Low-speed / simulated synthetic velocity magnitude
-                if lgv == 0.0 and lpv != 0.0:
-                    lock_val = abs(lpv) if i < 2 else max(0.0, -lpv)
-                    spin_val = abs(lpv) if i >= 2 else max(0.0, lpv)
-                else:
-                    long_slip = math.copysign(min(1.0, abs(lpv - lgv)), lpv - lgv)
-                    lock_val = max(0.0, -long_slip)
-                    spin_val = max(0.0, long_slip)
-                lat_slip = min(1.0, abs(lat_pv))
+                raw_lock = 0.0
 
-            locks.append(min(1.0, max(0.0, lock_val)))
-            spins.append(min(1.0, max(0.0, spin_val)))
-            lats.append(min(1.0, max(0.0, lat_slip)))
+            # Wheel Spin (TC / Over-acceleration): Patch speed > Ground speed (wheel spinning faster than vehicle ground speed)
+            if lpv_mag > 0.1 and lpv_mag > lgv_mag:
+                raw_spin = (lpv_mag - lgv_mag) / lpv_mag
+            else:
+                raw_spin = 0.0
 
-        travels = [min(1.0, max(0.0, float(st))) for st in suspension_travels[:4]]
+            # Lateral Slip (Oversteer / Understeer): Lateral patch speed relative to effective speed
+            raw_lat = lat_pv_mag / speed
+
+            lk = min(1.0, max(0.0, raw_lock))
+            sp = min(1.0, max(0.0, raw_spin))
+            lt = min(1.0, max(0.0, raw_lat))
+
+            locks.append(lk)
+            spins.append(sp)
+            lats.append(lt)
+
+            # Remaining Grip Fraction: 1.0 - max(lock, spin, lat_slip), strictly clamped to [0.0, 1.0]
+            total_slip = max(lk, sp, lt)
+            grips.append(min(1.0, max(0.0, 1.0 - total_slip)))
+
+        # Dynamic kerb / vibreur travel intensity from suspension velocity (scaled: 0.40 m/s = 1.0)
+        if any(v != 0.0 for v in suspension_velocities):
+            travels = [min(1.0, max(0.0, abs(float(v)) / 0.40)) for v in suspension_velocities[:4]]
+        else:
+            travels = [min(1.0, max(0.0, float(st))) for st in suspension_travels[:4]]
+
         if len(travels) < 4:
             travels.extend([0.0] * (4 - len(travels)))
 
@@ -111,24 +147,40 @@ class VehicleSensors:
             front_right_travel=travels[1],
             rear_left_travel=travels[2],
             rear_right_travel=travels[3],
+            front_left_grip=grips[0],
+            front_right_grip=grips[1],
+            rear_left_grip=grips[2],
+            rear_right_grip=grips[3],
             vehicle_speed=avg_speed,
+            in_realtime=True,
+            gear=gear,
         )
 
     # ── Combined & Per-Side Sensor Intensity Properties (0.0 to 1.0) ──────────
     @property
     def lock_intensity(self) -> float:
-        """Over-Braking intensity (Combined Max FL/FR)."""
-        return max(self.front_left_lock, self.front_right_lock)
+        """Over-Braking intensity (Combined Max FL/FR/RL/RR)."""
+        return max(self.front_left_lock, self.front_right_lock, self.rear_left_lock, self.rear_right_lock)
 
     @property
     def lock_left(self) -> float:
-        """Over-Braking Left wheel (FL)."""
-        return self.front_left_lock
+        """Over-Braking Left side (Max FL, RL)."""
+        return max(self.front_left_lock, self.rear_left_lock)
 
     @property
     def lock_right(self) -> float:
-        """Over-Braking Right wheel (FR)."""
-        return self.front_right_lock
+        """Over-Braking Right side (Max FR, RR)."""
+        return max(self.front_right_lock, self.rear_right_lock)
+
+    @property
+    def lock_front(self) -> float:
+        """Over-Braking Front axle (Max FL, FR)."""
+        return max(self.front_left_lock, self.front_right_lock)
+
+    @property
+    def lock_rear(self) -> float:
+        """Over-Braking Rear axle (Max RL, RR)."""
+        return max(self.rear_left_lock, self.rear_right_lock)
 
     @property
     def spin_intensity(self) -> float:
@@ -188,7 +240,10 @@ class VehicleSensors:
         """
         Sur-régime / Upshift Warning Intensity (0.0 to 1.0).
         Ramps up from 0.0 at 90% RPM max to 1.0 at 100% (Redline / Upshift sweet spot).
+        Disabled in Neutral (gear == 0).
         """
+        if self.gear == 0:
+            return 0.0
         r = self.rpm_ratio
         if r <= 0.90:
             return 0.0
@@ -199,7 +254,10 @@ class VehicleSensors:
         """
         Sous-régime / Downshift Warning Intensity (0.0 to 1.0).
         Ramps up from 0.0 at 45% RPM max down to 1.0 at 20% (Idle / Downshift sweet spot).
+        Disabled in Neutral (gear == 0).
         """
+        if self.gear == 0:
+            return 0.0
         r = self.rpm_ratio
         if r >= 0.45:
             return 0.0
@@ -220,4 +278,23 @@ class VehicleSensors:
     def travel_right(self) -> float:
         """Wheel Travel Right side (Max FR, RR)."""
         return max(self.front_right_travel, self.rear_right_travel)
+
+    # ── Grip Fraction Properties (0.0 to 1.0) ──────────────────────────────────
+    @property
+    def grip_intensity(self) -> float:
+        """Unified 4-wheel Grip Fraction (min of FL, FR, RL, RR clamped [0.0, 1.0])."""
+        val = min(self.front_left_grip, self.front_right_grip, self.rear_left_grip, self.rear_right_grip)
+        return min(1.0, max(0.0, val))
+
+    @property
+    def grip_left(self) -> float:
+        """Grip Fraction Left side (min of FL, RL clamped [0.0, 1.0])."""
+        val = min(self.front_left_grip, self.rear_left_grip)
+        return min(1.0, max(0.0, val))
+
+    @property
+    def grip_right(self) -> float:
+        """Grip Fraction Right side (min of FR, RR clamped [0.0, 1.0])."""
+        val = min(self.front_right_grip, self.rear_right_grip)
+        return min(1.0, max(0.0, val))
 

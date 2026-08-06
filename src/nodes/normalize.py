@@ -23,12 +23,13 @@ class NormalizeNode(BaseNode):
         min_v = float(ninfo.get("min", 0.0))
         max_v = float(ninfo.get("max", 100.0))
         do_clamp = bool(ninfo.get("clamp", True))
+        val_in = float(ninfo.get("val_in", 0.0))
         span = max(0.00001, max_v - min_v)
 
         lines = [
             f"    # Normalize Node {ntag}",
             f"    in_src_{ntag} = {in_to_outs.get(in_attr, [None])}",
-            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], 0.0) if in_src_{ntag} else 0.0",
+            f"    vin_{ntag} = val_map.get(in_src_{ntag}[0], {val_in}) if in_src_{ntag} and in_src_{ntag}[0] else {val_in}",
             f"    norm_{ntag} = (vin_{ntag} - {min_v}) / {span}"
         ]
         if do_clamp:

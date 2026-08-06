@@ -26,8 +26,8 @@ class TestLMUMiddleware(unittest.TestCase):
         l_low, l_high, r_low, r_high = processor.process(parsed)
         self.assertEqual((l_low, l_high, r_low, r_high), (0.0, 0.0, 0.0, 0.0))
 
-        # Simulation ABS Roue Avant Gauche forte -> Haute fréquence Gauche (l_high) > 0.0
-        raw_data = struct.pack("<8f", 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        # Simulation ABS Roue Avant Gauche forte (lpv=0.0, lgv=2.0 m/s) -> Haute fréquence Gauche (l_high) > 0.0
+        raw_data = struct.pack("<8f", 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0)
         parsed = LMUParser.parse(raw_data)
         l_low, l_high, r_low, r_high = processor.process(parsed)
         self.assertGreater(l_high, 0.0)
@@ -35,7 +35,7 @@ class TestLMUMiddleware(unittest.TestCase):
 
 
     def test_engine_and_travel_telemetry(self):
-        json_data = b'{"Type":"TelemInfoV01","mEngineRPM":7200.0,"mEngineMaxRPM":7500.0,"wheels":[{"mSuspensionDeflection":0.09},{"mSuspensionDeflection":0.01},{"mSuspensionDeflection":0.05},{"mSuspensionDeflection":0.01}]}'
+        json_data = b'{"Type":"TelemInfoV01","mEngineRPM":7200.0,"mEngineMaxRPM":7500.0,"wheels":[{"mSuspensionVelocity":0.36,"mSuspensionDeflection":0.09},{"mSuspensionDeflection":0.01},{"mSuspensionDeflection":0.05},{"mSuspensionDeflection":0.01}]}'
         parsed = LMUParser.parse(json_data)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()
@@ -46,5 +46,43 @@ class TestLMUMiddleware(unittest.TestCase):
         self.assertAlmostEqual(sensors.travel_left, 0.9, places=2)
 
 
+    def test_wheel_lockup_detection(self):
+        # 100% lockup on Front Left (patch vel = 0.0 while vehicle speed = 30.0 m/s)
+        json_data = b'{"Type":"TelemInfoV01","mSpeed":30.0,"wheels":[{"mLongitudinalPatchVel":0.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0}]}'
+        parsed = LMUParser.parse(json_data)
+        self.assertIsNotNone(parsed)
+        sensors = parsed.to_sensors()
+        self.assertAlmostEqual(sensors.front_left_lock, 1.0, places=2)
+        self.assertAlmostEqual(sensors.lock_intensity, 1.0, places=2)
+
+
+    def test_real_game_frame_integration(self):
+        # Trame réelle N°4473 enregistrée à 22:09:22 (Vitesse du sol = -22.11 m/s, i.e. 79.6 km/h)
+        json_data = b'{"Type":"TelemInfoV01","mSpeed":22.11,"wheels":[{"mLongitudinalPatchVel":-0.7687,"mLongitudinalGroundVel":-22.115},{"mLongitudinalPatchVel":-0.2690,"mLongitudinalGroundVel":-22.064},{"mLongitudinalPatchVel":-1.8841,"mLongitudinalGroundVel":-22.111},{"mLongitudinalPatchVel":-0.6960,"mLongitudinalGroundVel":-22.069}]}'
+        parsed = LMUParser.parse(json_data)
+        self.assertIsNotNone(parsed)
+        sensors = parsed.to_sensors()
+        
+        # Vérification stricte : en roulement normal à 80 km/h, lock_intensity doit être 0.0 (pas 1.0 !)
+        self.assertEqual(sensors.lock_intensity, 0.0)
+        self.assertEqual(sensors.spin_intensity, 0.0)
+
+
+    def test_real_game_frame_22_13(self):
+        # Trame N°7255 enregistrée à 22:13:45 (Vitesse du sol = -18.77 m/s (~67.5 km/h))
+        # wheels_raw_patch: [-0.6883, -0.2713, -1.6286, -0.6499] rad/s
+        # wheels_raw_ground: [-18.777, -18.699, -18.780, -18.697] m/s
+        json_data = b'{"Type":"TelemInfoV01","mSpeed":18.77,"wheels":[{"mLongitudinalPatchVel":-0.6883,"mLongitudinalGroundVel":-18.777},{"mLongitudinalPatchVel":-0.2713,"mLongitudinalGroundVel":-18.699},{"mLongitudinalPatchVel":-1.6286,"mLongitudinalGroundVel":-18.780},{"mLongitudinalPatchVel":-0.6499,"mLongitudinalGroundVel":-18.697}]}'
+        parsed = LMUParser.parse(json_data)
+        self.assertIsNotNone(parsed)
+        sensors = parsed.to_sensors()
+        
+        # En roulement normal à 67 km/h, la voiture ne bloque pas ses roues : lock_intensity = 0.0
+        self.assertEqual(sensors.lock_intensity, 0.0)
+        self.assertEqual(sensors.spin_intensity, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+

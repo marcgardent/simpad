@@ -18,7 +18,7 @@ VALID_SENSOR_OUTPUTS = {
     "attr_out_tc", "attr_out_tc_l", "attr_out_tc_r",
     "attr_out_over", "attr_out_over_l", "attr_out_over_r",
     "attr_out_und", "attr_out_und_l", "attr_out_und_r",
-    "attr_out_over_rev", "attr_out_under_rev", "attr_out_rpm",
+    "attr_out_over_rev", "attr_out_under_rev", "attr_out_rpm", "attr_out_gear",
     "attr_out_travel", "attr_out_travel_l", "attr_out_travel_r",
     "attr_out_travel_fl", "attr_out_travel_fr", "attr_out_travel_rl", "attr_out_travel_rr"
 }

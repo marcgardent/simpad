@@ -159,7 +159,7 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 | `multiply` | Multiplies 2 inputs | `"in_a"`, `"in_b"`, `"out_attr"` |
 | `array_multiply` | Multiplies N incoming signals | `"in_attr"`, `"out_attr"` |
 | `normalize` | Normalizes `[min, max]` to `[0, 1]` | `"min"`, `"max"`, `"clamp"`, `"in_attr"`, `"out_attr"` |
-| `math` | Binary arithmetic (+, -, *, /) | `"op"` ("Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)") |
+| `math` | Binary arithmetic (+, -, *, /, min, max) | `"op"` ("Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)", "Min (min)", "Max (max)") |
 | `transform` | Threshold, Gain, Gamma curve | `"thresh"` (0.0-0.5), `"gain"` (0.0-2.0), `"gamma"` (0.2-3.0) |
 | `shape` | Waveform modulation | `"shape"` ("Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"), `"on_ms"`, `"off_ms"` |
 

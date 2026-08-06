@@ -40,15 +40,23 @@ class MonitorChart:
             "tc": "#ff9900",
             "over": "#e74c3c",
             "und": "#a569bd",
+            "over_rev": "#ff0055",
+            "under_rev": "#f1c40f",
+            "rpm": "#2ecc71",
+            "travel": "#1abc9c",
             "low": "#ff3366",
             "high": "#00ff88",
         }
-        self.ln_abs,  = self.ax.plot([], [], color=c["abs"],  lw=1.2, label="ABS / Braking")
-        self.ln_tc,   = self.ax.plot([], [], color=c["tc"],   lw=1.2, label="Traction / Spin")
-        self.ln_over, = self.ax.plot([], [], color=c["over"], lw=1.2, label="Oversteer")
-        self.ln_und,  = self.ax.plot([], [], color=c["und"],  lw=1.2, label="Understeer")
-        self.ln_low,  = self.ax.plot([], [], color=c["low"],  lw=2.2, ls="--", label="Out: Low freq")
-        self.ln_high, = self.ax.plot([], [], color=c["high"], lw=2.2, ls="--", label="Out: High freq")
+        self.ln_abs,       = self.ax.plot([], [], color=c["abs"],       lw=1.2, label="ABS / Braking")
+        self.ln_tc,        = self.ax.plot([], [], color=c["tc"],        lw=1.2, label="Traction / Spin")
+        self.ln_over,      = self.ax.plot([], [], color=c["over"],      lw=1.2, label="Oversteer")
+        self.ln_und,       = self.ax.plot([], [], color=c["und"],       lw=1.2, label="Understeer")
+        self.ln_over_rev,  = self.ax.plot([], [], color=c["over_rev"],  lw=1.2, label="Over-Rev")
+        self.ln_under_rev, = self.ax.plot([], [], color=c["under_rev"], lw=1.2, label="Under-Rev")
+        self.ln_rpm,       = self.ax.plot([], [], color=c["rpm"],       lw=1.2, label="Engine RPM")
+        self.ln_travel,    = self.ax.plot([], [], color=c["travel"],    lw=1.2, label="Wheel Travel")
+        self.ln_low,       = self.ax.plot([], [], color=c["low"],       lw=2.2, ls="--", label="Out: Low freq")
+        self.ln_high,      = self.ax.plot([], [], color=c["high"],      lw=2.2, ls="--", label="Out: High freq")
 
         self.ax.legend(loc="upper right", facecolor="#111111", edgecolor="#444", labelcolor="white", fontsize=8, ncol=2)
 
@@ -56,13 +64,24 @@ class MonitorChart:
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         self.canvas.draw_idle()
 
-    def update(self, t: List[float], abs_data, tc_data, over_data, und_data, low_data, high_data, skip_draw=False):
+    def update(
+        self,
+        t: List[float],
+        abs_data, tc_data, over_data, und_data,
+        over_rev_data=None, under_rev_data=None, rpm_data=None, travel_data=None,
+        low_data=None, high_data=None,
+        skip_draw=False
+    ):
         self.ln_abs.set_data(t, abs_data)
         self.ln_tc.set_data(t, tc_data)
         self.ln_over.set_data(t, over_data)
         self.ln_und.set_data(t, und_data)
-        self.ln_low.set_data(t, low_data)
-        self.ln_high.set_data(t, high_data)
+        if over_rev_data is not None: self.ln_over_rev.set_data(t, over_rev_data)
+        if under_rev_data is not None: self.ln_under_rev.set_data(t, under_rev_data)
+        if rpm_data is not None: self.ln_rpm.set_data(t, rpm_data)
+        if travel_data is not None: self.ln_travel.set_data(t, travel_data)
+        if low_data is not None: self.ln_low.set_data(t, low_data)
+        if high_data is not None: self.ln_high.set_data(t, high_data)
         if t:
             self.ax.set_xlim(t[0], t[-1])
         if not skip_draw:

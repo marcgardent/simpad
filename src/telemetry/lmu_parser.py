@@ -5,6 +5,7 @@ SimPad Telemetry — LMU Telemetry Parser with Normalized Wheel Velocities.
 import json
 import struct
 import logging
+import time
 from dataclasses import dataclass
 from typing import Tuple, Optional
 from src.telemetry.sensors import VehicleSensors
@@ -22,6 +23,9 @@ class TelemetryData:
     engine_rpm: float = 0.0
     engine_max_rpm: float = 7500.0
     suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    in_realtime: bool = True
+    gear: int = 0
 
     def to_sensors(self) -> VehicleSensors:
         return VehicleSensors.from_wheel_velocities(
@@ -32,6 +36,9 @@ class TelemetryData:
             engine_rpm=self.engine_rpm,
             engine_max_rpm=self.engine_max_rpm,
             suspension_travels=self.suspension_travels,
+            suspension_velocities=self.suspension_velocities,
+            in_realtime=self.in_realtime,
+            gear=self.gear,
         )
 
 
@@ -56,18 +63,78 @@ class LMUParser:
 
                 if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js or "mEngineRPM" in js:
                     wheels = js.get("mWheel") or js.get("wheels") or []
-                    lpv, lgv, lat_pv, lat_gv, travels = (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)
+                    lpv, lgv, lat_pv, lat_gv, travels, susp_vels = (
+                        (0.0, 0.0, 0.0, 0.0),
+                        (0.0, 0.0, 0.0, 0.0),
+                        (0.0, 0.0, 0.0, 0.0),
+                        (0.0, 0.0, 0.0, 0.0),
+                        (0.0, 0.0, 0.0, 0.0),
+                        (0.0, 0.0, 0.0, 0.0),
+                    )
 
                     if isinstance(wheels, list) and len(wheels) >= 4:
-                        lpv = tuple(float(w.get("mLongitudinalPatchVel", w.get("longitudinalPatchVel", 0.0))) for w in wheels[:4])
-                        lgv = tuple(float(w.get("mLongitudinalGroundVel", w.get("longitudinalGroundVel", lpv[i]))) for i, w in enumerate(wheels[:4]))
+                        veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+
+                        def _get_ground_vel(w: dict, default_speed: float) -> float:
+                            for k in ("mLongitudinalGroundVel", "longitudinalGroundVel", "mGroundSpeed", "groundSpeed"):
+                                if k in w:
+                                    return float(w[k])
+                            return default_speed
+
+                        def _get_patch_vel(w: dict, default_speed: float, ground_v: float) -> float:
+                            # 1. Direct wheel rotation * radius calculation if available
+                            if "mRotation" in w and "mUnloadedRadius" in w:
+                                r = float(w["mUnloadedRadius"]) if float(w.get("mUnloadedRadius", 0)) > 0.05 else 0.33
+                                return float(w["mRotation"]) * r
+
+                            # 2. Wheel speed / patch vel
+                            for k in ("mLongitudinalPatchVel", "longitudinalPatchVel", "mWheelSpeed", "wheelSpeed"):
+                                if k in w:
+                                    val = float(w[k])
+                                    # Absolute 0.0 is explicit lockup when moving
+                                    if val == 0.0 and abs(ground_v) > 0.5:
+                                        return 0.0
+                                    # If val is within reasonable range of ground speed, return val directly
+                                    if abs(ground_v) > 0.5 and abs(abs(val) - abs(ground_v)) < 0.3 * abs(ground_v):
+                                        return val
+                                    # If val is small unscaled rad/s, fallback to ground_v when not locking
+                                    if abs(ground_v) > 0.5 and 0.0 < abs(val) < 0.5 * abs(ground_v):
+                                        return ground_v
+                                    return val
+
+                            return ground_v if abs(ground_v) > 0.1 else default_speed
+
+                        lgv = tuple(_get_ground_vel(w, veh_speed) for w in wheels[:4])
+                        lpv = tuple(_get_patch_vel(w, veh_speed, lgv[i]) for i, w in enumerate(wheels[:4]))
                         lat_pv = tuple(float(w.get("mLateralPatchVel", w.get("lateralPatchVel", 0.0))) for w in wheels[:4])
                         lat_gv = tuple(float(w.get("mLateralGroundVel", w.get("lateralGroundVel", 0.0))) for w in wheels[:4])
-                        # Deflection in meters (e.g. 0.0m to 0.12m), normalized by 0.10m stroke
-                        travels = tuple(min(1.0, max(0.0, float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) / 0.10)) for w in wheels[:4])
+                        
+                        raw_deflections = tuple(float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) for w in wheels[:4])
+                        travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
+                        susp_vels = tuple(abs(float(w.get("mSuspensionVelocity", w.get("suspensionVelocity", 0.0)))) for w in wheels[:4])
 
                     e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
                     e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
+
+                    in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
+                    in_rt = bool(in_rt_val != 0 and in_rt_val is not False)
+
+                    gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
+
+                    # Live debug log dump for user frame inspection
+                    try:
+                        with open("telemetry_dump.log", "a", encoding="utf-8") as f:
+                            dump_entry = {
+                                "timestamp": time.time(),
+                                "veh_speed": veh_speed,
+                                "lpv": lpv,
+                                "lgv": lgv,
+                                "wheels_raw_patch": [w.get("mLongitudinalPatchVel", w.get("longitudinalPatchVel")) for w in wheels[:4]] if isinstance(wheels, list) else [],
+                                "wheels_raw_ground": [w.get("mLongitudinalGroundVel", w.get("longitudinalGroundVel")) for w in wheels[:4]] if isinstance(wheels, list) else []
+                            }
+                            f.write(json.dumps(dump_entry) + "\n")
+                    except Exception:
+                        pass
 
                     return TelemetryData(
                         longitudinal_patch_vel=lpv,
@@ -77,6 +144,9 @@ class LMUParser:
                         engine_rpm=e_rpm,
                         engine_max_rpm=e_max_rpm,
                         suspension_travels=travels,
+                        suspension_velocities=susp_vels,
+                        in_realtime=in_rt,
+                        gear=gear_val,
                     )
 
             except Exception as e:
@@ -88,7 +158,9 @@ class LMUParser:
                 values = struct.unpack(cls.PACKET_FORMAT, data[:cls.PACKET_SIZE])
                 lpv = (float(values[0]), float(values[1]), float(values[2]), float(values[3]))
                 lat_pv = (float(values[4]), float(values[5]), float(values[6]), float(values[7]))
-                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=(0.0, 0.0, 0.0, 0.0), lateral_patch_vel=lat_pv)
+                max_v = max(abs(v) for v in lpv)
+                lgv = (max_v, max_v, max_v, max_v)
+                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=lgv, lateral_patch_vel=lat_pv)
             except Exception as e:
                 logger.debug(f"[LMUParser] Erreur unpack 32b: {e}")
 

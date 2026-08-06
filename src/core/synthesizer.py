@@ -57,13 +57,24 @@ class HapticSynthesizerEngine:
         tc_val: float = 0.0, tc_l: Optional[float] = None, tc_r: Optional[float] = None,
         over_val: float = 0.0, over_l: Optional[float] = None, over_r: Optional[float] = None,
         und_val: float = 0.0, und_l: Optional[float] = None, und_r: Optional[float] = None,
-        over_rev: float = 0.0, under_rev: float = 0.0, rpm: float = 0.0,
+        over_rev: float = 0.0, under_rev: float = 0.0, rpm: float = 0.0, gear: float = 0.0,
         travel_val: float = 0.0, travel_l: Optional[float] = None, travel_r: Optional[float] = None,
         travel_fl: Optional[float] = None, travel_fr: Optional[float] = None,
-        travel_rl: Optional[float] = None, travel_rr: Optional[float] = None
+        travel_rl: Optional[float] = None, travel_rr: Optional[float] = None,
+        grip_val: float = 1.0, grip_l: Optional[float] = None, grip_r: Optional[float] = None,
+        in_realtime: bool = True
     ):
         """Updates live telemetry input values thread-safely for all channels."""
         with self._lock:
+            if not in_realtime:
+                for k in self._telemetry:
+                    self._telemetry[k] = 0.0
+                self._telemetry["gear"] = float(gear)
+                self._telemetry["grip"] = 1.0
+                self._telemetry["grip_l"] = 1.0
+                self._telemetry["grip_r"] = 1.0
+                return
+
             self._telemetry["abs"] = float(abs_val)
             self._telemetry["abs_l"] = float(abs_l) if abs_l is not None else float(abs_val)
             self._telemetry["abs_r"] = float(abs_r) if abs_r is not None else float(abs_val)
@@ -83,6 +94,7 @@ class HapticSynthesizerEngine:
             self._telemetry["over_rev"] = float(over_rev)
             self._telemetry["under_rev"] = float(under_rev)
             self._telemetry["rpm"] = float(rpm)
+            self._telemetry["gear"] = float(gear)
 
             self._telemetry["travel"] = float(travel_val)
             self._telemetry["travel_l"] = float(travel_l) if travel_l is not None else float(travel_val)
@@ -91,6 +103,10 @@ class HapticSynthesizerEngine:
             self._telemetry["travel_fr"] = float(travel_fr) if travel_fr is not None else float(travel_val)
             self._telemetry["travel_rl"] = float(travel_rl) if travel_rl is not None else float(travel_val)
             self._telemetry["travel_rr"] = float(travel_rr) if travel_rr is not None else float(travel_val)
+
+            self._telemetry["grip"] = float(grip_val)
+            self._telemetry["grip_l"] = float(grip_l) if grip_l is not None else float(grip_val)
+            self._telemetry["grip_r"] = float(grip_r) if grip_r is not None else float(grip_val)
 
     def get_current_outputs(self) -> Tuple[float, float]:
         """Returns the most recent calculated (low_freq_rumble, high_freq_buzz) outputs."""

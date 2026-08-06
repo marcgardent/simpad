@@ -168,13 +168,17 @@ class SimPadGUI(ctk.CTk):
 
         # Telemetry history buffers
         self._t = deque([-(HISTORY - i) * 0.05 for i in range(HISTORY)], maxlen=HISTORY)
-        self._d_abs = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_tc = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_over = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_und = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_low = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._d_high = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._start_time = time.time()
+        self._d_abs       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_tc        = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_over      = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_und       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_over_rev  = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_under_rev = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_rpm       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_travel    = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_low       = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._d_high      = deque([0.0] * HISTORY, maxlen=HISTORY)
+        self._start_time  = time.time()
 
         # Component references
         self._profile_bar: ProfileBar = None
@@ -517,22 +521,26 @@ class SimPadGUI(ctk.CTk):
                             self._haptics.set_vibration(l_low, l_high, r_low, r_high)
 
                         al, ar, bgl, bgr = data.longitudinal_patch_vel
-                        cll, clr, crl, crr = data.lateral_patch_vel
+                        sensors = data.to_sensors()
                         now = time.time() - self._start_time
                         self._t.append(now)
-                        self._d_abs.append(min(1.0, max(abs(al), abs(ar))))
-                        self._d_tc.append(min(1.0, max(abs(bgl), abs(bgr))))
-                        self._d_over.append(min(1.0, max(abs(crl), abs(crr))))
-                        self._d_und.append(min(1.0, max(abs(cll), abs(clr))))
+                        self._d_abs.append(sensors.lock_intensity)
+                        self._d_tc.append(sensors.spin_intensity)
+                        self._d_over.append(sensors.oversteer_intensity)
+                        self._d_und.append(sensors.understeer_intensity)
+                        self._d_over_rev.append(sensors.overrev_intensity)
+                        self._d_under_rev.append(sensors.underrev_intensity)
+                        self._d_rpm.append(sensors.rpm_ratio)
+                        self._d_travel.append(sensors.travel_intensity)
                         self._d_low.append(max(l_low, r_low))
                         self._d_high.append(max(l_high, r_high))
 
                         # Live telemetry cursors on dashboard mini charts
                         slip_map = {
-                            "lock": min(1.0, max(abs(al), abs(ar))),
-                            "spin": min(1.0, max(abs(bgl), abs(bgr))),
-                            "oversteer": min(1.0, max(abs(crl), abs(crr))),
-                            "understeer": min(1.0, max(abs(cll), abs(clr))),
+                            "lock": sensors.lock_intensity,
+                            "spin": sensors.spin_intensity,
+                            "oversteer": sensors.oversteer_intensity,
+                            "understeer": sensors.understeer_intensity,
                         }
                         for _eid, _slip in slip_map.items():
                             s = self._states[_eid]
@@ -550,6 +558,10 @@ class SimPadGUI(ctk.CTk):
                 list(self._d_tc),
                 list(self._d_over),
                 list(self._d_und),
+                list(self._d_over_rev),
+                list(self._d_under_rev),
+                list(self._d_rpm),
+                list(self._d_travel),
                 list(self._d_low),
                 list(self._d_high),
                 skip_draw=self._is_resizing,

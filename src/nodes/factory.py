@@ -12,6 +12,8 @@ from src.nodes.normalize import NormalizeNode
 from src.nodes.math import MathNode
 from src.nodes.transform import TransformNode
 from src.nodes.shape import ShapeNode
+from src.nodes.boolean import BooleanNode
+from src.nodes.invert import InvertNode
 from src.nodes.sensor import (
     OverBrakingSensorNode,
     OverAccelSensorNode,
@@ -19,6 +21,8 @@ from src.nodes.sensor import (
     UndersteerSensorNode,
     EngineRegimeSensorNode,
     WheelTravelSensorNode,
+    GearSensorNode,
+    GripFractSensorNode,
 )
 from src.nodes.output import XInputOutputNode
 
@@ -63,14 +67,17 @@ def _initialize_factory():
     NodeFactory.register(MathNode)
     NodeFactory.register(TransformNode)
     NodeFactory.register(ShapeNode)
+    NodeFactory.register(BooleanNode)
+    NodeFactory.register(InvertNode)
     NodeFactory.register(OverBrakingSensorNode)
     NodeFactory.register(OverAccelSensorNode)
     NodeFactory.register(OversteerSensorNode)
     NodeFactory.register(UndersteerSensorNode)
     NodeFactory.register(EngineRegimeSensorNode)
     NodeFactory.register(WheelTravelSensorNode)
+    NodeFactory.register(GearSensorNode)
+    NodeFactory.register(GripFractSensorNode)
     NodeFactory.register(XInputOutputNode)
-
 
 
 _initialize_factory()

@@ -75,9 +75,11 @@ class UDPServer:
             sleep_time = max(0.005, 0.02 - elapsed)
             time.sleep(sleep_time)
 
-    def get_latest_data(self) -> Optional[TelemetryData]:
-        """Récupère les dernières données reçues de manière thread-safe."""
+    def get_latest_data(self, timeout: float = 1.0) -> Optional[TelemetryData]:
+        """Récupère les dernières données reçues de manière thread-safe. Retourne None si la connexion est interrompue (timeout)."""
         with self._lock:
+            if self._last_packet_time > 0 and (time.time() - self._last_packet_time) > timeout:
+                return TelemetryData(in_realtime=False)
             return self._latest_data
 
     def is_receiving_packets(self, timeout: float = 1.0) -> Tuple[bool, float, int]:

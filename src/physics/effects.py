@@ -61,7 +61,7 @@ class PhysicsToHaptic:
         sensors = telemetry.to_sensors() if isinstance(telemetry, TelemetryData) else telemetry
 
         # Level 1: Calculate raw effect slip levels
-        lock_l, lock_r = self._calc_raw_slip(sensors.front_left_lock, sensors.front_right_lock, "lock")
+        lock_l, lock_r = self._calc_raw_slip(sensors.lock_left, sensors.lock_right, "lock")
         over_l, over_r = self._calc_raw_slip(sensors.rear_left_lat_slip, sensors.rear_right_lat_slip, "oversteer")
         under_l, under_r = self._calc_raw_slip(sensors.front_left_lat_slip, sensors.front_right_lat_slip, "understeer")
         spin_l, spin_r = self._calc_raw_slip(sensors.rear_left_spin, sensors.rear_right_spin, "spin")

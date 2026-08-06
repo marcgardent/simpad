@@ -28,12 +28,93 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         registered_types = NodeFactory.get_registered_types()
         expected_types = {
             "constant", "float_constant", "multiply", "array_multiply",
-            "normalize", "math", "transform", "shape",
+            "normalize", "math", "transform", "shape", "logic_bool", "invert",
             "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
-            "sensor_engine_regime", "sensor_wheel_travel",
+            "sensor_engine_regime", "sensor_wheel_travel", "sensor_gear", "sensor_grip_fract",
             "output_xinput"
         }
         self.assertTrue(expected_types.issubset(registered_types))
+
+    def test_invert_node_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "inv_node": {"type": "invert", "val_in": 0.25, "in_attr": "in_pin", "out_attr": "out_inv"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin"}
+            },
+            "links": [
+                ["out_inv", "in_l_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({}, 0.0)
+        self.assertAlmostEqual(low, 0.75, places=4)
+
+    def test_grip_fract_sensor_node_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "grip_node": {"type": "sensor_grip_fract", "out_attr": "out_g", "out_l": "out_gl", "out_r": "out_gr"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin", "in_high": "in_h_pin"}
+            },
+            "links": [
+                ["out_g", "in_l_pin"],
+                ["out_gl", "in_h_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({"grip": 0.85, "grip_l": 0.95, "grip_r": 0.75}, 0.0)
+        self.assertAlmostEqual(low, 0.85, places=4)
+        self.assertAlmostEqual(high, 0.95, places=4)
+
+    def test_boolean_node_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "bool_and": {"type": "logic_bool", "op": "AND", "val_a": 1.0, "val_b": 1.0, "out_attr": "out_and", "in_a": "in_a", "in_b": "in_b"},
+                "bool_or": {"type": "logic_bool", "op": "OR", "val_a": 0.0, "val_b": 1.0, "out_attr": "out_or", "in_a": "in_a2", "in_b": "in_b2"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin", "in_high": "in_h_pin"}
+            },
+            "links": [
+                ["out_and", "in_l_pin"],
+                ["out_or", "in_h_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({}, 0.0)
+        self.assertEqual(low, 1.0)
+        self.assertEqual(high, 1.0)
+
+    def test_gear_sensor_node_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "gear_node": {"type": "sensor_gear", "out_gear": "out_g"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin"}
+            },
+            "links": [
+                ["out_g", "in_l_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({"gear": 3.0}, 0.0)
+        self.assertEqual(low, 1.0)  # clamped 3.0 -> 1.0
+
+    def test_lmu_parser_and_sensors_realtime_gear(self):
+        from src.telemetry.lmu_parser import LMUParser
+        json_data = b'{"Type": "TelemInfoV01", "mInRealtime": 0, "mGear": 0, "mEngineRPM": 3000.0, "mEngineMaxRPM": 7500.0}'
+        parsed = LMUParser.parse(json_data)
+        self.assertIsNotNone(parsed)
+        self.assertFalse(parsed.in_realtime)
+        self.assertEqual(parsed.gear, 0)
+
+        sensors = parsed.to_sensors()
+        self.assertFalse(sensors.in_realtime)
+        self.assertEqual(sensors.underrev_intensity, 0.0)
+        self.assertEqual(sensors.overrev_intensity, 0.0)
+
+        # On track, neutral gear -> underrev/overrev must be 0.0
+        json_on_track_neutral = b'{"Type": "TelemInfoV01", "mInRealtime": 1, "mGear": 0, "mEngineRPM": 1500.0, "mEngineMaxRPM": 7500.0}'
+        parsed_on_track = LMUParser.parse(json_on_track_neutral)
+        sensors_on_track = parsed_on_track.to_sensors()
+        self.assertTrue(sensors_on_track.in_realtime)
+        self.assertEqual(sensors_on_track.underrev_intensity, 0.0)
 
 
     def test_sensor_nodes_generation(self):
@@ -87,6 +168,24 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         self.assertAlmostEqual(low_val, 0.5, places=4)
         self.assertEqual(high_val, 0.0)
 
+
+
+    def test_math_node_min_max_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "math_min": {"type": "math", "op": "Min (min)", "val_a": 0.3, "val_b": 0.7, "out_attr": "out_min", "in_a": "in_a", "in_b": "in_b"},
+                "math_max": {"type": "math", "op": "Max (max)", "val_a": 0.3, "val_b": 0.7, "out_attr": "out_max", "in_a": "in_a2", "in_b": "in_b2"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin", "in_high": "in_h_pin"}
+            },
+            "links": [
+                ["out_min", "in_l_pin"],
+                ["out_max", "in_h_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({}, 0.0)
+        self.assertAlmostEqual(low, 0.3)
+        self.assertAlmostEqual(high, 0.7)
 
 
 if __name__ == "__main__":
