@@ -34,25 +34,38 @@ class DashboardManager:
     def set_display_mode(self, mode: str) -> None:
         """
         Bascule strictement entre les modes d'affichage :
-        - 'ingame' : Masque à 100% la console de configuration (primary_window), affiche uniquement les overlays HUD (monitoringBoard).
-        - 'desktop' : Masque à 100% les overlays HUD (monitoringBoard), affiche uniquement la console de configuration (primary_window).
+        - 'ingame' : Viewport plein écran sans bordure, masque à 100% la console de configuration (primary_window), affiche uniquement l'overlay HUD borderless (monitoringBoard).
+        - 'desktop' : Viewport fenêtré avec bordure, masque à 100% les overlays HUD (monitoringBoard), affiche uniquement la console de configuration (primary_window).
         """
         if mode not in ("desktop", "ingame"):
             return
+
+        from src.utils.window_utils import get_screen_dimensions
+        sw, sh = get_screen_dimensions()
 
         self._display_mode = mode
         if mode == "ingame":
             if dpg.does_item_exist("primary_window"):
                 dpg.set_primary_window("primary_window", False)
                 dpg.hide_item("primary_window")
+            
+            # Viewport plein écran borderless Always-On-Top
+            try:
+                dpg.configure_viewport(0, width=sw, height=sh, decorated=False, always_on_top=True)
+            except Exception:
+                pass
             self.show_all()
-            print("[DashboardManager] Mode INGAME actif -> Overlays HUD uniquement.", flush=True)
+            print("[DashboardManager] Mode INGAME actif -> Viewport Plein Écran Borderless + Overlays HUD.", flush=True)
         else:
             self.hide_all()
+            try:
+                dpg.configure_viewport(0, width=1240, height=780, decorated=True, always_on_top=False)
+            except Exception:
+                pass
             if dpg.does_item_exist("primary_window"):
                 dpg.show_item("primary_window")
                 dpg.set_primary_window("primary_window", True)
-            print("[DashboardManager] Mode DESKTOP actif -> Console de configuration uniquement.", flush=True)
+            print("[DashboardManager] Mode DESKTOP actif -> Console de configuration Fenêtrée.", flush=True)
 
     def register_dashboard(self, board: BaseDashboard) -> None:
         """Enregistre un nouveau dashboard dans le gestionnaire."""
@@ -109,6 +122,15 @@ class DashboardManager:
                     board.update_telemetry(sensors)
                 except Exception as e:
                     logger.debug(f"[DashboardManager] Erreur update_telemetry sur '{board.name}': {e}")
+
+    def update_history_plots(self, t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high) -> None:
+        """Transmet les historiques de courbes temporelles aux dashboards avec graphes."""
+        for board in self._dashboards.values():
+            if board.is_visible and hasattr(board, "update_history_plots"):
+                try:
+                    board.update_history_plots(t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high)
+                except Exception as e:
+                    logger.debug(f"[DashboardManager] Erreur update_history_plots sur '{board.name}': {e}")
 
     @property
     def dashboard_names(self) -> List[str]:

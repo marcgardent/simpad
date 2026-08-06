@@ -1,6 +1,7 @@
 """
-monitoringBoard — Pure GPU-Accelerated Dear PyGui / Dear ImGui HUD Overlay Dashboard.
+monitoringBoard — Live Telemetry Curves Monitor HUD Overlay (Borderless).
 Positioned at Top-Middle third of the primary monitor screen (X=Width/3, Y=0, W=Width/3, H=Height/3).
+Renders real-time live telemetry signal curves (ABS, TC, Oversteer, Understeer, RPM, Curbs, Haptics).
 """
 
 import dearpygui.dearpygui as dpg
@@ -11,8 +12,8 @@ from src.utils.window_utils import get_3x3_grid_rect
 
 class MonitoringBoard(BaseDashboard):
     """
-    Tableau de bord HUD 'monitoringBoard' sous forme de fenêtre Dear PyGui / ImGui GPU accélérée (DirectX 11).
-    Positionné de manière fixe dans le tiers haut (vertical) et milieu (horizontal) de l'écran (col=1, row=0).
+    Tableau de bord 'monitoringBoard' : Graphe de courbes télémétriques temps réel en overlay borderless.
+    Positionné de manière fixe dans le tiers haut / milieu de l'écran (col=1, row=0).
     """
 
     def __init__(self):
@@ -31,14 +32,15 @@ class MonitoringBoard(BaseDashboard):
             pos=[x, y],
             width=w,
             height=h,
-            no_title_bar=False,
-            no_resize=False,
-            no_collapse=False,
+            no_title_bar=True,   # Borderless
+            no_resize=True,      # Borderless
+            no_move=True,        # Borderless
+            no_collapse=True,    # Borderless
             show=False,
         ):
             self._visible = False
 
-            # En-tête HUD
+            # En-tête HUD Borderless
             with dpg.group(horizontal=True):
                 dpg.add_text("SIMPAD", color=[0, 210, 255, 255])
                 dpg.add_text("MONITORING BOARD", color=[255, 200, 0, 255])
@@ -47,32 +49,21 @@ class MonitoringBoard(BaseDashboard):
                 dpg.add_text("N", tag="mb_lbl_gear", color=[46, 204, 113, 255])
 
             dpg.add_separator()
-            dpg.add_spacer(height=4)
 
-            # Indicateurs de signaux télémétriques
-            dpg.add_text("Engine RPM:", color=[180, 180, 180, 255])
-            dpg.add_progress_bar(tag="mb_bar_rpm", default_value=0.0, width=-1, overlay="0 RPM")
-            dpg.add_spacer(height=4)
-
-            # Grille 2 colonnes (Braking & Dynamics)
-            with dpg.group(horizontal=True):
-                with dpg.child_window(width=(w // 2) - 14, height=max(80, h - 110), border=True):
-                    dpg.add_text("Braking & Traction", color=[0, 210, 255, 255])
-                    dpg.add_spacer(height=2)
-                    dpg.add_text("ABS (Freinage):", color=[180, 180, 180, 255])
-                    dpg.add_progress_bar(tag="mb_bar_abs", default_value=0.0, width=-1)
-                    dpg.add_spacer(height=4)
-                    dpg.add_text("TC (Motricité):", color=[180, 180, 180, 255])
-                    dpg.add_progress_bar(tag="mb_bar_tc", default_value=0.0, width=-1)
-
-                with dpg.child_window(width=(w // 2) - 14, height=max(80, h - 110), border=True):
-                    dpg.add_text("Dynamics & Chassis", color=[0, 210, 255, 255])
-                    dpg.add_spacer(height=2)
-                    dpg.add_text("Sur-Virage (Over):", color=[180, 180, 180, 255])
-                    dpg.add_progress_bar(tag="mb_bar_over", default_value=0.0, width=-1)
-                    dpg.add_spacer(height=4)
-                    dpg.add_text("Vibreurs (Curbs):", color=[180, 180, 180, 255])
-                    dpg.add_progress_bar(tag="mb_bar_travel", default_value=0.0, width=-1)
+            # Graphe de courbes télémétriques en temps réel
+            with dpg.plot(no_title=True, height=-1, width=-1, tag="mb_plot"):
+                dpg.add_plot_legend()
+                dpg.add_plot_axis(dpg.mvXAxis, label="Time (s)", tag="mb_xaxis")
+                with dpg.plot_axis(dpg.mvYAxis, label="Intensity [0.0 - 1.0]", tag="mb_yaxis"):
+                    dpg.set_axis_limits("mb_yaxis", 0, 1.05)
+                    dpg.add_line_series([], [], label="ABS Lock", tag="mb_series_abs")
+                    dpg.add_line_series([], [], label="TC Spin", tag="mb_series_tc")
+                    dpg.add_line_series([], [], label="Oversteer", tag="mb_series_over")
+                    dpg.add_line_series([], [], label="Understeer", tag="mb_series_und")
+                    dpg.add_line_series([], [], label="Engine RPM", tag="mb_series_rpm")
+                    dpg.add_line_series([], [], label="Curbs Travel", tag="mb_series_travel")
+                    dpg.add_line_series([], [], label="Synth Low (L)", tag="mb_series_low")
+                    dpg.add_line_series([], [], label="Synth High (R)", tag="mb_series_high")
 
     def show(self) -> None:
         if dpg.does_item_exist(self._window_tag):
@@ -96,19 +87,20 @@ class MonitoringBoard(BaseDashboard):
         if dpg.does_item_exist("mb_lbl_gear"):
             dpg.set_value("mb_lbl_gear", gear_str)
 
-        if dpg.does_item_exist("mb_bar_rpm"):
-            rpm_ratio = min(1.0, max(0.0, sensors.rpm_ratio))
-            dpg.set_value("mb_bar_rpm", rpm_ratio)
-            dpg.configure_item("mb_bar_rpm", overlay=f"{int(rpm_ratio * sensors.engine_max_rpm)} RPM")
+    def update_history_plots(self, t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high) -> None:
+        if not self._visible or not dpg.does_item_exist("mb_series_abs"):
+            return
 
-        if dpg.does_item_exist("mb_bar_abs"):
-            dpg.set_value("mb_bar_abs", min(1.0, max(0.0, sensors.lock_intensity)))
-
-        if dpg.does_item_exist("mb_bar_tc"):
-            dpg.set_value("mb_bar_tc", min(1.0, max(0.0, sensors.spin_intensity)))
-
-        if dpg.does_item_exist("mb_bar_over"):
-            dpg.set_value("mb_bar_over", min(1.0, max(0.0, sensors.oversteer_intensity)))
-
-        if dpg.does_item_exist("mb_bar_travel"):
-            dpg.set_value("mb_bar_travel", min(1.0, max(0.0, sensors.travel_intensity)))
+        try:
+            dpg.set_value("mb_series_abs", [t_list, list(d_abs)])
+            dpg.set_value("mb_series_tc", [t_list, list(d_tc)])
+            dpg.set_value("mb_series_over", [t_list, list(d_over)])
+            dpg.set_value("mb_series_und", [t_list, list(d_und)])
+            dpg.set_value("mb_series_rpm", [t_list, list(d_rpm)])
+            dpg.set_value("mb_series_travel", [t_list, list(d_travel)])
+            dpg.set_value("mb_series_low", [t_list, list(d_low)])
+            dpg.set_value("mb_series_high", [t_list, list(d_high)])
+            if t_list:
+                dpg.set_axis_limits("mb_xaxis", t_list[0], t_list[-1])
+        except Exception:
+            pass

@@ -419,6 +419,18 @@ class SimPadDPGApp:
             if t_list:
                 dpg.set_axis_limits("mon_xaxis", t_list[0], t_list[-1])
 
+        self._dashboard_mgr.update_history_plots(
+            t_list,
+            self._d_abs,
+            self._d_tc,
+            self._d_over,
+            self._d_und,
+            self._d_rpm,
+            self._d_travel,
+            self._d_low,
+            self._d_high,
+        )
+
     # ── Shutdown ───────────────────────────────────────────────────────────────
     def _on_close(self):
         if self._synth:
