@@ -315,11 +315,11 @@ class SimPadDPGApp:
                 except Exception as e:
                     print(f"[AUTO-OVERLAY] Error enabling ingame mode: {e}", flush=True)
 
-        elif self._auto_overlay_active and (now - self._last_lmu_active_time > 1.5):
+        elif self._auto_overlay_active and (not is_lmu_fg or now - self._last_lmu_active_time > 1.5):
             self._auto_overlay_active = False
             try:
                 self._dashboard_mgr.set_display_mode("desktop")
-                print("[AUTO-OVERLAY] Exited LMU InGame state (debounced) -> Switched to DESKTOP Mode.", flush=True)
+                print("[AUTO-OVERLAY] Exited LMU foreground/ingame state -> Switched to DESKTOP Mode.", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error enabling desktop mode: {e}", flush=True)
 

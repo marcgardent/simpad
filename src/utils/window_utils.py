@@ -63,18 +63,18 @@ def get_foreground_process_name() -> str:
 
 def is_lmu_foreground() -> bool:
     """
-    Returns True if Le Mans Ultimate is the active window in the foreground.
-    Checks both window title and process image name.
+    Returns True ONLY if Le Mans Ultimate game executable is the active window in the foreground.
+    Strictly matches process executable name and game window title.
     """
     if sys.platform != "win32":
         return False
 
-    title = get_foreground_window_title().lower()
-    if any(k in title for k in ("le mans ultimate", "lemansultimate", "lmu", "rfactor2")):
+    proc_name = get_foreground_process_name().lower()
+    if proc_name in ("lemansultimate.exe", "rfactor2.exe", "lemansultimate", "rfactor2"):
         return True
 
-    proc_name = get_foreground_process_name().lower()
-    if any(k in proc_name for k in ("lemansultimate", "le mans ultimate", "lmu", "rfactor2")):
+    title = get_foreground_window_title().lower().strip()
+    if title == "le mans ultimate" or title.startswith("le mans ultimate") or title == "lemansultimate":
         return True
 
     return False
