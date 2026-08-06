@@ -190,6 +190,7 @@ class SimPadDPGApp:
 
         dpg.set_primary_window("primary_window", True)
         self._dashboard_mgr.build_all_ui()
+        self._dashboard_mgr.set_display_mode("desktop")
 
     # ── Dashboard Tab Layout ──────────────────────────────────────────────────
     def _build_dashboard_tab(self):

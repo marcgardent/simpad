@@ -34,9 +34,9 @@ class MonitoringBoard(BaseDashboard):
             no_title_bar=False,
             no_resize=False,
             no_collapse=False,
-            show=True,
+            show=False,
         ):
-            self._visible = True
+            self._visible = False
 
             # En-tête HUD
             with dpg.group(horizontal=True):

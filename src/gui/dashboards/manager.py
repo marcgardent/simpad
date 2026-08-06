@@ -33,9 +33,9 @@ class DashboardManager:
 
     def set_display_mode(self, mode: str) -> None:
         """
-        Bascule entre les modes d'affichage :
-        - 'ingame' : Masque la console de configuration (primary_window), affiche les overlays HUD (monitoringBoard).
-        - 'desktop' : Affiche la console de configuration (primary_window), masque les overlays HUD.
+        Bascule strictement entre les modes d'affichage :
+        - 'ingame' : Masque à 100% la console de configuration (primary_window), affiche uniquement les overlays HUD (monitoringBoard).
+        - 'desktop' : Masque à 100% les overlays HUD (monitoringBoard), affiche uniquement la console de configuration (primary_window).
         """
         if mode not in ("desktop", "ingame"):
             return
@@ -43,14 +43,16 @@ class DashboardManager:
         self._display_mode = mode
         if mode == "ingame":
             if dpg.does_item_exist("primary_window"):
+                dpg.set_primary_window("primary_window", False)
                 dpg.hide_item("primary_window")
             self.show_all()
-            print("[DashboardManager] Display mode switched to: INGAME (HUD Overlays Visible)", flush=True)
+            print("[DashboardManager] Mode INGAME actif -> Overlays HUD uniquement.", flush=True)
         else:
             self.hide_all()
             if dpg.does_item_exist("primary_window"):
                 dpg.show_item("primary_window")
-            print("[DashboardManager] Display mode switched to: DESKTOP (Configuration Console Visible)", flush=True)
+                dpg.set_primary_window("primary_window", True)
+            print("[DashboardManager] Mode DESKTOP actif -> Console de configuration uniquement.", flush=True)
 
     def register_dashboard(self, board: BaseDashboard) -> None:
         """Enregistre un nouveau dashboard dans le gestionnaire."""
