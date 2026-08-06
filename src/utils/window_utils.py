@@ -97,30 +97,17 @@ def get_screen_dimensions() -> tuple[int, int]:
 
 def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     """
-    Calculates (x, y, width, height) for a 3x3 grid cell.
+    Calculates (x, y, width, height) for a 3x3 physical screen grid cell.
+    Always uses the primary monitor's physical resolution so width is exactly 1/3 of the screen.
     col: 0 (left), 1 (middle), 2 (right)
     row: 0 (top), 1 (middle), 2 (bottom)
 
     Top-Middle (col=1, row=0) returns:
-    x = Width / 3
+    x = Screen_Width / 3
     y = 0
-    w = Width / 3
-    h = Height / 3
+    w = Screen_Width / 3
+    h = Screen_Height / 3
     """
-    try:
-        import dearpygui.dearpygui as dpg
-        if dpg.is_dearpygui_running():
-            vw = dpg.get_viewport_width()
-            vh = dpg.get_viewport_height()
-            if vw > 100 and vh > 100:
-                w = max(300, vw // 3)
-                h = max(180, vh // 3)
-                x = (vw - w) // 2 if col == 1 else col * w
-                y = row * h
-                return (int(x), int(y), int(w), int(h))
-    except Exception:
-        pass
-
     sw, sh = get_screen_dimensions()
     w = max(300, sw // 3)
     h = max(180, sh // 3)
@@ -163,7 +150,9 @@ def make_transparent_overlay(window_title: str) -> bool:
 
 def force_viewport_fullscreen_overlay(window_title: str) -> bool:
     """
-    Forces the DPG viewport window to maximized borderless overlay mode (HWND_TOPMOST + DWM transparency).
+    Forces the DPG viewport window to full physical screen resolution (0, 0, SW, SH)
+    with HWND_TOPMOST, WS_EX_TRANSPARENT (click pass-through), WS_EX_NOACTIVATE (focus protection),
+    and DWM background transparency.
     """
     try:
         import dearpygui.dearpygui as dpg
@@ -179,12 +168,26 @@ def force_viewport_fullscreen_overlay(window_title: str) -> bool:
         hwnd = user32.FindWindowW(None, window_title)
         if hwnd:
             sw, sh = get_screen_dimensions()
-            SW_MAXIMIZE = 3
-            user32.ShowWindow(hwnd, SW_MAXIMIZE)
+
+            # Apply Win32 Extended Window Styles for true click-through & no-activate
+            GWL_EXSTYLE = -20
+            WS_EX_TOPMOST = 0x00000008
+            WS_EX_LAYERED = 0x00080000
+            WS_EX_TRANSPARENT = 0x00000020
+            WS_EX_NOACTIVATE = 0x08000000
+
+            style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            style |= (WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+
+            # Stretch to full physical screen bounds (0, 0, sw, sh)
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos(hwnd, -1, 0, 0, sw, sh, SWP_SHOWWINDOW)
+
             margins = MARGINS(-1, -1, -1, -1)
             dwmapi = ctypes.windll.dwmapi
             dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Maximized Borderless Overlay ({sw}x{sh})", flush=True)
+            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Fullscreen Click-Through Overlay (0, 0, {sw}, {sh})", flush=True)
             return True
     except Exception as e:
         print(f"[VIEWPORT OVERLAY] Error forcing fullscreen overlay: {e}", flush=True)
@@ -194,7 +197,8 @@ def force_viewport_fullscreen_overlay(window_title: str) -> bool:
 
 def restore_viewport_windowed(window_title: str) -> bool:
     """
-    Restores the DPG viewport to maximized desktop console mode with standard window decorations (decorated=True).
+    Restores the DPG viewport to maximized desktop console mode with standard window decorations (decorated=True),
+    removing WS_EX_TRANSPARENT and WS_EX_NOACTIVATE flags.
     """
     try:
         import dearpygui.dearpygui as dpg
@@ -209,6 +213,14 @@ def restore_viewport_windowed(window_title: str) -> bool:
     try:
         hwnd = user32.FindWindowW(None, window_title)
         if hwnd:
+            GWL_EXSTYLE = -20
+            WS_EX_TRANSPARENT = 0x00000020
+            WS_EX_NOACTIVATE = 0x08000000
+
+            style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            style &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+
             SW_MAXIMIZE = 3
             user32.ShowWindow(hwnd, SW_MAXIMIZE)
             print(f"[VIEWPORT OVERLAY] HWND {hwnd} restored to Maximized Desktop Console (decorated=True)", flush=True)

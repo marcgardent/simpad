@@ -67,6 +67,8 @@ class MonitoringBoard(BaseDashboard):
 
     def show(self) -> None:
         if dpg.does_item_exist(self._window_tag):
+            x, y, w, h = get_3x3_grid_rect(col=1, row=0)
+            dpg.configure_item(self._window_tag, pos=[x, y], width=w, height=h)
             dpg.show_item(self._window_tag)
             try:
                 dpg.focus_item(self._window_tag)
