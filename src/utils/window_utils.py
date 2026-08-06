@@ -160,3 +160,53 @@ def make_transparent_overlay(window_title: str) -> bool:
 
     return False
 
+
+def force_viewport_fullscreen_overlay(window_title: str) -> bool:
+    """
+    Forces the DPG viewport window to full physical monitor resolution (0, 0, SW, SH)
+    with HWND_TOPMOST and DWM transparency.
+    """
+    if sys.platform != "win32" or not user32:
+        return False
+
+    try:
+        hwnd = user32.FindWindowW(None, window_title)
+        if hwnd:
+            sw, sh = get_screen_dimensions()
+            HWND_TOPMOST = -1
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, sw, sh, SWP_SHOWWINDOW)
+            margins = MARGINS(-1, -1, -1, -1)
+            dwmapi = ctypes.windll.dwmapi
+            dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Fullscreen Overlay (0, 0, {sw}, {sh})", flush=True)
+            return True
+    except Exception as e:
+        print(f"[VIEWPORT OVERLAY] Error forcing fullscreen overlay: {e}", flush=True)
+
+    return False
+
+
+def restore_viewport_windowed(window_title: str, width: int = 1240, height: int = 780) -> bool:
+    """
+    Restores the DPG viewport to standard windowed mode (centered on monitor, HWND_NOTOPMOST).
+    """
+    if sys.platform != "win32" or not user32:
+        return False
+
+    try:
+        hwnd = user32.FindWindowW(None, window_title)
+        if hwnd:
+            sw, sh = get_screen_dimensions()
+            x = (sw - width) // 2
+            y = (sh - height) // 2
+            HWND_NOTOPMOST = -2
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos(hwnd, HWND_NOTOPMOST, int(x), int(y), int(width), int(height), SWP_SHOWWINDOW)
+            print(f"[VIEWPORT OVERLAY] HWND {hwnd} restored to Windowed Console ({x}, {y}, {width}, {height})", flush=True)
+            return True
+    except Exception as e:
+        print(f"[VIEWPORT OVERLAY] Error restoring windowed console: {e}", flush=True)
+
+    return False
+

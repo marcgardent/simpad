@@ -40,28 +40,24 @@ class DashboardManager:
         if mode not in ("desktop", "ingame"):
             return
 
-        from src.utils.window_utils import get_screen_dimensions
-        sw, sh = get_screen_dimensions()
+        from src.utils.window_utils import (
+            force_viewport_fullscreen_overlay,
+            restore_viewport_windowed,
+        )
+        viewport_title = "SimPad Haptic Middleware (Synthesizer Engine)"
 
         self._display_mode = mode
         if mode == "ingame":
             if dpg.does_item_exist("primary_window"):
                 dpg.set_primary_window("primary_window", False)
                 dpg.hide_item("primary_window")
-            
-            # Viewport plein écran borderless Always-On-Top
-            try:
-                dpg.configure_viewport(0, width=sw, height=sh, decorated=False, always_on_top=True)
-            except Exception:
-                pass
+
+            force_viewport_fullscreen_overlay(viewport_title)
             self.show_all()
             print("[DashboardManager] Mode INGAME actif -> Viewport Plein Écran Borderless + Overlays HUD.", flush=True)
         else:
             self.hide_all()
-            try:
-                dpg.configure_viewport(0, width=1240, height=780, decorated=True, always_on_top=False)
-            except Exception:
-                pass
+            restore_viewport_windowed(viewport_title, 1240, 780)
             if dpg.does_item_exist("primary_window"):
                 dpg.show_item("primary_window")
                 dpg.set_primary_window("primary_window", True)
