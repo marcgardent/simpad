@@ -50,6 +50,7 @@ class LMUParser:
     PACKET_FORMAT = "<8f"
     PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
     _last_in_realtime: bool = True
+    _in_garage_trap: bool = False
 
     @classmethod
     def parse(cls, data: bytes) -> Optional[TelemetryData]:
@@ -80,12 +81,14 @@ class LMUParser:
                                     player_veh = v
                                     break
 
+                    cls._in_garage_trap = False
                     if player_veh:
                         # Piege : Si la voiture est dans le stand (garage stall) ou pas sous contrôle humain (mControl != 0)
                         in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
                         ctrl = player_veh.get("mControl", 0)
                         if in_garage or ctrl != 0:
                             is_in_realtime = False
+                            cls._in_garage_trap = True
 
                     cls._last_in_realtime = is_in_realtime
                     return TelemetryData(in_realtime=cls._last_in_realtime)
@@ -148,10 +151,14 @@ class LMUParser:
 
                     if "mInRealtime" in js or "inRealtime" in js:
                         in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
-                        in_rt = bool(in_rt_val != 0 and in_rt_val is not False)
+                        in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
+                        if not in_rt_flag or cls._in_garage_trap:
+                            in_rt = False
+                        else:
+                            in_rt = True
                         cls._last_in_realtime = in_rt
                     else:
-                        in_rt = cls._last_in_realtime
+                        in_rt = False if cls._in_garage_trap else cls._last_in_realtime
 
                     gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
 
