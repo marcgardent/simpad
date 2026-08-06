@@ -1,190 +1,114 @@
 """
-monitoringBoard — Dedicated Native Windows OS HUD Overlay Dashboard.
-Creates a native, frameless, Always-On-Top, semi-transparent OS window positioned at
-Top-Middle third of the primary monitor (X=Width/3, Y=0, W=Width/3, H=Height/3).
+monitoringBoard — Pure GPU-Accelerated Dear PyGui / Dear ImGui HUD Overlay Dashboard.
+Positioned at Top-Middle third of the primary monitor screen (X=Width/3, Y=0, W=Width/3, H=Height/3).
 """
 
-import sys
-import tkinter as tk
-from tkinter import ttk
+import dearpygui.dearpygui as dpg
 from src.gui.dashboards.base import BaseDashboard
 from src.telemetry.sensors import VehicleSensors
-from src.utils.window_utils import get_screen_dimensions
+from src.utils.window_utils import get_3x3_grid_rect
 
 
 class MonitoringBoard(BaseDashboard):
     """
-    Tableau de bord HUD 'monitoringBoard' sous forme de vraie fenêtre système Windows (HWND).
-    Positionné de manière fixe dans le tiers haut / milieu de l'écran (grille 3x3 : col=1, row=0).
+    Tableau de bord HUD 'monitoringBoard' sous forme de fenêtre Dear PyGui / ImGui GPU accélérée (DirectX 11).
+    Positionné de manière fixe dans le tiers haut (vertical) et milieu (horizontal) de l'écran (col=1, row=0).
     """
 
     def __init__(self):
         super().__init__(name="monitoringBoard")
-        self.root: tk.Tk | None = None
-        self._lbl_gear = None
-        self._lbl_rpm_text = None
-        self._bar_rpm = None
-        self._bar_abs = None
-        self._bar_tc = None
-        self._bar_over = None
-        self._bar_travel = None
+        self._window_tag = "monitoringBoard"
 
     def build_ui(self) -> None:
-        if self.root is not None:
+        if dpg.does_item_exist(self._window_tag):
             return
 
-        try:
-            self.root = tk.Tk()
-            self.root.title("monitoringBoard")
+        x, y, w, h = get_3x3_grid_rect(col=1, row=0)
 
-            # Configuration fenêtre OS native : sans bordure, Always-On-Top, semi-transparente
-            self.root.overrideredirect(True)
-            self.root.attributes("-topmost", True)
-            try:
-                self.root.attributes("-alpha", 0.88)
-            except Exception:
-                pass
-
-            self.root.configure(bg="#121216")
-
-            # Calcul du rectangle grille 3x3 : col=1 (milieu), row=0 (haut)
-            sw, sh = get_screen_dimensions()
-            w = max(360, sw // 3)
-            h = max(220, sh // 3)
-            x = (sw - w) // 2
-            y = 0
-            self.root.geometry(f"{w}x{h}+{x}+{y}")
-
-            # Style ttk sombre
-            style = ttk.Style()
-            style.theme_use("clam")
-            style.configure("TProgressbar", thickness=14, troughcolor="#1c1c23", background="#00d2ff")
-            style.configure("Abs.Horizontal.TProgressbar", thickness=14, troughcolor="#1c1c23", background="#e74c3c")
-            style.configure("Tc.Horizontal.TProgressbar", thickness=14, troughcolor="#1c1c23", background="#ff9900")
-            style.configure("Over.Horizontal.TProgressbar", thickness=14, troughcolor="#1c1c23", background="#a569bd")
-            style.configure("Curb.Horizontal.TProgressbar", thickness=14, troughcolor="#1c1c23", background="#2ecc71")
+        with dpg.window(
+            tag=self._window_tag,
+            label="Monitoring Board",
+            pos=[x, y],
+            width=w,
+            height=h,
+            no_title_bar=False,
+            no_resize=False,
+            no_collapse=False,
+            show=True,
+        ):
+            self._visible = True
 
             # En-tête HUD
-            header_frame = tk.Frame(self.root, bg="#121216")
-            header_frame.pack(fill="x", px=10, py=6)
+            with dpg.group(horizontal=True):
+                dpg.add_text("SIMPAD", color=[0, 210, 255, 255])
+                dpg.add_text("MONITORING BOARD", color=[255, 200, 0, 255])
+                dpg.add_spacer(width=20)
+                dpg.add_text("Gear:", color=[180, 180, 180, 255])
+                dpg.add_text("N", tag="mb_lbl_gear", color=[46, 204, 113, 255])
 
-            lbl_brand = tk.Label(header_frame, text="SIMPAD ", fg="#00d2ff", bg="#121216", font=("Segoe UI", 11, "bold"))
-            lbl_brand.pack(side="left")
+            dpg.add_separator()
+            dpg.add_spacer(height=4)
 
-            lbl_title = tk.Label(header_frame, text="MONITORING BOARD", fg="#ffc800", bg="#121216", font=("Segoe UI", 11, "bold"))
-            lbl_title.pack(side="left")
-
-            lbl_gear_hdr = tk.Label(header_frame, text="  GEAR: ", fg="#b4b4b4", bg="#121216", font=("Segoe UI", 10))
-            lbl_gear_hdr.pack(side="left")
-
-            self._lbl_gear = tk.Label(header_frame, text="N", fg="#2ecc71", bg="#121216", font=("Segoe UI", 14, "bold"))
-            self._lbl_gear.pack(side="left")
-
-            # Séparateur lumineux
-            sep = tk.Frame(self.root, bg="#00d2ff", height=2)
-            sep.pack(fill="x", px=8, py=2)
-
-            # Contenu principal
-            main_frame = tk.Frame(self.root, bg="#121216")
-            main_frame.pack(fill="both", expand=True, px=10, py=4)
-
-            # Barre RPM
-            rpm_frame = tk.Frame(main_frame, bg="#121216")
-            rpm_frame.pack(fill="x", py=2)
-
-            self._lbl_rpm_text = tk.Label(rpm_frame, text="RPM: 0 / 7500", fg="#b4b4b4", bg="#121216", font=("Segoe UI", 9))
-            self._lbl_rpm_text.pack(anchor="w")
-
-            self._bar_rpm = ttk.Progressbar(rpm_frame, orient="horizontal", mode="determinate", maximum=100)
-            self._bar_rpm.pack(fill="x", py=2)
+            # Indicateurs de signaux télémétriques
+            dpg.add_text("Engine RPM:", color=[180, 180, 180, 255])
+            dpg.add_progress_bar(tag="mb_bar_rpm", default_value=0.0, width=-1, overlay="0 RPM")
+            dpg.add_spacer(height=4)
 
             # Grille 2 colonnes (Braking & Dynamics)
-            cols_frame = tk.Frame(main_frame, bg="#121216")
-            cols_frame.pack(fill="both", expand=True, py=4)
+            with dpg.group(horizontal=True):
+                with dpg.child_window(width=(w // 2) - 14, height=max(80, h - 110), border=True):
+                    dpg.add_text("Braking & Traction", color=[0, 210, 255, 255])
+                    dpg.add_spacer(height=2)
+                    dpg.add_text("ABS (Freinage):", color=[180, 180, 180, 255])
+                    dpg.add_progress_bar(tag="mb_bar_abs", default_value=0.0, width=-1)
+                    dpg.add_spacer(height=4)
+                    dpg.add_text("TC (Motricité):", color=[180, 180, 180, 255])
+                    dpg.add_progress_bar(tag="mb_bar_tc", default_value=0.0, width=-1)
 
-            # Colonne 1 : Freinage (ABS) & Motricité (TC)
-            col1 = tk.Frame(cols_frame, bg="#18181c", bd=1, relief="solid")
-            col1.pack(side="left", fill="both", expand=True, px=4, py=2)
-
-            tk.Label(col1, text="FREINAGE & MOTRICITÉ", fg="#00d2ff", bg="#18181c", font=("Segoe UI", 9, "bold")).pack(anchor="w", px=4, py=2)
-            tk.Label(col1, text="ABS (Blocage):", fg="#b4b4b4", bg="#18181c", font=("Segoe UI", 8)).pack(anchor="w", px=4)
-            self._bar_abs = ttk.Progressbar(col1, orient="horizontal", mode="determinate", maximum=100, style="Abs.Horizontal.TProgressbar")
-            self._bar_abs.pack(fill="x", px=4, py=2)
-
-            tk.Label(col1, text="TC (Patinage):", fg="#b4b4b4", bg="#18181c", font=("Segoe UI", 8)).pack(anchor="w", px=4)
-            self._bar_tc = ttk.Progressbar(col1, orient="horizontal", mode="determinate", maximum=100, style="Tc.Horizontal.TProgressbar")
-            self._bar_tc.pack(fill="x", px=4, py=2)
-
-            # Colonne 2 : Dynamique & Châssis
-            col2 = tk.Frame(cols_frame, bg="#18181c", bd=1, relief="solid")
-            col2.pack(side="right", fill="both", expand=True, px=4, py=2)
-
-            tk.Label(col2, text="DYNAMIQUE & VIBREURS", fg="#00d2ff", bg="#18181c", font=("Segoe UI", 9, "bold")).pack(anchor="w", px=4, py=2)
-            tk.Label(col2, text="Sur-Virage (Over):", fg="#b4b4b4", bg="#18181c", font=("Segoe UI", 8)).pack(anchor="w", px=4)
-            self._bar_over = ttk.Progressbar(col2, orient="horizontal", mode="determinate", maximum=100, style="Over.Horizontal.TProgressbar")
-            self._bar_over.pack(fill="x", px=4, py=2)
-
-            tk.Label(col2, text="Vibreurs (Curbs):", fg="#b4b4b4", bg="#18181c", font=("Segoe UI", 8)).pack(anchor="w", px=4)
-            self._bar_travel = ttk.Progressbar(col2, orient="horizontal", mode="determinate", maximum=100, style="Curb.Horizontal.TProgressbar")
-            self._bar_travel.pack(fill="x", px=4, py=2)
-
-            # Masquer initialement la fenêtre
-            self.root.withdraw()
-            self._visible = False
-        except Exception as e:
-            print(f"[MonitoringBoard] Error building native OS window: {e}", flush=True)
+                with dpg.child_window(width=(w // 2) - 14, height=max(80, h - 110), border=True):
+                    dpg.add_text("Dynamics & Chassis", color=[0, 210, 255, 255])
+                    dpg.add_spacer(height=2)
+                    dpg.add_text("Sur-Virage (Over):", color=[180, 180, 180, 255])
+                    dpg.add_progress_bar(tag="mb_bar_over", default_value=0.0, width=-1)
+                    dpg.add_spacer(height=4)
+                    dpg.add_text("Vibreurs (Curbs):", color=[180, 180, 180, 255])
+                    dpg.add_progress_bar(tag="mb_bar_travel", default_value=0.0, width=-1)
 
     def show(self) -> None:
-        if self.root is not None:
+        if dpg.does_item_exist(self._window_tag):
+            dpg.show_item(self._window_tag)
             try:
-                self.root.deiconify()
-                self.root.lift()
-                self.root.attributes("-topmost", True)
-                self.root.update()
-                self._visible = True
-            except Exception as e:
-                print(f"[MonitoringBoard] Error showing window: {e}", flush=True)
+                dpg.focus_item(self._window_tag)
+            except Exception:
+                pass
+            self._visible = True
 
     def hide(self) -> None:
-        if self.root is not None:
-            try:
-                self.root.withdraw()
-                self._visible = False
-            except Exception as e:
-                print(f"[MonitoringBoard] Error hiding window: {e}", flush=True)
+        if dpg.does_item_exist(self._window_tag):
+            dpg.hide_item(self._window_tag)
+            self._visible = False
 
     def update_telemetry(self, sensors: VehicleSensors) -> None:
-        if self.root is None or not self._visible:
+        if not self._visible or not dpg.does_item_exist(self._window_tag):
             return
 
-        try:
-            # Rapport engagé
-            gear_str = "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear))
-            if self._lbl_gear:
-                self._lbl_gear.config(text=gear_str)
+        gear_str = "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear))
+        if dpg.does_item_exist("mb_lbl_gear"):
+            dpg.set_value("mb_lbl_gear", gear_str)
 
-            # RPM
+        if dpg.does_item_exist("mb_bar_rpm"):
             rpm_ratio = min(1.0, max(0.0, sensors.rpm_ratio))
-            current_rpm = int(rpm_ratio * sensors.engine_max_rpm)
-            if self._lbl_rpm_text:
-                self._lbl_rpm_text.config(text=f"RPM: {current_rpm} / {int(sensors.engine_max_rpm)}")
-            if self._bar_rpm:
-                self._bar_rpm["value"] = rpm_ratio * 100
+            dpg.set_value("mb_bar_rpm", rpm_ratio)
+            dpg.configure_item("mb_bar_rpm", overlay=f"{int(rpm_ratio * sensors.engine_max_rpm)} RPM")
 
-            # Signaux
-            if self._bar_abs:
-                self._bar_abs["value"] = min(100, max(0, sensors.lock_intensity * 100))
+        if dpg.does_item_exist("mb_bar_abs"):
+            dpg.set_value("mb_bar_abs", min(1.0, max(0.0, sensors.lock_intensity)))
 
-            if self._bar_tc:
-                self._bar_tc["value"] = min(100, max(0, sensors.spin_intensity * 100))
+        if dpg.does_item_exist("mb_bar_tc"):
+            dpg.set_value("mb_bar_tc", min(1.0, max(0.0, sensors.spin_intensity)))
 
-            if self._bar_over:
-                self._bar_over["value"] = min(100, max(0, sensors.oversteer_intensity * 100))
+        if dpg.does_item_exist("mb_bar_over"):
+            dpg.set_value("mb_bar_over", min(1.0, max(0.0, sensors.oversteer_intensity)))
 
-            if self._bar_travel:
-                self._bar_travel["value"] = min(100, max(0, sensors.travel_intensity * 100))
-
-            self.root.update_idletasks()
-            self.root.update()
-        except Exception:
-            pass
+        if dpg.does_item_exist("mb_bar_travel"):
+            dpg.set_value("mb_bar_travel", min(1.0, max(0.0, sensors.travel_intensity)))
