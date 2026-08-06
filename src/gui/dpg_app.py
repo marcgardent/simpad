@@ -324,19 +324,6 @@ class SimPadDPGApp:
                 status_str = "Waiting..."
                 status_col = [231, 76, 60, 255]
             dpg.set_value("lbl_udp_status", status_str)
-            dpg.configure_item("lbl_udp_status", color=status_col)= self._udp and self._udp.is_receiving()
-            latest = self._udp.get_latest_data() if self._udp else None
-            on_track = latest.in_realtime if latest else False
-            if udp_recv and on_track:
-                status_str = "On Track (Active)"
-                status_col = [46, 204, 113, 255]
-            elif udp_recv and not on_track:
-                status_str = "In Menu (Standby)"
-                status_col = [241, 196, 15, 255]
-            else:
-                status_str = "Waiting..."
-                status_col = [231, 76, 60, 255]
-            dpg.set_value("lbl_udp_status", status_str)
             dpg.configure_item("lbl_udp_status", color=status_col)
 
     def _process_telemetry_frame(self, data: TelemetryData):
