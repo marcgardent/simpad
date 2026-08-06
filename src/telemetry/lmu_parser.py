@@ -49,6 +49,7 @@ class LMUParser:
 
     PACKET_FORMAT = "<8f"
     PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
+    _last_in_realtime: bool = True
 
     @classmethod
     def parse(cls, data: bytes) -> Optional[TelemetryData]:
@@ -61,6 +62,35 @@ class LMUParser:
                 js = json.loads(raw_strip.decode("utf-8", errors="ignore"))
                 msg_type = js.get("Type") or js.get("type", "")
 
+                # 1. Message de type ScoringInfoV01 (mise à jour de l'état InGame / Menu / Garage)
+                if msg_type == "ScoringInfoV01" or "mVehicles" in js:
+                    in_rt_top = js.get("mInRealtime", js.get("inRealtime", False))
+                    is_in_realtime = bool(in_rt_top != 0 and in_rt_top is not False)
+
+                    vehicles = js.get("mVehicles", [])
+                    player_veh = None
+                    if isinstance(vehicles, list):
+                        for v in vehicles:
+                            if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
+                                player_veh = v
+                                break
+                        if not player_veh and vehicles:
+                            for v in vehicles:
+                                if isinstance(v, dict) and v.get("mControl") == 0:
+                                    player_veh = v
+                                    break
+
+                    if player_veh:
+                        # Piege : Si la voiture est dans le stand (garage stall) ou pas sous contrôle humain (mControl != 0)
+                        in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
+                        ctrl = player_veh.get("mControl", 0)
+                        if in_garage or ctrl != 0:
+                            is_in_realtime = False
+
+                    cls._last_in_realtime = is_in_realtime
+                    return TelemetryData(in_realtime=cls._last_in_realtime)
+
+                # 2. Message de type TelemInfoV01 (données télémétriques de conduite)
                 if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js or "mEngineRPM" in js:
                     wheels = js.get("mWheel") or js.get("wheels") or []
                     lpv, lgv, lat_pv, lat_gv, travels, susp_vels = (
@@ -116,25 +146,14 @@ class LMUParser:
                     e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
                     e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
 
-                    in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
-                    in_rt = bool(in_rt_val != 0 and in_rt_val is not False)
+                    if "mInRealtime" in js or "inRealtime" in js:
+                        in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
+                        in_rt = bool(in_rt_val != 0 and in_rt_val is not False)
+                        cls._last_in_realtime = in_rt
+                    else:
+                        in_rt = cls._last_in_realtime
 
                     gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
-
-                    # Live debug log dump for user frame inspection
-                    try:
-                        with open("telemetry_dump.log", "a", encoding="utf-8") as f:
-                            dump_entry = {
-                                "timestamp": time.time(),
-                                "veh_speed": veh_speed,
-                                "lpv": lpv,
-                                "lgv": lgv,
-                                "wheels_raw_patch": [w.get("mLongitudinalPatchVel", w.get("longitudinalPatchVel")) for w in wheels[:4]] if isinstance(wheels, list) else [],
-                                "wheels_raw_ground": [w.get("mLongitudinalGroundVel", w.get("longitudinalGroundVel")) for w in wheels[:4]] if isinstance(wheels, list) else []
-                            }
-                            f.write(json.dumps(dump_entry) + "\n")
-                    except Exception:
-                        pass
 
                     return TelemetryData(
                         longitudinal_patch_vel=lpv,
@@ -152,7 +171,7 @@ class LMUParser:
             except Exception as e:
                 logger.debug(f"[LMUParser] JSON decode error: {e}")
 
-        # 2. Format binaire standard SimPad (32 octets = 8 floats)
+        # 3. Format binaire standard SimPad (32 octets = 8 floats)
         if len(data) >= cls.PACKET_SIZE:
             try:
                 values = struct.unpack(cls.PACKET_FORMAT, data[:cls.PACKET_SIZE])
@@ -160,7 +179,7 @@ class LMUParser:
                 lat_pv = (float(values[4]), float(values[5]), float(values[6]), float(values[7]))
                 max_v = max(abs(v) for v in lpv)
                 lgv = (max_v, max_v, max_v, max_v)
-                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=lgv, lateral_patch_vel=lat_pv)
+                return TelemetryData(longitudinal_patch_vel=lpv, longitudinal_ground_vel=lgv, lateral_patch_vel=lat_pv, in_realtime=True)
             except Exception as e:
                 logger.debug(f"[LMUParser] Erreur unpack 32b: {e}")
 

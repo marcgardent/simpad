@@ -53,11 +53,10 @@ class SimPadDPGApp:
         self._d_grip      = deque([1.0] * HISTORY, maxlen=HISTORY)
         self._d_low       = deque([0.0] * HISTORY, maxlen=HISTORY)
         self._d_high      = deque([0.0] * HISTORY, maxlen=HISTORY)
-        self._start_time  = time.time()
-
-        # Node Editor Sub-Module
+        self._start_time  = time.time()        # Node Editor Sub-Module
         self._node_editor = NodeEditorTab()
         self._is_pinned = False
+        self._auto_overlay_active = False
 
     def run(self):
         dpg.create_context()
@@ -87,6 +86,8 @@ class SimPadDPGApp:
 
     def _toggle_pin(self, sender=None, app_data=None, user_data=None):
         self._is_pinned = not self._is_pinned
+        if self._is_pinned:
+            dpg.show_viewport()
         dpg.configure_viewport(0, always_on_top=self._is_pinned, decorated=not self._is_pinned)
 
     # ── Background Backends Init ──────────────────────────────────────────────
@@ -155,8 +156,6 @@ class SimPadDPGApp:
                         print(f"[Font] Error loading {p}: {e}", flush=True)
         dpg.set_global_font_scale(1.25)
 
-
-
     # ── GUI Layout ────────────────────────────────────────────────────────────
     def _build_gui(self):
         with dpg.window(tag="primary_window"):
@@ -185,7 +184,11 @@ class SimPadDPGApp:
                 dpg.add_button(label="Install Plugin", tag="btn_install_plugin", width=110, callback=self._cb_install_plugin)
 
                 dpg.add_spacer(width=15)
-                dpg.add_text("UDP Telemetry (Port 5000):", color=[180, 180, 180, 255])
+                dpg.add_text("LMU Window:", color=[180, 180, 180, 255])
+                dpg.add_text("Background", tag="lbl_lmu_fg_status", color=[231, 76, 60, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("UDP Telemetry:", color=[180, 180, 180, 255])
                 dpg.add_text("Waiting...", tag="lbl_udp_status", color=[231, 76, 60, 255])
 
                 dpg.add_spacer(width=15)
@@ -204,6 +207,7 @@ class SimPadDPGApp:
             dpg.add_text("• Real-Time Synthesizer Thread: ACTIVE", color=[46, 204, 113, 255])
             dpg.add_text("• Graph Compiler: Python Bytecode JIT", color=[46, 204, 113, 255])
             dpg.add_text("• Telemetry Pipeline: UDP Port 5000", color=[46, 204, 113, 255])
+            dpg.add_text("• Auto Overlay Mode: ACTIVE (LMU Foreground + InGame Driving)", tag="lbl_auto_overlay_info", color=[0, 210, 255, 255])
 
     # ── Monitor Tab Layout ────────────────────────────────────────────────────
     def _build_monitor_tab(self):
@@ -237,13 +241,12 @@ class SimPadDPGApp:
                 dpg.configure_item("lbl_plugin_status", color=[231, 76, 60, 255])
 
     # ── Render Loop Tick ──────────────────────────────────────────────────────
-    # TODO: [SLAP] Keep _render_tick at a single high level of abstraction: poll status -> process telemetry frame -> refresh plot series.
-    # TODO: [SRP] UI rendering tick should delegate data history queue calculations and plot rendering to helper methods.
     def _render_tick(self):
         if not hasattr(self, "_lmu_installer"):
             return
 
         self._update_status_indicators()
+        self._check_lmu_auto_overlay()
 
         if self._udp and self._udp.is_receiving() and self._telemetry_enabled:
             data = self._udp.get_latest_data()
@@ -260,14 +263,68 @@ class SimPadDPGApp:
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()
 
+    def _check_lmu_auto_overlay(self):
+        """
+        Détecte si LMU est actif au premier plan ET en conduite in-game (pas dans les menus/stands).
+        Si InGame : active Always On Top, Borderless et onglet Monitor.
+        Si sortie de InGame : fait disparaître la fenêtre (hide_viewport).
+        """
+        from src.utils.window_utils import is_lmu_foreground
+
+        is_lmu_fg = is_lmu_foreground()
+        udp_recv = self._udp and self._udp.is_receiving()
+        latest = self._udp.get_latest_data() if self._udp else None
+        on_track = latest.in_realtime if (latest and udp_recv) else False
+
+        should_overlay = is_lmu_fg and on_track
+
+        if should_overlay and not self._auto_overlay_active:
+            self._auto_overlay_active = True
+            try:
+                dpg.show_viewport()
+                dpg.configure_viewport(0, always_on_top=True, decorated=False)
+                dpg.set_value("main_tab_bar", "tab_monitor")
+                print("[AUTO-OVERLAY] LMU InGame driving detected -> Window Always-On-Top Borderless & Monitor Tab active.", flush=True)
+            except Exception as e:
+                print(f"[AUTO-OVERLAY] Error enabling overlay: {e}", flush=True)
+
+        elif not should_overlay and self._auto_overlay_active:
+            self._auto_overlay_active = False
+            try:
+                if not self._is_pinned:
+                    dpg.hide_viewport()
+                    dpg.configure_viewport(0, always_on_top=False, decorated=True)
+                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window.", flush=True)
+            except Exception as e:
+                print(f"[AUTO-OVERLAY] Error hiding window: {e}", flush=True)
+
     def _update_status_indicators(self):
-        if dpg.does_item_exist("lbl_lmu_status"):
-            is_inst = self._lmu_installer.is_installed()
-            dpg.set_value("lbl_lmu_status", "Installed" if is_inst else "Not Installed")
-            dpg.configure_item("lbl_lmu_status", color=[46, 204, 113, 255] if is_inst else [231, 76, 60, 255])
+        from src.utils.window_utils import is_lmu_foreground
+        is_lmu_fg = is_lmu_foreground()
+
+        if dpg.does_item_exist("lbl_lmu_fg_status"):
+            if is_lmu_fg:
+                dpg.set_value("lbl_lmu_fg_status", "Foreground (Active)")
+                dpg.configure_item("lbl_lmu_fg_status", color=[46, 204, 113, 255])
+            else:
+                dpg.set_value("lbl_lmu_fg_status", "Background")
+                dpg.configure_item("lbl_lmu_fg_status", color=[231, 76, 60, 255])
 
         if dpg.does_item_exist("lbl_udp_status"):
             udp_recv = self._udp and self._udp.is_receiving()
+            latest = self._udp.get_latest_data() if self._udp else None
+            on_track = latest.in_realtime if latest else False
+            if udp_recv and on_track:
+                status_str = "On Track (InGame)"
+                status_col = [46, 204, 113, 255]
+            elif udp_recv and not on_track:
+                status_str = "In Menu / Pit Standby"
+                status_col = [241, 196, 15, 255]
+            else:
+                status_str = "Waiting..."
+                status_col = [231, 76, 60, 255]
+            dpg.set_value("lbl_udp_status", status_str)
+            dpg.configure_item("lbl_udp_status", color=status_col)= self._udp and self._udp.is_receiving()
             latest = self._udp.get_latest_data() if self._udp else None
             on_track = latest.in_realtime if latest else False
             if udp_recv and on_track:
