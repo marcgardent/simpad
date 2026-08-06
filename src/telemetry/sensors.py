@@ -52,6 +52,27 @@ class VehicleSensors:
     # Vitesse du véhicule (m/s)
     vehicle_speed: float = 0.0
 
+    # Pédales non filtrées (0.0 à 1.0)
+    unfiltered_throttle: float = 0.0
+    unfiltered_brake: float = 0.0
+
+    # Télémétrie de session, chrono et énergie
+    fuel_level: float = 0.0
+    remaining_laps: int = 0
+    delta_time: float = 0.0
+    sector1_time: str = "--"
+    sector1_status: str = "default"
+    sector2_time: str = "--"
+    sector2_status: str = "default"
+    sector3_time: str = "--"
+    sector3_status: str = "default"
+    explicit_aero_load: float = 0.0
+    current_sector: int = 1
+    sector1_delta: float = 0.0
+    sector2_delta: float = 0.0
+    sector3_delta: float = 0.0
+    lap_flag: int = 2
+
     # État en piste et rapport engagé
     in_realtime: bool = True
     gear: int = 0
@@ -69,7 +90,25 @@ class VehicleSensors:
         suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
         in_realtime: bool = True,
         gear: int = 0,
+        unfiltered_throttle: float = 0.0,
+        unfiltered_brake: float = 0.0,
+        fuel_level: float = 0.0,
+        remaining_laps: int = 0,
+        delta_time: float = 0.0,
+        sector1_time: str = "--",
+        sector1_status: str = "default",
+        sector2_time: str = "--",
+        sector2_status: str = "default",
+        sector3_time: str = "--",
+        sector3_status: str = "default",
+        explicit_aero_load: float = 0.0,
+        current_sector: int = 1,
+        sector1_delta: float = 0.0,
+        sector2_delta: float = 0.0,
+        sector3_delta: float = 0.0,
+        lap_flag: int = 2,
     ) -> "VehicleSensors":
+
         if not in_realtime:
             return cls(in_realtime=False, gear=gear)
 
@@ -93,40 +132,23 @@ class VehicleSensors:
             speed = max(0.5, lgv_mag, lpv_mag)
 
             # Wheel Lockup (Over-braking): Ground speed > Patch speed par au moins 5% pour filtrer les micro-reliefs de piste
-            if lgv_mag > 1.0 and lgv_mag > (lpv_mag * 1.05):
-                raw_lock = (lgv_mag - lpv_mag) / lgv_mag
+            if lgv_mag > 1.5 and lpv_mag < 0.2 * lgv_mag:
+                locks.append(min(1.0, (lgv_mag - lpv_mag) / speed))
             else:
-                raw_lock = 0.0
+                locks.append(0.0)
 
             # Wheel Spin (TC / Over-acceleration): Patch speed > Ground speed (wheel spinning faster than vehicle ground speed)
-            if lpv_mag > 0.1 and lpv_mag > lgv_mag:
-                raw_spin = (lpv_mag - lgv_mag) / lpv_mag
+            if lpv_mag > lgv_mag + 2.0 and lgv_mag > 0.5:
+                spins.append(min(1.0, (lpv_mag - lgv_mag) / speed))
             else:
-                raw_spin = 0.0
+                spins.append(0.0)
 
             # Lateral Slip (Oversteer / Understeer): Lateral patch speed relative to effective speed
-            raw_lat = lat_pv_mag / speed
-
-            lk = min(1.0, max(0.0, raw_lock))
-            sp = min(1.0, max(0.0, raw_spin))
-            lt = min(1.0, max(0.0, raw_lat))
-
-            locks.append(lk)
-            spins.append(sp)
-            lats.append(lt)
-
-            # Remaining Grip Fraction: 1.0 - max(lock, spin, lat_slip), strictly clamped to [0.0, 1.0]
-            total_slip = max(lk, sp, lt)
-            grips.append(min(1.0, max(0.0, 1.0 - total_slip)))
+            lats.append(min(1.0, lat_pv_mag / speed))
+            grips.append(max(0.0, 1.0 - max(locks[-1], spins[-1], lats[-1])))
 
         # Dynamic kerb / vibreur travel intensity from suspension velocity (scaled: 0.40 m/s = 1.0)
-        if any(v != 0.0 for v in suspension_velocities):
-            travels = [min(1.0, max(0.0, abs(float(v)) / 0.40)) for v in suspension_velocities[:4]]
-        else:
-            travels = [min(1.0, max(0.0, float(st))) for st in suspension_travels[:4]]
-
-        if len(travels) < 4:
-            travels.extend([0.0] * (4 - len(travels)))
+        travels = tuple(min(1.0, max(0.0, t)) for t in suspension_travels)
 
         return cls(
             front_left_lock=locks[0],
@@ -152,9 +174,73 @@ class VehicleSensors:
             rear_left_grip=grips[2],
             rear_right_grip=grips[3],
             vehicle_speed=avg_speed,
+            unfiltered_throttle=max(0.0, min(1.0, float(unfiltered_throttle))),
+            unfiltered_brake=max(0.0, min(1.0, float(unfiltered_brake))),
+            fuel_level=fuel_level,
+            remaining_laps=remaining_laps,
+            delta_time=delta_time,
+            sector1_time=sector1_time,
+            sector1_status=sector1_status,
+            sector2_time=sector2_time,
+            sector2_status=sector2_status,
+            sector3_time=sector3_time,
+            sector3_status=sector3_status,
+            explicit_aero_load=explicit_aero_load,
+            current_sector=current_sector,
+            sector1_delta=sector1_delta,
+            sector2_delta=sector2_delta,
+            sector3_delta=sector3_delta,
+            lap_flag=lap_flag,
             in_realtime=True,
             gear=gear,
         )
+
+
+    # ── Timing, Sector & Aero Properties ──────────────────────────────────────
+    @property
+    def delta_time_str(self) -> str:
+        """Chrono Delta formaté (ex: '-0.150' ou '+0.240')."""
+        if self.delta_time < 0.0:
+            return f"-{abs(self.delta_time):.3f}"
+        elif self.delta_time > 0.0:
+            return f"+{self.delta_time:.3f}"
+        return "--"
+
+    def sector_delta_str(self, sector_num: int) -> str:
+        """Delta Live formaté d'un secteur actif (ex: '-0.150' ou '+0.240')."""
+        val = getattr(self, f"sector{sector_num}_delta", 0.0)
+        if val < 0.0:
+            return f"-{abs(val):.3f}"
+        elif val > 0.0:
+            return f"+{val:.3f}"
+        return "--"
+
+    @property
+    def sectors_list(self) -> list:
+        """Liste structurée des 3 secteurs pour le SectorTimesWidget."""
+        return [
+            {
+                "time": self.sector1_time,
+                "status": self.sector1_status,
+                "delta": self.sector1_delta,
+                "delta_str": self.sector_delta_str(1),
+                "is_current": (self.current_sector == 1),
+            },
+            {
+                "time": self.sector2_time,
+                "status": self.sector2_status,
+                "delta": self.sector2_delta,
+                "delta_str": self.sector_delta_str(2),
+                "is_current": (self.current_sector == 2),
+            },
+            {
+                "time": self.sector3_time,
+                "status": self.sector3_status,
+                "delta": self.sector3_delta,
+                "delta_str": self.sector_delta_str(3),
+                "is_current": (self.current_sector == 3),
+            },
+        ]
 
     # ── Combined & Per-Side Sensor Intensity Properties (0.0 to 1.0) ──────────
     @property
@@ -297,4 +383,21 @@ class VehicleSensors:
         """Grip Fraction Right side (min of FR, RR clamped [0.0, 1.0])."""
         val = min(self.front_right_grip, self.rear_right_grip)
         return min(1.0, max(0.0, val))
+
+    # ── Aerodynamic Load Property (0.0 to 1.0) ────────────────────────────────
+    @property
+    def aero_load(self) -> float:
+        """
+        Aerodynamic downforce load intensity (0.0 to 1.0).
+        Uses explicit telemetry aero load if available, or calculates dynamic pressure from speed (v / v_max).
+        """
+        if self.explicit_aero_load > 0.0:
+            return min(1.0, max(0.0, self.explicit_aero_load / 100.0))
+        v = abs(self.vehicle_speed)
+        v_max = 83.33  # ~300 km/h
+        if v <= 0.0:
+            return 0.0
+        return min(1.0, max(0.0, (v / v_max) ** 1.5))
+
+
 

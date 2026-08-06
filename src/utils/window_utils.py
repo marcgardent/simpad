@@ -8,6 +8,9 @@ import ctypes
 from pathlib import Path
 from typing import Optional
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
 if sys.platform == "win32":
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -114,6 +117,19 @@ def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     x = (sw - w) // 2 if col == 1 else col * w
     y = row * h
     return (int(x), int(y), int(w), int(h))
+
+
+def get_hud_rect(col_third: int = 1, row_half: int = 1) -> tuple[int, int, int, int]:
+    """Calculates HUD rect bounds: 2nd horizontal third (col_third=1) and 2nd vertical half (row_half=1)."""
+    sw, sh = get_screen_dimensions()
+    w = max(300, sw // 3)
+    h = max(240, sh // 2)
+    x = (sw - w) // 2 if col_third == 1 else col_third * w
+    y = row_half * (sh // 2)
+    return (int(x), int(y), int(w), int(h))
+
+
+
 
 
 if sys.platform == "win32":

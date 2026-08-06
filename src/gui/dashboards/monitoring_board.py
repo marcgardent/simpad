@@ -66,20 +66,26 @@ class MonitoringBoard(BaseDashboard):
                     dpg.add_line_series([], [], label="Synth High (R)", tag="mb_series_high")
 
     def show(self) -> None:
-        if dpg.does_item_exist(self._window_tag):
-            x, y, w, h = get_3x3_grid_rect(col=1, row=0)
-            dpg.configure_item(self._window_tag, pos=[x, y], width=w, height=h)
-            dpg.show_item(self._window_tag)
-            try:
-                dpg.focus_item(self._window_tag)
-            except Exception:
-                pass
+        self._visible = True
+        if dpg.is_dearpygui_running():
+            if not dpg.does_item_exist(self._window_tag):
+                self.build_ui()
+            if dpg.does_item_exist(self._window_tag):
+                x, y, w, h = get_3x3_grid_rect(col=1, row=0)
+                dpg.configure_item(self._window_tag, pos=[x, y], width=w, height=h)
+                dpg.show_item(self._window_tag)
+                try:
+                    dpg.focus_item(self._window_tag)
+                except Exception:
+                    pass
+
             self._visible = True
 
     def hide(self) -> None:
-        if dpg.does_item_exist(self._window_tag):
+        self._visible = False
+        if dpg.is_dearpygui_running() and dpg.does_item_exist(self._window_tag):
             dpg.hide_item(self._window_tag)
-            self._visible = False
+
 
     def update_telemetry(self, sensors: VehicleSensors) -> None:
         if not self._visible or not dpg.does_item_exist(self._window_tag):

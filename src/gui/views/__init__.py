@@ -1,1 +1,0 @@
-"""SimPad GUI Views package."""

@@ -1,48 +1,110 @@
 """
-Unit tests for DashboardManager, MonitoringBoard, and 3x3 grid geometry calculation.
+Unit tests for DashboardManager, MonitoringBoard, LmuHudBoard, and grid geometry calculation.
 """
 
+import unittest
+import dearpygui.dearpygui as dpg
 from src.utils.window_utils import get_3x3_grid_rect, get_screen_dimensions
 from src.gui.dashboards.manager import DashboardManager
 from src.gui.dashboards.monitoring_board import MonitoringBoard
+from src.gui.dashboards.lmu_hud_board import LmuHudBoard
 from src.telemetry.sensors import VehicleSensors
 
 
-def test_3x3_grid_rect_calculation():
-    """Verify 3x3 grid geometry calculations."""
-    sw, sh = get_screen_dimensions()
-    x, y, w, h = get_3x3_grid_rect(col=1, row=0)  # Top-Middle
+class TestDashboardManager(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            dpg.create_context()
+        except Exception:
+            pass
 
-    assert w >= 300
-    assert h >= 180
-    assert y == 0
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            dpg.destroy_context()
+        except Exception:
+            pass
+
+    def test_3x3_grid_rect_calculation(self):
+        """Verify 3x3 grid geometry calculations."""
+        sw, sh = get_screen_dimensions()
+        x, y, w, h = get_3x3_grid_rect(col=1, row=0)  # Top-Middle
+
+        self.assertGreaterEqual(w, 300)
+        self.assertGreaterEqual(h, 180)
+        self.assertEqual(y, 0)
+
+    def test_dashboard_manager_lifecycle(self):
+        """Verify DashboardManager registration, lookup, and lifecycle calls."""
+        mgr = DashboardManager()
+
+        # Verify default registration of monitoringBoard and lmuHudBoard
+        self.assertIn("monitoringBoard", mgr.dashboard_names)
+        self.assertIn("lmuHudBoard", mgr.dashboard_names)
+
+        # Verify default activation states: lmuHudBoard = True, monitoringBoard = False
+        self.assertTrue(mgr.is_dashboard_enabled("lmuHudBoard"))
+        self.assertFalse(mgr.is_dashboard_enabled("monitoringBoard"))
+
+        board_mon = mgr.get_dashboard("monitoringBoard")
+        self.assertIsNotNone(board_mon)
+        self.assertIsInstance(board_mon, MonitoringBoard)
+
+        board_hud = mgr.get_dashboard("lmuHudBoard")
+        self.assertIsNotNone(board_hud)
+        self.assertIsInstance(board_hud, LmuHudBoard)
+
+        # Test update_telemetry without errors
+        sensors = VehicleSensors(front_left_lock=0.2, rear_left_spin=0.1)
+        mgr.update_telemetry(sensors)
+
+    def test_dashboard_manager_display_modes(self):
+        """Verify DashboardManager display mode switching."""
+        mgr = DashboardManager()
+        self.assertEqual(mgr.display_mode, "desktop")
+
+        mgr.set_display_mode("ingame")
+        self.assertEqual(mgr.display_mode, "ingame")
+
+        mgr.set_display_mode("pause")
+        self.assertEqual(mgr.display_mode, "pause")
+
+        mgr.set_display_mode("desktop")
+        self.assertEqual(mgr.display_mode, "desktop")
+
+    def test_dashboard_manager_auto_display_decision(self):
+        """Verify shared display decision logic across all overlays with checkbox filtering."""
+        mgr = DashboardManager()
+
+        # Enable both for testing auto-display visibility
+        mgr.set_dashboard_enabled("monitoringBoard", True)
+        mgr.set_dashboard_enabled("lmuHudBoard", True)
+
+        # LMU Not in foreground -> Desktop mode
+        mode = mgr.update_auto_display_state(is_lmu_foreground=False, on_track=True)
+        self.assertEqual(mode, "desktop")
+        self.assertEqual(mgr.display_mode, "desktop")
+
+        # LMU in foreground AND on track -> InGame mode (enabled overlays visible)
+        mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=True)
+        self.assertEqual(mode, "ingame")
+        self.assertEqual(mgr.display_mode, "ingame")
+        self.assertTrue(mgr.get_dashboard("lmuHudBoard").is_visible)
+        self.assertTrue(mgr.get_dashboard("monitoringBoard").is_visible)
+
+        # Disable monitoringBoard checkbox -> should hide monitoringBoard
+        mgr.set_dashboard_enabled("monitoringBoard", False)
+        self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
+        self.assertTrue(mgr.get_dashboard("lmuHudBoard").is_visible)
+
+        # LMU in foreground BUT in menus/pause -> Pause mode (all overlays hidden)
+        mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=False)
+        self.assertEqual(mode, "pause")
+        self.assertEqual(mgr.display_mode, "pause")
+        self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
+        self.assertFalse(mgr.get_dashboard("lmuHudBoard").is_visible)
 
 
-def test_dashboard_manager_lifecycle():
-    """Verify DashboardManager registration, lookup, and lifecycle calls."""
-    mgr = DashboardManager()
-
-    # Verify default registration of monitoringBoard
-    assert "monitoringBoard" in mgr.dashboard_names
-    board = mgr.get_dashboard("monitoringBoard")
-    assert board is not None
-    assert isinstance(board, MonitoringBoard)
-
-    # Test update_telemetry without errors
-    sensors = VehicleSensors(rpm_ratio=0.75, lock_intensity=0.2, spin_intensity=0.1)
-    mgr.update_telemetry(sensors)
-
-
-def test_dashboard_manager_display_modes():
-    """Verify DashboardManager display mode switching (desktop vs ingame vs pause)."""
-    mgr = DashboardManager()
-    assert mgr.display_mode == "desktop"
-
-    mgr.set_display_mode("ingame")
-    assert mgr.display_mode == "ingame"
-
-    mgr.set_display_mode("pause")
-    assert mgr.display_mode == "pause"
-
-    mgr.set_display_mode("desktop")
-    assert mgr.display_mode == "desktop"
+if __name__ == "__main__":
+    unittest.main()

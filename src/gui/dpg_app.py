@@ -155,22 +155,19 @@ class SimPadDPGApp:
         self._load_fonts()
 
     def _load_fonts(self):
-        local_font = _PROJECT_ROOT / "assets" / "fonts" / "DejaVuSans.ttf"
-        font_candidates = [
-            local_font
-        ]
-        with dpg.font_registry():
-            for fpath in font_candidates:
-                p = Path(fpath)
-                if p.exists():
-                    try:
-                        font = dpg.add_font(str(p), 18)
-                        dpg.bind_font(font)
-                        print(f"[Font] Loaded standalone font: {p} (18px)", flush=True)
-                        return
-                    except Exception as e:
-                        print(f"[Font] Error loading {p}: {e}", flush=True)
-        dpg.set_global_font_scale(1.25)
+        dejavu_font = _PROJECT_ROOT / "assets" / "fonts" / "DejaVuSans.ttf"
+        if dejavu_font.exists():
+            try:
+                with dpg.font_registry():
+                    main_font = dpg.add_font(str(dejavu_font), 18)
+                    dpg.bind_font(main_font)
+                    print(f"[Font] Loaded main console font: {dejavu_font} (18px)", flush=True)
+            except Exception as e:
+                print(f"[Font] Error loading main font {dejavu_font}: {e}", flush=True)
+        else:
+            dpg.set_global_font_scale(1.25)
+
+
 
     # ── GUI Layout ────────────────────────────────────────────────────────────
     def _build_gui(self):
@@ -225,15 +222,35 @@ class SimPadDPGApp:
             dpg.add_text("• Real-Time Synthesizer Thread: ACTIVE", color=[46, 204, 113, 255])
             dpg.add_text("• Graph Compiler: Python Bytecode JIT", color=[46, 204, 113, 255])
             dpg.add_text("• Telemetry Pipeline: UDP Port 5000", color=[46, 204, 113, 255])
-            dpg.add_text("• Auto Overlay Mode: ACTIVE (LMU Foreground + InGame Driving)", tag="lbl_auto_overlay_info", color=[0, 210, 255, 255])
+            dpg.add_spacer(height=10)
+            dpg.add_text("Activation des Overlays HUD :", color=[255, 200, 0, 255])
+            dpg.add_checkbox(
+                label="Overlay LMU HUD (Vitesse, Gear, Delta, Secteurs)",
+                tag="chk_overlay_lmuHudBoard",
+                default_value=True,
+                callback=self._cb_toggle_overlay_lmuHudBoard,
+            )
+            dpg.add_checkbox(
+                label="Overlay Telemetry Monitor (Graphes de courbes)",
+                tag="chk_overlay_monitoringBoard",
+                default_value=False,  # Désactivé par défaut comme demandé
+                callback=self._cb_toggle_overlay_monitoringBoard,
+            )
             dpg.add_spacer(height=10)
             dpg.add_button(label="Toggle Display Mode (Desktop <-> InGame Overlay)", width=320, callback=self._toggle_monitoring_board)
+
+    def _cb_toggle_overlay_lmuHudBoard(self, sender, app_data):
+        self._dashboard_mgr.set_dashboard_enabled("lmuHudBoard", app_data)
+
+    def _cb_toggle_overlay_monitoringBoard(self, sender, app_data):
+        self._dashboard_mgr.set_dashboard_enabled("monitoringBoard", app_data)
 
     def _toggle_monitoring_board(self):
         if self._dashboard_mgr.display_mode == "ingame":
             self._dashboard_mgr.set_display_mode("desktop")
         else:
             self._dashboard_mgr.set_display_mode("ingame")
+
 
     # ── Monitor Tab Layout ────────────────────────────────────────────────────
     def _build_monitor_tab(self):
@@ -284,17 +301,18 @@ class SimPadDPGApp:
             self._clear_telemetry_frame()
 
     def _clear_telemetry_frame(self):
+        from src.telemetry.sensors import VehicleSensors
+        if hasattr(self, "_dashboard_mgr"):
+            self._dashboard_mgr.update_telemetry(VehicleSensors(in_realtime=False))
         if self._synth:
             self._synth.update_telemetry(in_realtime=False)
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()
 
+
     def _check_lmu_auto_overlay(self):
         """
-        Gère automatiquement la bascule entre les 3 modes d'affichage :
-        - 'desktop': LMU non actif au premier plan.
-        - 'ingame' : LMU actif au premier plan ET conduite en piste en cours (in_realtime=True).
-        - 'pause'  : LMU actif au premier plan MAIS dans les menus/garages/stands/pause (in_realtime=False).
+        Délègue la décision d'affichage au DashboardManager pour l'ensemble des overlays HUD enregistrés.
         """
         from src.utils.window_utils import is_lmu_foreground
 
@@ -303,18 +321,11 @@ class SimPadDPGApp:
         latest = self._udp.get_latest_data() if self._udp else None
         on_track = latest.in_realtime if (latest and udp_recv) else False
 
-        if not is_lmu_fg:
-            target_mode = "desktop"
-        elif on_track:
-            target_mode = "ingame"
-        else:
-            target_mode = "pause"
+        try:
+            self._dashboard_mgr.update_auto_display_state(is_lmu_foreground=is_lmu_fg, on_track=on_track)
+        except Exception as e:
+            print(f"[AUTO-OVERLAY] Error updating auto display state: {e}", flush=True)
 
-        if target_mode != self._dashboard_mgr.display_mode:
-            try:
-                self._dashboard_mgr.set_display_mode(target_mode)
-            except Exception as e:
-                print(f"[AUTO-OVERLAY] Error switching to {target_mode} mode: {e}", flush=True)
 
     def _update_status_indicators(self):
         from src.utils.window_utils import is_lmu_foreground

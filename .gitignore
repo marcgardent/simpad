@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 .idea/
 .pytest_cache/
-telemetry_dump.log
 *.log
+scoring_dump.json
+telemetry_dump.jsonl
 
