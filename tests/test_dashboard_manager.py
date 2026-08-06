@@ -34,12 +34,15 @@ def test_dashboard_manager_lifecycle():
 
 
 def test_dashboard_manager_display_modes():
-    """Verify DashboardManager display mode switching (desktop vs ingame)."""
+    """Verify DashboardManager display mode switching (desktop vs ingame vs pause)."""
     mgr = DashboardManager()
     assert mgr.display_mode == "desktop"
 
     mgr.set_display_mode("ingame")
     assert mgr.display_mode == "ingame"
+
+    mgr.set_display_mode("pause")
+    assert mgr.display_mode == "pause"
 
     mgr.set_display_mode("desktop")
     assert mgr.display_mode == "desktop"

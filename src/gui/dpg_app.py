@@ -291,9 +291,10 @@ class SimPadDPGApp:
 
     def _check_lmu_auto_overlay(self):
         """
-        Détecte si LMU est actif au premier plan ET en conduite in-game (pas dans les menus/stands).
-        Si InGame : affiche automatiquement les dashboards enregistrés (monitoringBoard).
-        Si sortie de InGame : masque les dashboards enregistrés.
+        Gère automatiquement la bascule entre les 3 modes d'affichage :
+        - 'desktop': LMU non actif au premier plan.
+        - 'ingame' : LMU actif au premier plan ET conduite en piste en cours (in_realtime=True).
+        - 'pause'  : LMU actif au premier plan MAIS dans les menus/garages/stands/pause (in_realtime=False).
         """
         from src.utils.window_utils import is_lmu_foreground
 
@@ -302,26 +303,18 @@ class SimPadDPGApp:
         latest = self._udp.get_latest_data() if self._udp else None
         on_track = latest.in_realtime if (latest and udp_recv) else False
 
-        should_overlay = is_lmu_fg and on_track
-        now = time.time()
+        if not is_lmu_fg:
+            target_mode = "desktop"
+        elif on_track:
+            target_mode = "ingame"
+        else:
+            target_mode = "pause"
 
-        if should_overlay:
-            self._last_lmu_active_time = now
-            if not self._auto_overlay_active:
-                self._auto_overlay_active = True
-                try:
-                    self._dashboard_mgr.set_display_mode("ingame")
-                    print("[AUTO-OVERLAY] LMU InGame driving detected -> Switched to INGAME Mode.", flush=True)
-                except Exception as e:
-                    print(f"[AUTO-OVERLAY] Error enabling ingame mode: {e}", flush=True)
-
-        elif self._auto_overlay_active and (not is_lmu_fg or now - self._last_lmu_active_time > 1.5):
-            self._auto_overlay_active = False
+        if target_mode != self._dashboard_mgr.display_mode:
             try:
-                self._dashboard_mgr.set_display_mode("desktop")
-                print("[AUTO-OVERLAY] Exited LMU foreground/ingame state -> Switched to DESKTOP Mode.", flush=True)
+                self._dashboard_mgr.set_display_mode(target_mode)
             except Exception as e:
-                print(f"[AUTO-OVERLAY] Error enabling desktop mode: {e}", flush=True)
+                print(f"[AUTO-OVERLAY] Error switching to {target_mode} mode: {e}", flush=True)
 
     def _update_status_indicators(self):
         from src.utils.window_utils import is_lmu_foreground

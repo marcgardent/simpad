@@ -33,11 +33,12 @@ class DashboardManager:
 
     def set_display_mode(self, mode: str) -> None:
         """
-        Bascule strictement entre les modes d'affichage :
-        - 'ingame' : Viewport plein écran sans bordure, masque à 100% la console de configuration (primary_window), affiche uniquement l'overlay HUD borderless (monitoringBoard).
-        - 'desktop' : Viewport fenêtré avec bordure, masque à 100% les overlays HUD (monitoringBoard), affiche uniquement la console de configuration (primary_window).
+        Bascule strictement entre les 3 modes d'affichage :
+        - 'desktop': Console de configuration principale affichée en mode fenêtré décoré. Overlays masqués.
+        - 'ingame' : Overlays HUD (monitoringBoard) affichés en plein écran transparent borderless. Console masquée.
+        - 'pause'  : Menus/Garages/Pause dans LMU. Console et overlays masqués pour laisser l'écran de jeu totalement dégagé.
         """
-        if mode not in ("desktop", "ingame"):
+        if mode not in ("desktop", "ingame", "pause"):
             return
 
         from src.utils.window_utils import (
@@ -54,14 +55,24 @@ class DashboardManager:
 
             force_viewport_fullscreen_overlay(viewport_title)
             self.show_all()
-            print("[DashboardManager] Mode INGAME actif -> Viewport Plein Écran Borderless + Overlays HUD.", flush=True)
+            print("[DashboardManager] Mode INGAME actif -> Overlays HUD visibles.", flush=True)
+
+        elif mode == "pause":
+            self.hide_all()
+            if dpg.does_item_exist("primary_window"):
+                dpg.set_primary_window("primary_window", False)
+                dpg.hide_item("primary_window")
+
+            force_viewport_fullscreen_overlay(viewport_title)
+            print("[DashboardManager] Mode PAUSE / GARAGE actif -> Overlays masqués, écran de jeu dégagé.", flush=True)
+
         else:
             self.hide_all()
             restore_viewport_windowed(viewport_title)
             if dpg.does_item_exist("primary_window"):
                 dpg.show_item("primary_window")
                 dpg.set_primary_window("primary_window", True)
-            print("[DashboardManager] Mode DESKTOP actif -> Console de configuration Fenêtrée.", flush=True)
+            print("[DashboardManager] Mode DESKTOP actif -> Console de configuration fenêtrée.", flush=True)
 
     def register_dashboard(self, board: BaseDashboard) -> None:
         """Enregistre un nouveau dashboard dans le gestionnaire."""
