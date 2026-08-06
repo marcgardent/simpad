@@ -163,9 +163,15 @@ def make_transparent_overlay(window_title: str) -> bool:
 
 def force_viewport_fullscreen_overlay(window_title: str) -> bool:
     """
-    Forces the DPG viewport window to full physical monitor resolution (0, 0, SW, SH)
-    with HWND_TOPMOST and DWM transparency.
+    Forces the DPG viewport window to maximized borderless overlay mode (HWND_TOPMOST + DWM transparency).
     """
+    try:
+        import dearpygui.dearpygui as dpg
+        dpg.configure_viewport(0, decorated=False, always_on_top=True)
+        dpg.maximize_viewport()
+    except Exception:
+        pass
+
     if sys.platform != "win32" or not user32:
         return False
 
@@ -173,13 +179,12 @@ def force_viewport_fullscreen_overlay(window_title: str) -> bool:
         hwnd = user32.FindWindowW(None, window_title)
         if hwnd:
             sw, sh = get_screen_dimensions()
-            HWND_TOPMOST = -1
-            SWP_SHOWWINDOW = 0x0040
-            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, sw, sh, SWP_SHOWWINDOW)
+            SW_MAXIMIZE = 3
+            user32.ShowWindow(hwnd, SW_MAXIMIZE)
             margins = MARGINS(-1, -1, -1, -1)
             dwmapi = ctypes.windll.dwmapi
             dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Fullscreen Overlay (0, 0, {sw}, {sh})", flush=True)
+            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Maximized Borderless Overlay ({sw}x{sh})", flush=True)
             return True
     except Exception as e:
         print(f"[VIEWPORT OVERLAY] Error forcing fullscreen overlay: {e}", flush=True)
@@ -187,23 +192,26 @@ def force_viewport_fullscreen_overlay(window_title: str) -> bool:
     return False
 
 
-def restore_viewport_windowed(window_title: str, width: int = 1240, height: int = 780) -> bool:
+def restore_viewport_windowed(window_title: str) -> bool:
     """
-    Restores the DPG viewport to standard windowed mode (centered on monitor, HWND_NOTOPMOST).
+    Restores the DPG viewport to maximized desktop console mode with standard window decorations (decorated=True).
     """
+    try:
+        import dearpygui.dearpygui as dpg
+        dpg.configure_viewport(0, decorated=True, always_on_top=False)
+        dpg.maximize_viewport()
+    except Exception:
+        pass
+
     if sys.platform != "win32" or not user32:
         return False
 
     try:
         hwnd = user32.FindWindowW(None, window_title)
         if hwnd:
-            sw, sh = get_screen_dimensions()
-            x = (sw - width) // 2
-            y = (sh - height) // 2
-            HWND_NOTOPMOST = -2
-            SWP_SHOWWINDOW = 0x0040
-            user32.SetWindowPos(hwnd, HWND_NOTOPMOST, int(x), int(y), int(width), int(height), SWP_SHOWWINDOW)
-            print(f"[VIEWPORT OVERLAY] HWND {hwnd} restored to Windowed Console ({x}, {y}, {width}, {height})", flush=True)
+            SW_MAXIMIZE = 3
+            user32.ShowWindow(hwnd, SW_MAXIMIZE)
+            print(f"[VIEWPORT OVERLAY] HWND {hwnd} restored to Maximized Desktop Console (decorated=True)", flush=True)
             return True
     except Exception as e:
         print(f"[VIEWPORT OVERLAY] Error restoring windowed console: {e}", flush=True)

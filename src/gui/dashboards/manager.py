@@ -57,7 +57,7 @@ class DashboardManager:
             print("[DashboardManager] Mode INGAME actif -> Viewport Plein Écran Borderless + Overlays HUD.", flush=True)
         else:
             self.hide_all()
-            restore_viewport_windowed(viewport_title, 1240, 780)
+            restore_viewport_windowed(viewport_title)
             if dpg.does_item_exist("primary_window"):
                 dpg.show_item("primary_window")
                 dpg.set_primary_window("primary_window", True)
