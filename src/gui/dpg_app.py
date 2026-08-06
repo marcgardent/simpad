@@ -282,6 +282,7 @@ class SimPadDPGApp:
             self._auto_overlay_active = True
             try:
                 dpg.show_viewport()
+                dpg.maximize_viewport()
                 dpg.configure_viewport(0, always_on_top=True, decorated=False)
                 dpg.set_value("main_tab_bar", "tab_monitor")
                 print("[AUTO-OVERLAY] LMU InGame driving detected -> Window Always-On-Top Borderless & Monitor Tab active.", flush=True)
@@ -292,9 +293,9 @@ class SimPadDPGApp:
             self._auto_overlay_active = False
             try:
                 if not self._is_pinned:
-                    dpg.hide_viewport()
+                    dpg.minimize_viewport()
                     dpg.configure_viewport(0, always_on_top=False, decorated=True)
-                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window.", flush=True)
+                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window (minimized).", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error hiding window: {e}", flush=True)
 
