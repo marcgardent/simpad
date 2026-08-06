@@ -128,3 +128,35 @@ def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     y = row * h
     return (int(x), int(y), int(w), int(h))
 
+
+if sys.platform == "win32":
+    class MARGINS(ctypes.Structure):
+        _fields_ = [
+            ("cxLeftWidth", ctypes.c_int),
+            ("cxRightWidth", ctypes.c_int),
+            ("cyTopHeight", ctypes.c_int),
+            ("cyBottomHeight", ctypes.c_int),
+        ]
+
+
+def make_transparent_overlay(window_title: str) -> bool:
+    """
+    Extends DWM frame into client area for full window background transparency on Windows.
+    Enables transparent GPU rendering and mouse click pass-through on clear areas.
+    """
+    if sys.platform != "win32" or not user32:
+        return False
+
+    try:
+        hwnd = user32.FindWindowW(None, window_title)
+        if hwnd:
+            margins = MARGINS(-1, -1, -1, -1)
+            dwmapi = ctypes.windll.dwmapi
+            dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+            print(f"[DWM OVERLAY] Transparent DWM overlay enabled for HWND {hwnd}", flush=True)
+            return True
+    except Exception as e:
+        print(f"[DWM OVERLAY] Error injecting DWM transparency: {e}", flush=True)
+
+    return False
+

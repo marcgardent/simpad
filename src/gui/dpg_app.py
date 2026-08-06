@@ -63,8 +63,18 @@ class SimPadDPGApp:
         self._auto_overlay_active = False
 
     def run(self):
+        from src.utils.window_utils import make_transparent_overlay
+        viewport_title = "SimPad Haptic Middleware (Synthesizer Engine)"
+
         dpg.create_context()
-        dpg.create_viewport(title="SimPad Haptic Middleware (Synthesizer Engine)", width=1240, height=780)
+        dpg.create_viewport(
+            title=viewport_title,
+            width=1240,
+            height=780,
+            clear_color=[0, 0, 0, 0],
+            always_on_top=True,
+            decorated=False,
+        )
         dpg.setup_dearpygui()
 
         self._apply_theme()
@@ -72,6 +82,7 @@ class SimPadDPGApp:
         self._build_gui()
 
         dpg.show_viewport()
+        make_transparent_overlay(viewport_title)
 
         # Initialize backends in background
         threading.Thread(target=self._init_backends, daemon=True).start()
@@ -214,15 +225,13 @@ class SimPadDPGApp:
             dpg.add_text("• Telemetry Pipeline: UDP Port 5000", color=[46, 204, 113, 255])
             dpg.add_text("• Auto Overlay Mode: ACTIVE (LMU Foreground + InGame Driving)", tag="lbl_auto_overlay_info", color=[0, 210, 255, 255])
             dpg.add_spacer(height=10)
-            dpg.add_button(label="Toggle monitoringBoard HUD Overlay", width=260, callback=self._toggle_monitoring_board)
+            dpg.add_button(label="Toggle Display Mode (Desktop <-> InGame Overlay)", width=320, callback=self._toggle_monitoring_board)
 
     def _toggle_monitoring_board(self):
-        board = self._dashboard_mgr.get_dashboard("monitoringBoard")
-        if board:
-            if board.is_visible:
-                board.hide()
-            else:
-                board.show()
+        if self._dashboard_mgr.display_mode == "ingame":
+            self._dashboard_mgr.set_display_mode("desktop")
+        else:
+            self._dashboard_mgr.set_display_mode("ingame")
 
     # ── Monitor Tab Layout ────────────────────────────────────────────────────
     def _build_monitor_tab(self):
@@ -296,18 +305,18 @@ class SimPadDPGApp:
         if should_overlay and not self._auto_overlay_active:
             self._auto_overlay_active = True
             try:
-                self._dashboard_mgr.show_all()
-                print("[AUTO-OVERLAY] LMU InGame driving detected -> Showing monitoringBoard dashboard.", flush=True)
+                self._dashboard_mgr.set_display_mode("ingame")
+                print("[AUTO-OVERLAY] LMU InGame driving detected -> Switched to INGAME Mode.", flush=True)
             except Exception as e:
-                print(f"[AUTO-OVERLAY] Error enabling overlay: {e}", flush=True)
+                print(f"[AUTO-OVERLAY] Error enabling ingame mode: {e}", flush=True)
 
         elif not should_overlay and self._auto_overlay_active:
             self._auto_overlay_active = False
             try:
-                self._dashboard_mgr.hide_all()
-                print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding monitoringBoard dashboard.", flush=True)
+                self._dashboard_mgr.set_display_mode("desktop")
+                print("[AUTO-OVERLAY] Exited LMU InGame state -> Switched to DESKTOP Mode.", flush=True)
             except Exception as e:
-                print(f"[AUTO-OVERLAY] Error hiding dashboards: {e}", flush=True)
+                print(f"[AUTO-OVERLAY] Error enabling desktop mode: {e}", flush=True)
 
     def _update_status_indicators(self):
         from src.utils.window_utils import is_lmu_foreground

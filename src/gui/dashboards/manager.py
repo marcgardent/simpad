@@ -9,6 +9,8 @@ from src.gui.dashboards.base import BaseDashboard
 from src.gui.dashboards.monitoring_board import MonitoringBoard
 from src.telemetry.sensors import VehicleSensors
 
+import dearpygui.dearpygui as dpg
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,12 +18,39 @@ class DashboardManager:
     """
     Gestionnaire centralisé pour la création, le positionnement, la visibilité
     et la mise à jour télémétrique des tableaux de bord (dashboards).
+    Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlays transparents).
     """
 
     def __init__(self):
         self._dashboards: Dict[str, BaseDashboard] = {}
+        self._display_mode = "desktop"
         # Enregistrement par défaut du monitoringBoard
         self.register_dashboard(MonitoringBoard())
+
+    @property
+    def display_mode(self) -> str:
+        return self._display_mode
+
+    def set_display_mode(self, mode: str) -> None:
+        """
+        Bascule entre les modes d'affichage :
+        - 'ingame' : Masque la console de configuration (primary_window), affiche les overlays HUD (monitoringBoard).
+        - 'desktop' : Affiche la console de configuration (primary_window), masque les overlays HUD.
+        """
+        if mode not in ("desktop", "ingame"):
+            return
+
+        self._display_mode = mode
+        if mode == "ingame":
+            if dpg.does_item_exist("primary_window"):
+                dpg.hide_item("primary_window")
+            self.show_all()
+            print("[DashboardManager] Display mode switched to: INGAME (HUD Overlays Visible)", flush=True)
+        else:
+            self.hide_all()
+            if dpg.does_item_exist("primary_window"):
+                dpg.show_item("primary_window")
+            print("[DashboardManager] Display mode switched to: DESKTOP (Configuration Console Visible)", flush=True)
 
     def register_dashboard(self, board: BaseDashboard) -> None:
         """Enregistre un nouveau dashboard dans le gestionnaire."""

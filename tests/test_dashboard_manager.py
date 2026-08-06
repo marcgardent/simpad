@@ -31,3 +31,15 @@ def test_dashboard_manager_lifecycle():
     # Test update_telemetry without errors
     sensors = VehicleSensors(rpm_ratio=0.75, lock_intensity=0.2, spin_intensity=0.1)
     mgr.update_telemetry(sensors)
+
+
+def test_dashboard_manager_display_modes():
+    """Verify DashboardManager display mode switching (desktop vs ingame)."""
+    mgr = DashboardManager()
+    assert mgr.display_mode == "desktop"
+
+    mgr.set_display_mode("ingame")
+    assert mgr.display_mode == "ingame"
+
+    mgr.set_display_mode("desktop")
+    assert mgr.display_mode == "desktop"
