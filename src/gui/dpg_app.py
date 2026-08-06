@@ -213,6 +213,16 @@ class SimPadDPGApp:
             dpg.add_text("• Graph Compiler: Python Bytecode JIT", color=[46, 204, 113, 255])
             dpg.add_text("• Telemetry Pipeline: UDP Port 5000", color=[46, 204, 113, 255])
             dpg.add_text("• Auto Overlay Mode: ACTIVE (LMU Foreground + InGame Driving)", tag="lbl_auto_overlay_info", color=[0, 210, 255, 255])
+            dpg.add_spacer(height=10)
+            dpg.add_button(label="Toggle monitoringBoard HUD Overlay", width=260, callback=self._toggle_monitoring_board)
+
+    def _toggle_monitoring_board(self):
+        board = self._dashboard_mgr.get_dashboard("monitoringBoard")
+        if board:
+            if board.is_visible:
+                board.hide()
+            else:
+                board.show()
 
     # ── Monitor Tab Layout ────────────────────────────────────────────────────
     def _build_monitor_tab(self):

@@ -33,12 +33,12 @@ class MonitoringBoard(BaseDashboard):
             pos=[x, y],
             width=w,
             height=h,
-            no_title_bar=True,
-            no_resize=True,
-            no_move=True,
-            no_collapse=True,
-            show=False,
+            no_title_bar=False,
+            no_resize=False,
+            no_collapse=False,
+            show=True,
         ):
+            self._visible = True
             # En-tête
             with dpg.group(horizontal=True):
                 dpg.add_text("SIMPAD", color=[0, 210, 255, 255])
@@ -56,7 +56,7 @@ class MonitoringBoard(BaseDashboard):
             dpg.add_spacer(height=4)
 
             with dpg.group(horizontal=True):
-                with dpg.child_window(width=(w // 2) - 12, height=h - 110, border=True):
+                with dpg.child_window(width=(w // 2) - 12, height=max(80, h - 110), border=True):
                     dpg.add_text("Braking & Traction", color=[0, 210, 255, 255])
                     dpg.add_spacer(height=2)
                     dpg.add_text("ABS (Freinage):", color=[180, 180, 180, 255])
@@ -65,7 +65,7 @@ class MonitoringBoard(BaseDashboard):
                     dpg.add_text("TC (Motricité):", color=[180, 180, 180, 255])
                     dpg.add_progress_bar(tag="mb_bar_tc", default_value=0.0, width=-1)
 
-                with dpg.child_window(width=(w // 2) - 12, height=h - 110, border=True):
+                with dpg.child_window(width=(w // 2) - 12, height=max(80, h - 110), border=True):
                     dpg.add_text("Dynamics & Chassis", color=[0, 210, 255, 255])
                     dpg.add_spacer(height=2)
                     dpg.add_text("Sur-Virage (Over):", color=[180, 180, 180, 255])
@@ -77,6 +77,10 @@ class MonitoringBoard(BaseDashboard):
     def show(self) -> None:
         if dpg.does_item_exist(self._window_tag):
             dpg.show_item(self._window_tag)
+            try:
+                dpg.focus_item(self._window_tag)
+            except Exception:
+                pass
             self._visible = True
 
     def hide(self) -> None:

@@ -97,20 +97,34 @@ def get_screen_dimensions() -> tuple[int, int]:
 
 def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     """
-    Calculates (x, y, width, height) for a 3x3 screen grid cell.
+    Calculates (x, y, width, height) for a 3x3 grid cell.
     col: 0 (left), 1 (middle), 2 (right)
     row: 0 (top), 1 (middle), 2 (bottom)
 
     Top-Middle (col=1, row=0) returns:
-    x = Screen_Width / 3
+    x = Width / 3
     y = 0
-    w = Screen_Width / 3
-    h = Screen_Height / 3
+    w = Width / 3
+    h = Height / 3
     """
+    try:
+        import dearpygui.dearpygui as dpg
+        if dpg.is_viewport_created():
+            vw = dpg.get_viewport_width()
+            vh = dpg.get_viewport_height()
+            if vw > 100 and vh > 100:
+                w = max(300, vw // 3)
+                h = max(180, vh // 3)
+                x = (vw - w) // 2 if col == 1 else col * w
+                y = row * h
+                return (int(x), int(y), int(w), int(h))
+    except Exception:
+        pass
+
     sw, sh = get_screen_dimensions()
-    w = sw // 3
-    h = sh // 3
-    x = col * w
+    w = max(300, sw // 3)
+    h = max(180, sh // 3)
+    x = (sw - w) // 2 if col == 1 else col * w
     y = row * h
-    return (x, y, w, h)
+    return (int(x), int(y), int(w), int(h))
 
