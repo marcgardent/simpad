@@ -271,8 +271,8 @@ class SimPadDPGApp:
     def _check_lmu_auto_overlay(self):
         """
         Détecte si LMU est actif au premier plan ET en conduite in-game (pas dans les menus/stands).
-        Si InGame : active Always On Top, Borderless et onglet Monitor.
-        Si sortie de InGame : fait disparaître la fenêtre (hide_viewport).
+        Si InGame : affiche automatiquement les dashboards enregistrés (monitoringBoard).
+        Si sortie de InGame : masque les dashboards enregistrés.
         """
         from src.utils.window_utils import is_lmu_foreground
 
@@ -287,11 +287,7 @@ class SimPadDPGApp:
             self._auto_overlay_active = True
             try:
                 self._dashboard_mgr.show_all()
-                dpg.show_viewport()
-                dpg.maximize_viewport()
-                dpg.configure_viewport(0, always_on_top=True, decorated=False)
-                dpg.set_value("main_tab_bar", "tab_monitor")
-                print("[AUTO-OVERLAY] LMU InGame driving detected -> Window Always-On-Top Borderless & Dashboards active.", flush=True)
+                print("[AUTO-OVERLAY] LMU InGame driving detected -> Showing monitoringBoard dashboard.", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error enabling overlay: {e}", flush=True)
 
@@ -299,12 +295,9 @@ class SimPadDPGApp:
             self._auto_overlay_active = False
             try:
                 self._dashboard_mgr.hide_all()
-                if not self._is_pinned:
-                    dpg.minimize_viewport()
-                    dpg.configure_viewport(0, always_on_top=False, decorated=True)
-                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window (minimized) and dashboards.", flush=True)
+                print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding monitoringBoard dashboard.", flush=True)
             except Exception as e:
-                print(f"[AUTO-OVERLAY] Error hiding window: {e}", flush=True)
+                print(f"[AUTO-OVERLAY] Error hiding dashboards: {e}", flush=True)
 
     def _update_status_indicators(self):
         from src.utils.window_utils import is_lmu_foreground
