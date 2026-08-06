@@ -78,3 +78,39 @@ def is_lmu_foreground() -> bool:
         return True
 
     return False
+
+
+def get_screen_dimensions() -> tuple[int, int]:
+    """Returns primary monitor resolution (width, height). Defaults to (1920, 1080) if unavailable."""
+    if user32:
+        try:
+            SM_CXSCREEN = 0
+            SM_CYSCREEN = 1
+            w = user32.GetSystemMetrics(SM_CXSCREEN)
+            h = user32.GetSystemMetrics(SM_CYSCREEN)
+            if w > 0 and h > 0:
+                return (w, h)
+        except Exception:
+            pass
+    return (1920, 1080)
+
+
+def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
+    """
+    Calculates (x, y, width, height) for a 3x3 screen grid cell.
+    col: 0 (left), 1 (middle), 2 (right)
+    row: 0 (top), 1 (middle), 2 (bottom)
+
+    Top-Middle (col=1, row=0) returns:
+    x = Screen_Width / 3
+    y = 0
+    w = Screen_Width / 3
+    h = Screen_Height / 3
+    """
+    sw, sh = get_screen_dimensions()
+    w = sw // 3
+    h = sh // 3
+    x = col * w
+    y = row * h
+    return (x, y, w, h)
+

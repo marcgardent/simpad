@@ -24,6 +24,7 @@ from src.telemetry.udp_server import UDPServer
 from src.physics.effects import PhysicsToHaptic
 from src.haptics.windows import WindowsHapticController
 from src.gui.node_editor import NodeEditorTab
+from src.gui.dashboards import DashboardManager
 
 HISTORY = 150  # 7.5 seconds at 20 Hz
 
@@ -32,6 +33,9 @@ class SimPadDPGApp:
     def __init__(self):
         self._lmu_installer = LMUPluginManager()
         self._telemetry_enabled = True
+
+        # Dashboard Manager Sub-System
+        self._dashboard_mgr = DashboardManager()
 
         # Backends
         self._haptics: Optional[WindowsHapticController] = None
@@ -174,6 +178,7 @@ class SimPadDPGApp:
                     self._build_monitor_tab()
 
         dpg.set_primary_window("primary_window", True)
+        self._dashboard_mgr.build_all_ui()
 
     # ── Dashboard Tab Layout ──────────────────────────────────────────────────
     def _build_dashboard_tab(self):
@@ -281,21 +286,23 @@ class SimPadDPGApp:
         if should_overlay and not self._auto_overlay_active:
             self._auto_overlay_active = True
             try:
+                self._dashboard_mgr.show_all()
                 dpg.show_viewport()
                 dpg.maximize_viewport()
                 dpg.configure_viewport(0, always_on_top=True, decorated=False)
                 dpg.set_value("main_tab_bar", "tab_monitor")
-                print("[AUTO-OVERLAY] LMU InGame driving detected -> Window Always-On-Top Borderless & Monitor Tab active.", flush=True)
+                print("[AUTO-OVERLAY] LMU InGame driving detected -> Window Always-On-Top Borderless & Dashboards active.", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error enabling overlay: {e}", flush=True)
 
         elif not should_overlay and self._auto_overlay_active:
             self._auto_overlay_active = False
             try:
+                self._dashboard_mgr.hide_all()
                 if not self._is_pinned:
                     dpg.minimize_viewport()
                     dpg.configure_viewport(0, always_on_top=False, decorated=True)
-                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window (minimized).", flush=True)
+                    print("[AUTO-OVERLAY] Exited LMU InGame state -> Hiding window (minimized) and dashboards.", flush=True)
             except Exception as e:
                 print(f"[AUTO-OVERLAY] Error hiding window: {e}", flush=True)
 
@@ -329,6 +336,7 @@ class SimPadDPGApp:
 
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()
+        self._dashboard_mgr.update_telemetry(sensors)
         if self._synth:
             self._synth.update_telemetry(
                 abs_val=sensors.lock_intensity,
