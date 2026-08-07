@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Tuple, Optional, List
 
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.delta_engine import DeltaEngine
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,9 @@ class LMUParser:
     PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
     _last_in_realtime: bool = True
     _in_garage_trap: bool = False
+
+    # Unique DeltaEngine instance
+    _delta_engine: DeltaEngine = DeltaEngine()
 
     # Persistent scoring & telemetry state
     _last_fuel: float = 0.0
@@ -316,77 +320,13 @@ class LMUParser:
                                     cls._last_sector3_status = "default"
 
 
-                        # ── Calcul du Delta Live Réel par Interpolation Spline ──
-                        time_into = float(player_veh.get("mTimeIntoLap", -1.0))
-                        player_dist = float(player_veh.get("mLapDist", 0.0))
-                        best_lap = float(player_veh.get("mBestLapTime", -1.0))
-                        track_len = float(js.get("mLapDist", 0.0))
-                        laps_comp = int(player_veh.get("mTotalLaps", 0))
-
-                        # Secteur courant (1, 2 ou 3)
-                        curr_sec = int(player_veh.get("mSector", 1))
-                        if curr_sec in (1, 2, 3):
-                            cls._last_current_sector = curr_sec
-
-                        # Mise à jour des échantillons du profil de tour
-                        if laps_comp > cls._last_recorded_lap_num:
-                            cls._last_recorded_lap_num = laps_comp
-                            last_lap_time = float(player_veh.get("mLastLapTime", -1.0))
-                            if last_lap_time > 0.0 and (last_lap_time < cls._best_lap_time_val or not cls._best_lap_samples):
-                                cls._best_lap_time_val = last_lap_time
-                                cls._best_lap_samples = list(cls._current_lap_samples)
-                            cls._current_lap_samples = []
-                            cls._s1_checkpoint_delta = 0.0
-                            cls._s2_checkpoint_delta = 0.0
-                            cls._last_sector1_delta = 0.0
-                            cls._last_sector2_delta = 0.0
-                            cls._last_sector3_delta = 0.0
-
-                        if time_into > 0.0 and player_dist > 0.0:
-                            cls._current_lap_samples.append((player_dist, time_into))
-
-                        delta_calc = None
-
-                        # Calcul du Delta UNIQUEMENT si SimPad a enregistré un premier tour de référence complet
-                        if cls._best_lap_samples and time_into > 0.0 and player_dist > 0.0:
-                            import bisect
-                            samples = cls._best_lap_samples
-                            d_keys = [s[0] for s in samples]
-                            idx = bisect.bisect_left(d_keys, player_dist)
-
-                            if idx == 0:
-                                ref_time = samples[0][1]
-                            elif idx >= len(samples):
-                                ref_time = samples[-1][1]
-                            else:
-                                d1, t1 = samples[idx - 1]
-                                d2, t2 = samples[idx]
-                                frac = (player_dist - d1) / (d2 - d1) if d2 > d1 else 0.0
-                                ref_time = t1 + frac * (t2 - t1)
-
-                            delta_calc = time_into - ref_time
-
-                        if delta_calc is not None and abs(delta_calc) < 1000.0:
-                            cls._last_delta_time = delta_calc
-
-                            # Capture des deltas aux lignes de secteur
-                            if curr_sec == 2 and cls._s1_checkpoint_delta == 0.0:
-                                cls._s1_checkpoint_delta = delta_calc
-                            elif curr_sec == 3 and cls._s2_checkpoint_delta == 0.0:
-                                cls._s2_checkpoint_delta = delta_calc
-
-                            # Calcul des deltas propres par secteur actif
-                            if curr_sec == 1:
-                                cls._last_sector1_delta = delta_calc
-                            elif curr_sec == 2:
-                                cls._last_sector2_delta = delta_calc - cls._s1_checkpoint_delta
-                            elif curr_sec == 3:
-                                cls._last_sector3_delta = delta_calc - cls._s2_checkpoint_delta
-                        else:
-                            cls._last_delta_time = 0.0
-                            cls._last_sector1_delta = 0.0
-                            cls._last_sector2_delta = 0.0
-                            cls._last_sector3_delta = 0.0
+                        # ── Calcul du Delta Live & Secteurs via DeltaEngine ──
+                        cls._delta_engine.update_scoring(js)
+                        cls._last_delta_time = cls._delta_engine.live_delta
+                        cls._last_sector1_delta = cls._delta_engine.sector1_delta
+                        cls._last_sector2_delta = cls._delta_engine.sector2_delta
+                        cls._last_sector3_delta = cls._delta_engine.sector3_delta
+                        cls._last_current_sector = int(player_veh.get("mSector", 1))
 
                     cls._last_in_realtime = is_in_realtime
 
@@ -438,6 +378,13 @@ class LMUParser:
 
                     if isinstance(wheels, list) and len(wheels) >= 4:
                         veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+
+                        # Mise à jour haute fréquence (50Hz) du DeltaEngine
+                        cls._delta_engine.update_physics(veh_speed)
+                        cls._last_delta_time = cls._delta_engine.live_delta
+                        cls._last_sector1_delta = cls._delta_engine.sector1_delta
+                        cls._last_sector2_delta = cls._delta_engine.sector2_delta
+                        cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
                         def _get_ground_vel(w: dict, default_speed: float) -> float:
                             for k in ("mLongitudinalGroundVel", "longitudinalGroundVel", "mGroundSpeed", "groundSpeed"):
