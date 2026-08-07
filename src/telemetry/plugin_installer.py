@@ -13,14 +13,106 @@ from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
-# Search paths for LMU on Windows
-KNOWN_LMU_PATHS = [
-    "D:/SteamLibrary/steamapps/common/Le Mans Ultimate",
-    "C:/Program Files (x86)/Steam/steamapps/common/Le Mans Ultimate",
-    "C:/SteamLibrary/steamapps/common/Le Mans Ultimate",
-    "E:/SteamLibrary/steamapps/common/Le Mans Ultimate",
-    "F:/SteamLibrary/steamapps/common/Le Mans Ultimate",
-]
+def get_steam_vdf_candidate_paths() -> List[Path]:
+    """
+    Returns candidate paths for Steam's libraryfolders.vdf configuration file
+    across Windows (using Registry and environment variables), Linux (Native),
+    and Linux (Flatpak).
+    """
+    candidates: List[Path] = []
+
+    # 1. Windows: dynamic path resolution via Registry and Environment Variables
+    if os.name == "nt":
+        try:
+            import winreg
+            for hkey, reg_path, val_name in [
+                (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath"),
+            ]:
+                try:
+                    with winreg.OpenKey(hkey, reg_path) as key:
+                        val, _ = winreg.QueryValueEx(key, val_name)
+                        if val:
+                            vdf = Path(val) / "steamapps" / "libraryfolders.vdf"
+                            if vdf not in candidates:
+                                candidates.append(vdf)
+                except OSError:
+                    pass
+        except ImportError:
+            pass
+
+        # Environment variables for special folders (ProgramFiles(x86), ProgramFiles, etc.)
+        for env_var in ["ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"]:
+            pf = os.environ.get(env_var)
+            if pf:
+                vdf = Path(pf) / "Steam" / "steamapps" / "libraryfolders.vdf"
+                if vdf not in candidates:
+                    candidates.append(vdf)
+
+        sys_drive = os.environ.get("SystemDrive", "C:")
+        vdf = Path(sys_drive + "/") / "Steam" / "steamapps" / "libraryfolders.vdf"
+        if vdf not in candidates:
+            candidates.append(vdf)
+
+    # 2. Linux (Native) & Linux (Flatpak) via home directory
+    home = Path.home()
+
+    # Native Linux
+    for p in [
+        home / ".local" / "share" / "Steam" / "steamapps" / "libraryfolders.vdf",
+        home / ".steam" / "steam" / "steamapps" / "libraryfolders.vdf",
+        home / ".steam" / "root" / "steamapps" / "libraryfolders.vdf",
+        # Flatpak Linux
+        home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam" / "steamapps" / "libraryfolders.vdf",
+        home / ".var" / "app" / "com.valvesoftware.Steam" / ".steam" / "steam" / "steamapps" / "libraryfolders.vdf",
+    ]:
+        if p not in candidates:
+            candidates.append(p)
+
+    return candidates
+
+
+def parse_vdf_library_paths(vdf_path: Path) -> List[Path]:
+    """
+    Parses a Steam libraryfolders.vdf file and extracts all registered library paths.
+    """
+    import re
+    library_paths: List[Path] = []
+    if not vdf_path.exists():
+        return library_paths
+
+    try:
+        content = vdf_path.read_text(encoding="utf-8", errors="ignore")
+        # Match "path" "C:\\Program Files (x86)\\Steam" or "path" "/path/to/library"
+        matches = re.findall(r'"path"\s+"([^"]+)"', content, flags=re.IGNORECASE)
+        for raw_path in matches:
+            cleaned_path = raw_path.replace("\\\\", "\\")
+            p = Path(cleaned_path)
+            if p.exists() and p not in library_paths:
+                library_paths.append(p)
+    except Exception as e:
+        logger.warning(f"[PluginManager] Error reading VDF {vdf_path}: {e}")
+
+    return library_paths
+
+
+def get_known_lmu_paths() -> List[Path]:
+    """Builds fallback list of known LMU installation directories dynamically."""
+    paths: List[Path] = []
+    if os.name == "nt":
+        for env_var in ["ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"]:
+            pf = os.environ.get(env_var)
+            if pf:
+                paths.append(Path(pf) / "Steam" / "steamapps" / "common" / "Le Mans Ultimate")
+        for drive in ["C:/", "D:/", "E:/", "F:/"]:
+            paths.append(Path(drive) / "SteamLibrary" / "steamapps" / "common" / "Le Mans Ultimate")
+
+    home = Path.home()
+    paths.append(home / ".steam" / "steam" / "steamapps" / "common" / "Le Mans Ultimate")
+    paths.append(home / ".local" / "share" / "Steam" / "steamapps" / "common" / "Le Mans Ultimate")
+    paths.append(home / ".var" / "app" / "com.valvesoftware.Steam" / ".steam" / "steam" / "steamapps" / "common" / "Le Mans Ultimate")
+    return paths
 
 
 class LMUPluginManager:
@@ -28,16 +120,26 @@ class LMUPluginManager:
 
     @staticmethod
     def find_lmu_install_dir() -> Optional[Path]:
-        for pstr in KNOWN_LMU_PATHS:
-            p = Path(pstr)
+        """
+        Detects Le Mans Ultimate installation directory.
+        First parses Steam's libraryfolders.vdf configuration files.
+        Falls back to dynamic known paths and common drive scans.
+        """
+        # 1. Primary approach: parse Steam's libraryfolders.vdf
+        vdf_candidates = get_steam_vdf_candidate_paths()
+        for vdf_path in vdf_candidates:
+            if vdf_path.exists():
+                lib_paths = parse_vdf_library_paths(vdf_path)
+                for lib in lib_paths:
+                    lmu_path = lib / "steamapps" / "common" / "Le Mans Ultimate"
+                    if lmu_path.exists() and (lmu_path / "Le Mans Ultimate.exe").exists():
+                        logger.info(f"[PluginManager] Found LMU via VDF ({vdf_path}): {lmu_path}")
+                        return lmu_path
+
+        # 2. Fallback: check dynamic known paths
+        for p in get_known_lmu_paths():
             if p.exists() and (p / "Le Mans Ultimate.exe").exists():
                 return p
-
-        # Fallback: scan common Steam library folders
-        for drive in ["C:/", "D:/", "E:/", "F:/"]:
-            steam_lib = Path(drive) / "SteamLibrary" / "steamapps" / "common" / "Le Mans Ultimate"
-            if steam_lib.exists() and (steam_lib / "Le Mans Ultimate.exe").exists():
-                return steam_lib
 
         return None
 

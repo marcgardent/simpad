@@ -1,12 +1,16 @@
 """
-SimPad — Utility functions for Windows system window state management.
-Provides foreground window detection for Le Mans Ultimate (LMU).
+SimPad — Utility functions for system window state management and screen dimensions.
+Provides cross-platform screen resolution detection via GLFW and foreground window detection for Le Mans Ultimate (LMU).
 """
 
 import sys
 import ctypes
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+
+
+from src.utils.glfw_manager import GLFWWindowManager
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -21,57 +25,72 @@ else:
 
 
 def get_foreground_window_title() -> str:
-    """Returns the title of the currently active foreground window on Windows."""
-    if not user32:
-        return ""
-    hwnd = user32.GetForegroundWindow()
-    if not hwnd:
-        return ""
-    length = user32.GetWindowTextLengthW(hwnd)
-    if length <= 0:
-        return ""
-    buf = ctypes.create_unicode_buffer(length + 1)
-    user32.GetWindowTextW(hwnd, buf, length + 1)
-    return buf.value
+    """Returns the title of the currently active foreground window on Windows/Linux."""
+    if sys.platform == "win32" and user32:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value
+    elif sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            out = subprocess.check_output(["xdotool", "getactivewindow", "getwindowname"], stderr=subprocess.DEVNULL)
+            return out.decode("utf-8", errors="ignore").strip()
+        except Exception:
+            return ""
+    return ""
 
 
 def get_foreground_process_name() -> str:
-    """Returns the executable filename of the currently active foreground process on Windows."""
-    if not user32 or not kernel32:
-        return ""
-    hwnd = user32.GetForegroundWindow()
-    if not hwnd:
-        return ""
-    pid = wintypes.DWORD()
-    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-    if not pid.value:
-        return ""
+    """Returns the executable filename of the currently active foreground process on Windows/Linux."""
+    if sys.platform == "win32" and user32 and kernel32:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return ""
 
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    hProcess = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
-    if not hProcess:
-        return ""
-    try:
-        buf_size = wintypes.DWORD(1024)
-        buf = ctypes.create_unicode_buffer(1024)
-        if kernel32.QueryFullProcessImageNameW(hProcess, 0, ctypes.byref(buf), ctypes.byref(buf_size)):
-            return Path(buf.value).name.lower()
-    except Exception:
-        pass
-    finally:
-        kernel32.CloseHandle(hProcess)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        hProcess = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not hProcess:
+            return ""
+        try:
+            buf_size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(1024)
+            if kernel32.QueryFullProcessImageNameW(hProcess, 0, ctypes.byref(buf), ctypes.byref(buf_size)):
+                return Path(buf.value).name.lower()
+        except Exception:
+            pass
+        finally:
+            kernel32.CloseHandle(hProcess)
+
+    elif sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            out = subprocess.check_output(["xdotool", "getactivewindow", "getwindowpid"], stderr=subprocess.DEVNULL)
+            pid = out.decode("utf-8").strip()
+            if pid:
+                comm_path = Path(f"/proc/{pid}/comm")
+                if comm_path.exists():
+                    return comm_path.read_text(encoding="utf-8").strip().lower()
+        except Exception:
+            pass
 
     return ""
 
 
 def is_lmu_foreground() -> bool:
     """
-    Returns True ONLY if Le Mans Ultimate game executable is the active window in the foreground.
-    Strictly matches process executable name and game window title.
+    Returns True if Le Mans Ultimate game executable is the active window in the foreground.
+    Strictly matches process executable name and game window title on Windows & Linux (Proton/Wine).
     """
-    if sys.platform != "win32":
-        return False
-
     proc_name = get_foreground_process_name().lower()
     if proc_name in ("lemansultimate.exe", "rfactor2.exe", "lemansultimate", "rfactor2"):
         return True
@@ -84,18 +103,10 @@ def is_lmu_foreground() -> bool:
 
 
 def get_screen_dimensions() -> tuple[int, int]:
-    """Returns primary monitor resolution (width, height). Defaults to (1920, 1080) if unavailable."""
-    if user32:
-        try:
-            SM_CXSCREEN = 0
-            SM_CYSCREEN = 1
-            w = user32.GetSystemMetrics(SM_CXSCREEN)
-            h = user32.GetSystemMetrics(SM_CYSCREEN)
-            if w > 0 and h > 0:
-                return (w, h)
-        except Exception:
-            pass
-    return (1920, 1080)
+    """
+    Returns primary monitor resolution (width, height) using GLFW.
+    """
+    return GLFWWindowManager.get_screen_dimensions()
 
 
 def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
@@ -104,12 +115,6 @@ def get_3x3_grid_rect(col: int = 1, row: int = 0) -> tuple[int, int, int, int]:
     Always uses the primary monitor's physical resolution so width is exactly 1/3 of the screen.
     col: 0 (left), 1 (middle), 2 (right)
     row: 0 (top), 1 (middle), 2 (bottom)
-
-    Top-Middle (col=1, row=0) returns:
-    x = Screen_Width / 3
-    y = 0
-    w = Screen_Width / 3
-    h = Screen_Height / 3
     """
     sw, sh = get_screen_dimensions()
     w = max(300, sw // 3)
@@ -127,9 +132,6 @@ def get_hud_rect(col_third: int = 1, row_half: int = 1) -> tuple[int, int, int, 
     x = (sw - w) // 2 if col_third == 1 else col_third * w
     y = row_half * (sh // 2)
     return (int(x), int(y), int(w), int(h))
-
-
-
 
 
 if sys.platform == "win32":
@@ -245,4 +247,3 @@ def restore_viewport_windowed(window_title: str) -> bool:
         print(f"[VIEWPORT OVERLAY] Error restoring windowed console: {e}", flush=True)
 
     return False
-

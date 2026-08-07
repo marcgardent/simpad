@@ -48,7 +48,8 @@ class TestLMUMiddleware(unittest.TestCase):
 
     def test_wheel_lockup_detection(self):
         # 100% lockup on Front Left (patch vel = 0.0 while vehicle speed = 30.0 m/s)
-        json_data = b'{"Type":"TelemInfoV01","mSpeed":30.0,"wheels":[{"mLongitudinalPatchVel":0.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0}]}'
+        json_data = b'{"Type":"TelemInfoV01","mInRealtime":true,"mSpeed":30.0,"wheels":[{"mLongitudinalPatchVel":0.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0}]}'
+
         parsed = LMUParser.parse(json_data)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()

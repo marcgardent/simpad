@@ -163,7 +163,8 @@ class DeltaEngine:
         laps_comp = int(player_veh.get("mTotalLaps", 0))
         time_into = float(player_veh.get("mTimeIntoLap", -1.0))
         player_dist = float(player_veh.get("mLapDist", 0.0))
-        curr_sec = int(player_veh.get("mSector", 1))
+        raw_sec = int(player_veh.get("mSector", 1))
+        curr_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
         in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
         in_pits = bool(player_veh.get("mInPits", player_veh.get("inPits", False)))

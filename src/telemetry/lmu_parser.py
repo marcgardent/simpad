@@ -318,7 +318,8 @@ class LMUParser:
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
             cls._last_sector2_delta = cls._delta_engine.sector2_delta
             cls._last_sector3_delta = cls._delta_engine.sector3_delta
-            cls._last_current_sector = int(player_veh.get("mSector", 1))
+            raw_sec = int(player_veh.get("mSector", 1))
+            cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
         cls._last_in_realtime = is_in_realtime
         return TelemetryData(
@@ -382,9 +383,12 @@ class LMUParser:
         if "mInRealtime" in js or "inRealtime" in js:
             in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
             in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
+            if in_rt_flag:
+                cls._in_garage_trap = False
             in_rt = False if (not in_rt_flag or cls._in_garage_trap) else True
             cls._last_in_realtime = in_rt
             return in_rt
+
         return False if cls._in_garage_trap else cls._last_in_realtime
 
     @classmethod
@@ -409,8 +413,8 @@ class LMUParser:
         )
 
         if isinstance(wheels, list) and len(wheels) >= 4:
-            vel = js.get("mLocalVel", {})
-            if isinstance(vel, dict):
+            vel = js.get("mLocalVel")
+            if isinstance(vel, dict) and any(k in vel for k in ("x", "y", "z")):
                 vx = float(vel.get("x", 0.0))
                 vy = float(vel.get("y", 0.0))
                 vz = float(vel.get("z", 0.0))
@@ -419,6 +423,7 @@ class LMUParser:
                 veh_speed = math.sqrt(float(vel[0])**2 + float(vel[1])**2 + float(vel[2])**2)
             else:
                 veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+
 
             cls._delta_engine.update_physics(veh_speed)
             cls._last_delta_time = cls._delta_engine.live_delta
