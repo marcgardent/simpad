@@ -10,10 +10,32 @@ from src.gui.dashboards.widgets.base_widget import BaseHudWidget, lerp
 from src.telemetry.sensors import VehicleSensors
 
 
+def get_aero_color_ramp(a: float) -> list:
+    """Calculates color ramp: Red (0%) -> Violet (33%) -> Blue (66%) -> Green (100%)."""
+    a = max(0.0, min(1.0, a))
+    if a <= 0.3333:
+        t = a / 0.3333
+        r = int(round(lerp(239.0, 168.0, t)))
+        g = int(round(lerp(68.0, 85.0, t)))
+        b = int(round(lerp(68.0, 247.0, t)))
+    elif a <= 0.6666:
+        t = (a - 0.3333) / 0.3333
+        r = int(round(lerp(168.0, 59.0, t)))
+        g = int(round(lerp(85.0, 130.0, t)))
+        b = int(round(lerp(247.0, 246.0, t)))
+    else:
+        t = (a - 0.6666) / 0.3334
+        r = int(round(lerp(59.0, 34.0, t)))
+        g = int(round(lerp(130.0, 197.0, t)))
+        b = int(round(lerp(246.0, 94.0, t)))
+    return [r, g, b, 255]
+
+
 class AeroBarWidget(BaseHudWidget):
     """
     Barre d'Appui Aérodynamique (Bas du HUD compact).
-    Liée dynamiquement à la charge aérodynamique calculée depuis la vitesse véhicule.
+    Ramp de couleur : Rouge (0%) -> Violet (33%) -> Bleu (66%) -> Vert (100%).
+    Indicateur 'cleanlap' positionné juste sous la jauge aérodynamique.
     """
 
     def __init__(self):
@@ -54,18 +76,38 @@ class AeroBarWidget(BaseHudWidget):
             parent=drawlist_tag,
         )
 
-        # Fill with lerped Blue (59, 130, 246) -> Orange (249, 115, 22)
+        # Fill using 4-stage color ramp: Rouge -> Violet -> Bleu -> Vert
         a = max(0.0, min(1.0, self.display_aero / 100.0))
-        r = int(round(lerp(59.0, 249.0, a)))
-        g = int(round(lerp(130.0, 115.0, a)))
-        b = int(round(lerp(246.0, 22.0, a)))
+        bar_color = get_aero_color_ramp(a)
 
         fill_width = a * aero_width
         if fill_width > 0.5:
             dpg.draw_rectangle(
                 pmin=[aero_x, aero_y],
                 pmax=[aero_x + fill_width, aero_y + aero_height],
-                fill=[r, g, b, 255],
+                fill=bar_color,
                 color=[0, 0, 0, 0],
                 parent=drawlist_tag,
             )
+
+        # ── Indicateur 'cleanlap' (Pastille seule, sans texte) positionné SOUS la jauge aérodynamique ──
+        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
+        if lap_flag == 0:
+            dot_color = [239, 68, 68, 255]     # ROUGE (Invalid Lap)
+        elif lap_flag == 1:
+            dot_color = [249, 115, 22, 255]    # ORANGE (Out-lap)
+        else:
+            dot_color = [34, 197, 94, 255]     # VERT (Clean Lap)
+
+        dot_center_x = center_x
+        dot_center_y = aero_y + aero_height + (16.0 * scale_y)
+        dot_radius = 9.0 * scale_y
+
+        dpg.draw_circle(
+            center=[dot_center_x, dot_center_y],
+            radius=dot_radius,
+            fill=dot_color,
+            color=[15, 23, 42, 255],
+            thickness=2,
+            parent=drawlist_tag,
+        )

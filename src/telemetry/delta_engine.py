@@ -39,12 +39,14 @@ class DeltaEngine:
     """
 
     def __init__(self):
+        self._pit_or_garage_during_lap: bool = False
         self.reset_session()
 
     def reset_session(self) -> None:
         """Réinitialise complètement l'état du moteur (changement de session/circuit)."""
         self._track_name: str = ""
         self._vehicle_name: str = ""
+        self._vehicle_class: str = ""
         self._track_length: float = 0.0
 
         # Profil de référence haute résolution
@@ -58,6 +60,7 @@ class DeltaEngine:
         self._current_lap_samples: List[Tuple[float, float]] = []
         self._last_laps_completed: int = -1
         self._last_dist: float = -1.0
+        self._pit_or_garage_during_lap: bool = False
 
         # Dernier état de scoring (1-2 Hz)
         self._last_scoring_dist: float = 0.0
@@ -99,6 +102,7 @@ class DeltaEngine:
                 in_pits=in_pits,
             )
             self._current_lap_samples = []
+            self._pit_or_garage_during_lap = False
             self._s1_checkpoint_captured = False
             self._s2_checkpoint_captured = False
             self._s1_checkpoint_delta = 0.0
@@ -121,7 +125,11 @@ class DeltaEngine:
 
     def _collect_lap_sample(self, in_garage: bool, in_pits: bool, time_into: float, player_dist: float) -> None:
         """SLAP Helper: Collects live lap samples for reference spline building."""
-        if not in_garage and not in_pits and time_into > 0.0 and player_dist >= 0.0:
+        if in_garage or in_pits:
+            self._pit_or_garage_during_lap = True
+            return
+
+        if time_into > 0.0 and player_dist >= 0.0:
             if self._track_length <= 0.0 or player_dist <= self._track_length + 200.0:
                 if not self._current_lap_samples or player_dist > self._current_lap_samples[-1][0]:
                     self._current_lap_samples.append((player_dist, time_into))
@@ -140,10 +148,12 @@ class DeltaEngine:
             return
 
         veh_name = str(player_veh.get("mVehicleName", ""))
+        veh_class = str(player_veh.get("mVehicleClass", player_veh.get("vehicleClass", "")))
 
-        if (track_name and track_name != self._track_name) or (veh_name and veh_name != self._vehicle_name):
+        if (track_name and track_name != self._track_name) or (veh_class and veh_class != self._vehicle_class) or (veh_name and veh_name != self._vehicle_name):
             self._track_name = track_name
             self._vehicle_name = veh_name
+            self._vehicle_class = veh_class
             self._track_length = track_len
             self._load_reference_profile()
 
@@ -182,8 +192,8 @@ class DeltaEngine:
         now = time.time()
         dt = now - self._last_scoring_timestamp
 
-        # Extrapolation si le dernier paquet scoring a moins de 1 seconde
-        if 0.0 < dt < 1.0 and veh_speed_ms >= 0.0:
+        # Extrapolation continue (jusqu'à 60s sans blocage artificiel à 1s)
+        if 0.0 < dt < 60.0 and veh_speed_ms >= 0.0:
             extrapol_dist = self._last_scoring_dist + (veh_speed_ms * dt)
             extrapol_time_into = self._last_scoring_time_into + dt
 
@@ -267,28 +277,17 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """Valide et enregistre le tour complété (SLAP: Orchestration haut niveau)."""
-        # TODO [SLAP]: High-level lap validation separated from low-level grid interpolation math
-        if lap_flag != 2:
-            logger.debug(f"[DeltaEngine] Lap rejected: Invalid lap flag {lap_flag}")
+        # Seul un tour annulé (lap_flag == 0) par le jeu est invalidé
+        if lap_flag == 0:
+            logger.debug(f"[DeltaEngine] Lap rejected: Invalidated by game (lap_flag={lap_flag})")
             return
 
-        if in_garage or in_pits:
-            logger.debug("[DeltaEngine] Lap rejected: Pit/Garage stop detected")
+        if self._pit_or_garage_during_lap or in_garage or in_pits:
+            logger.debug("[DeltaEngine] Lap rejected: Pit or Garage stop detected during lap")
             return
 
-        if lap_time <= 0.0 or len(self._current_lap_samples) < 20:
-            logger.debug("[DeltaEngine] Lap rejected: Insufficient samples")
-            return
-
-        first_dist = self._current_lap_samples[0][0]
-        last_dist = self._current_lap_samples[-1][0]
-
-        if first_dist > 200.0:
-            logger.debug(f"[DeltaEngine] Lap rejected: First sample distance too far ({first_dist:.1f}m)")
-            return
-
-        if self._track_length > 0.0 and (self._track_length - last_dist) > 200.0:
-            logger.debug(f"[DeltaEngine] Lap rejected: End sample distance too short ({last_dist:.1f}m vs {self._track_length:.1f}m)")
+        if lap_time <= 0.0 or len(self._current_lap_samples) < 5:
+            logger.debug("[DeltaEngine] Lap rejected: Insufficient lap samples or lap_time <= 0")
             return
 
         if lap_time >= self._ref_lap_time and self._ref_t_grid is not None:
@@ -303,7 +302,18 @@ class DeltaEngine:
                 clean_samples.append((d, t))
                 last_d = d
 
-        if len(clean_samples) < 10 or clean_samples[-1][0] <= 0.0:
+        if not clean_samples:
+            return
+
+        # Extrapolation automatique du point de départ (0.0m, 0.0s) si absent
+        if clean_samples[0][0] > 0.0:
+            clean_samples.insert(0, (0.0, 0.0))
+
+        # Extrapolation automatique du point de fin (track_length, lap_time) si absent
+        if self._track_length > 0.0 and clean_samples[-1][0] < self._track_length:
+            clean_samples.append((self._track_length, lap_time))
+
+        if len(clean_samples) < 2 or clean_samples[-1][0] <= 0.0:
             return
 
         spatial_step = 1.0
@@ -320,12 +330,12 @@ class DeltaEngine:
         self._save_reference_profile()
 
     def _get_profile_filepath(self) -> Optional[Path]:
-        """Retourne le chemin du fichier JSON pour (track, vehicle)."""
+        """Retourne le chemin du fichier JSON pour (track, vehicle_class/vehicle)."""
         if not self._track_name:
             return None
         t_clean = _clean_name(self._track_name)
-        v_clean = _clean_name(self._vehicle_name)
-        filename = f"ref_{t_clean}_{v_clean}.json"
+        v_identifier = _clean_name(self._vehicle_class) if self._vehicle_class else _clean_name(self._vehicle_name)
+        filename = f"ref_{t_clean}_{v_identifier}.json"
         return _REF_LAPS_DIR / filename
 
     def _save_reference_profile(self) -> None:
@@ -339,6 +349,7 @@ class DeltaEngine:
             data = {
                 "track_name": self._track_name,
                 "vehicle_name": self._vehicle_name,
+                "vehicle_class": self._vehicle_class,
                 "lap_time": self._ref_lap_time,
                 "spatial_step": self._ref_spatial_step,
                 "num_points": self._ref_num_points,

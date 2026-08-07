@@ -19,6 +19,7 @@ ScoringInfoV01:
 """
 
 import json
+import math
 import struct
 import logging
 from dataclasses import dataclass
@@ -306,6 +307,10 @@ class LMUParser:
             elif "countLapFlag" in player_veh:
                 cls._last_lap_flag = int(player_veh["countLapFlag"])
 
+            # Déclenchement des annonces vocales SDL3 (Clean Lap / Dirty Lap) sur changement d'état
+            from src.utils.audio import AudioAnnouncer
+            AudioAnnouncer.update_lap_flag(cls._last_lap_flag)
+
             cls._update_player_sector_times(player_veh, session_bests)
 
             cls._delta_engine.update_scoring(js)
@@ -404,7 +409,17 @@ class LMUParser:
         )
 
         if isinstance(wheels, list) and len(wheels) >= 4:
-            veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+            vel = js.get("mLocalVel", {})
+            if isinstance(vel, dict):
+                vx = float(vel.get("x", 0.0))
+                vy = float(vel.get("y", 0.0))
+                vz = float(vel.get("z", 0.0))
+                veh_speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+            elif isinstance(vel, (list, tuple)) and len(vel) >= 3:
+                veh_speed = math.sqrt(float(vel[0])**2 + float(vel[1])**2 + float(vel[2])**2)
+            else:
+                veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+
             cls._delta_engine.update_physics(veh_speed)
             cls._last_delta_time = cls._delta_engine.live_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta

@@ -83,13 +83,20 @@ class SectorTimesWidget(BaseHudWidget):
                     bg_color = [15, 23, 42, 255]
                     border_color = [51, 65, 85, 255]
 
+            # Bordure blanche marquée sur le secteur en cours d'exécution
+            if is_current:
+                border_color = [255, 255, 255, 255]
+                border_thickness = 2
+            else:
+                border_thickness = 1
+
             # Box background
             dpg.draw_rectangle(
                 pmin=[s_x, sector_y],
                 pmax=[s_x + sector_w, sector_y + sector_h],
                 fill=bg_color,
                 color=border_color,
-                thickness=1,
+                thickness=border_thickness,
                 parent=drawlist_tag,
             )
 
@@ -104,31 +111,5 @@ class SectorTimesWidget(BaseHudWidget):
                 size=font_size,
                 parent=drawlist_tag,
             )
-
-        # ── Indicateur Pastille Ronde de Validité de Tour (mCountLapFlag) ──
-        # 0 = Invalid Lap (Track Limit) -> ROUGE
-        # 1 = Out-lap / Warm-up -> ORANGE
-        # 2 = Clean Lap -> VERT
-        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
-
-        if lap_flag == 0:
-            dot_color = [239, 68, 68, 255]     # ROUGE (Invalid / Track Limits)
-        elif lap_flag == 1:
-            dot_color = [249, 115, 22, 255]    # ORANGE (Out-lap / Warm-up)
-        else:  # lap_flag == 2
-            dot_color = [34, 197, 94, 255]     # VERT (Clean Lap)
-
-        dot_center_x = center_x
-        dot_center_y = sector_y + sector_h + (14.0 * scale_y)
-        dot_radius = 6.0 * scale_y
-
-        dpg.draw_circle(
-            center=[dot_center_x, dot_center_y],
-            radius=dot_radius,
-            fill=dot_color,
-            color=[15, 23, 42, 255],
-            thickness=1,
-            parent=drawlist_tag,
-        )
 
 
