@@ -50,11 +50,11 @@ class EditorModalManager:
         with dpg.window(label="Create New Profile", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
             dpg.add_text("Enter name for the new profile:", color=[255, 200, 0, 255])
             dpg.add_spacer(height=6)
-            dpg.add_input_text(default_value=default_name, width=-1, tag=input_tag, on_enter=True, callback=lambda: create_new_profile())
+            dpg.add_input_text(default_value=default_name, width=-1, tag=input_tag, on_enter=True, callback=lambda *args: create_new_profile())
             dpg.add_spacer(height=14)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Create", width=110, callback=lambda: create_new_profile())
-                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+                dpg.add_button(label="Create", width=110, callback=lambda *args: create_new_profile())
+                dpg.add_button(label="Cancel", width=110, callback=lambda *args: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
 
     def open_rename_profile_modal(self, profile_manager, selected_display: str, on_profile_renamed: Callable[[str], None]):
         """Opens a modal window allowing user to rename active profile."""
@@ -82,11 +82,11 @@ class EditorModalManager:
         with dpg.window(label="Rename Profile", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
             dpg.add_text(f"Rename Profile '{prof.name}':", color=[255, 200, 0, 255])
             dpg.add_spacer(height=6)
-            dpg.add_input_text(default_value=prof.name, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_profile_rename())
+            dpg.add_input_text(default_value=prof.name, width=-1, tag=input_tag, on_enter=True, callback=lambda *args: apply_profile_rename())
             dpg.add_spacer(height=14)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Apply", width=110, callback=lambda: apply_profile_rename())
-                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+                dpg.add_button(label="Apply", width=110, callback=lambda *args: apply_profile_rename())
+                dpg.add_button(label="Cancel", width=110, callback=lambda *args: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
 
     def open_rename_node_modal(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None]):
         """Opens a modal window allowing user to rename selected node (F2)."""
@@ -127,11 +127,11 @@ class EditorModalManager:
         with dpg.window(label="Rename Node (F2)", tag=modal_tag, modal=True, show=True, no_resize=True, width=440, height=170, pos=pos):
             dpg.add_text("Enter new node display label:", color=[0, 210, 255, 255])
             dpg.add_spacer(height=6)
-            dpg.add_input_text(default_value=current_label, width=-1, tag=input_tag, on_enter=True, callback=lambda: apply_node_rename())
+            dpg.add_input_text(default_value=current_label, width=-1, tag=input_tag, on_enter=True, callback=lambda *args: apply_node_rename())
             dpg.add_spacer(height=14)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Apply", width=110, callback=lambda: apply_node_rename())
-                dpg.add_button(label="Cancel", width=110, callback=lambda: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
+                dpg.add_button(label="Apply", width=110, callback=lambda *args: apply_node_rename())
+                dpg.add_button(label="Cancel", width=110, callback=lambda *args: dpg.delete_item(modal_tag) if dpg.does_item_exist(modal_tag) else None)
 
     def show_python_code_modal(self, graph_dict: dict):
         """Opens a modal window displaying generated standalone Python code."""
@@ -148,4 +148,4 @@ class EditorModalManager:
             dpg.add_input_text(multiline=True, readonly=True, default_value=py_source, width=-1, height=400)
             dpg.add_spacer(height=6)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Close", width=120, callback=lambda: dpg.delete_item(modal_tag))
+                dpg.add_button(label="Close", width=120, callback=lambda *args: dpg.delete_item(modal_tag))

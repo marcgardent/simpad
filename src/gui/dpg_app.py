@@ -22,7 +22,7 @@ from src.telemetry.plugin_installer import LMUPluginManager
 from src.telemetry.lmu_parser import TelemetryData
 from src.telemetry.udp_server import UDPServer
 from src.physics.effects import PhysicsToHaptic
-from src.haptics.windows import WindowsHapticController
+from src.haptics import HapticController, HapticBackendFactory
 from src.gui.node_editor import NodeEditorTab
 from src.gui.dashboards import DashboardManager
 
@@ -38,7 +38,7 @@ class SimPadDPGApp:
         self._dashboard_mgr = DashboardManager()
 
         # Backends
-        self._haptics: Optional[WindowsHapticController] = None
+        self._haptics: Optional[HapticController] = None
         self._synth: Optional[HapticSynthesizerEngine] = None
         self._udp: Optional[UDPServer] = None
         self._physics: Optional[PhysicsToHaptic] = None
@@ -109,7 +109,7 @@ class SimPadDPGApp:
     # ── Background Backends Init ──────────────────────────────────────────────
     def _init_backends(self):
         try:
-            self._haptics = WindowsHapticController()
+            self._haptics = HapticBackendFactory.create_backend()
             self._synth = HapticSynthesizerEngine(self._haptics, default_freq_hz=200)
             self._synth.start()
             self._node_editor.set_synth_engine(self._synth)
@@ -291,20 +291,26 @@ class SimPadDPGApp:
         self._update_status_indicators()
         self._check_lmu_auto_overlay()
 
-        if self._udp and self._udp.is_receiving() and self._telemetry_enabled:
+        udp_active = bool(self._udp and self._udp.is_receiving() and self._telemetry_enabled)
+        if udp_active:
+            self._was_udp_receiving = True
             data = self._udp.get_latest_data()
             if data and data.in_realtime:
                 self._process_telemetry_frame(data)
             else:
-                self._clear_telemetry_frame()
+                self._clear_telemetry_frame(clear_synth=True)
         else:
-            self._clear_telemetry_frame()
+            if getattr(self, "_was_udp_receiving", False):
+                self._was_udp_receiving = False
+                self._clear_telemetry_frame(clear_synth=True)
+            else:
+                self._clear_telemetry_frame(clear_synth=False)
 
-    def _clear_telemetry_frame(self):
+    def _clear_telemetry_frame(self, clear_synth: bool = True):
         from src.telemetry.sensors import VehicleSensors
         if hasattr(self, "_dashboard_mgr"):
             self._dashboard_mgr.update_telemetry(VehicleSensors(in_realtime=False))
-        if self._synth:
+        if clear_synth and self._synth:
             self._synth.update_telemetry(in_realtime=False)
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()

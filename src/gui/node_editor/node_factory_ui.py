@@ -274,12 +274,12 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Boolean Logic #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Operator", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_combo(items=["AND", "OR", "XOR", "NOT", "NAND", "NOR"], default_value=op, width=110, tag=op_tag, callback=lambda: recompile_cb())
+                dpg.add_combo(items=["AND", "OR", "XOR", "NOT", "NAND", "NOR"], default_value=op, width=110, tag=op_tag, callback=lambda *args: recompile_cb())
             with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
-                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input A", tag=lbl_a_tag, show=False)
             with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
-                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input B", tag=lbl_b_tag, show=False)
             with dpg.node_attribute(label="Output (0/1)", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Bool Out (0/1)")
@@ -317,7 +317,7 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Invert (1 - x) #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Signal In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Inverted Out (1-x)", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Inverted Out (1-x)")
@@ -449,7 +449,7 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Constant [0,1] #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Value Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
-                dpg.add_slider_float(default_value=float(val), min_value=0.0, max_value=1.0, format="%.2f", width=120, tag=val_tag, callback=lambda: recompile_cb())
+                dpg.add_slider_float(default_value=float(val), min_value=0.0, max_value=1.0, format="%.2f", width=120, tag=val_tag, callback=lambda *args: recompile_cb())
 
         self.apply_pin_theme(out_tag, "normalized")
         custom_nodes[node_tag] = {"type": "constant", "out_attr": out_tag, "val_tag": val_tag}
@@ -471,7 +471,7 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Float Constant #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Float Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
-                dpg.add_input_float(default_value=float(val), step=5.0, step_fast=10.0, format="%.1f", width=120, tag=val_tag, callback=lambda: recompile_cb())
+                dpg.add_input_float(default_value=float(val), step=5.0, step_fast=10.0, format="%.1f", width=120, tag=val_tag, callback=lambda *args: recompile_cb())
 
         self.apply_pin_theme(out_tag, "float")
         custom_nodes[node_tag] = {"type": "float_constant", "out_attr": out_tag, "val_tag": val_tag}
@@ -492,10 +492,10 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Multiply [0,1] #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
-                dpg.add_drag_float(label="Factor A", default_value=float(val_a), min_value=0.0, max_value=1.0, width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Factor A", default_value=float(val_a), min_value=0.0, max_value=1.0, width=90, tag=val_a_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input A", tag=lbl_a_tag, show=False)
             with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
-                dpg.add_drag_float(label="Factor B", default_value=float(val_b), min_value=0.0, max_value=1.0, width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Factor B", default_value=float(val_b), min_value=0.0, max_value=1.0, width=90, tag=val_b_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input B", tag=lbl_b_tag, show=False)
             with dpg.node_attribute(label="Product Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Product Out")
@@ -566,12 +566,12 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Normalize #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Range", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_drag_float(label="Min In", default_value=float(min_val), format="%.2f", width=120, tag=min_tag, callback=lambda: recompile_cb())
-                dpg.add_drag_float(label="Max In", default_value=float(max_val), format="%.2f", width=120, tag=max_tag, callback=lambda: recompile_cb())
-                dpg.add_checkbox(label="Clamp [0, 1]", default_value=bool(clamp), tag=clamp_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Min In", default_value=float(min_val), format="%.2f", width=120, tag=min_tag, callback=lambda *args: recompile_cb())
+                dpg.add_drag_float(label="Max In", default_value=float(max_val), format="%.2f", width=120, tag=max_tag, callback=lambda *args: recompile_cb())
+                dpg.add_checkbox(label="Clamp [0, 1]", default_value=bool(clamp), tag=clamp_tag, callback=lambda *args: recompile_cb())
 
             with dpg.node_attribute(label="Float In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_drag_float(label="Float In", default_value=float(val_in), format="%.2f", width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Float In", default_value=float(val_in), format="%.2f", width=90, tag=val_in_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Float In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Signal Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Signal Out")
@@ -611,12 +611,12 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Math Mix #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Op", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_combo(items=["Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)", "Min (min)", "Max (max)"], default_value=op, width=120, tag=op_tag, callback=lambda: recompile_cb())
+                dpg.add_combo(items=["Add (+)", "Multiply (*)", "Subtract (-)", "Divide (/)", "Min (min)", "Max (max)"], default_value=op, width=120, tag=op_tag, callback=lambda *args: recompile_cb())
             with dpg.node_attribute(label="Input A", attribute_type=dpg.mvNode_Attr_Input, tag=in_a_tag):
-                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Value A", default_value=float(val_a), width=90, tag=val_a_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input A", tag=lbl_a_tag, show=False)
             with dpg.node_attribute(label="Input B", attribute_type=dpg.mvNode_Attr_Input, tag=in_b_tag):
-                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Value B", default_value=float(val_b), width=90, tag=val_b_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Input B", tag=lbl_b_tag, show=False)
             with dpg.node_attribute(label="Result Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Output")
@@ -671,9 +671,9 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Transform & Curve #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Parameters", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_slider_float(label="Threshold", default_value=thresh, min_value=0.0, max_value=0.5, format="%.2f", width=120, tag=thresh_tag, callback=lambda: (self.update_node_plot(nid), recompile_cb()))
-                dpg.add_slider_float(label="Gain", default_value=gain, min_value=0.0, max_value=2.0, format="%.2f", width=120, tag=gain_tag, callback=lambda: (self.update_node_plot(nid), recompile_cb()))
-                dpg.add_slider_float(label="Gamma", default_value=gamma, min_value=0.2, max_value=3.0, format="%.2f", width=120, tag=gamma_tag, callback=lambda: (self.update_node_plot(nid), recompile_cb()))
+                dpg.add_slider_float(label="Threshold", default_value=thresh, min_value=0.0, max_value=0.5, format="%.2f", width=120, tag=thresh_tag, callback=lambda *args: (self.update_node_plot(nid), recompile_cb()))
+                dpg.add_slider_float(label="Gain", default_value=gain, min_value=0.0, max_value=2.0, format="%.2f", width=120, tag=gain_tag, callback=lambda *args: (self.update_node_plot(nid), recompile_cb()))
+                dpg.add_slider_float(label="Gamma", default_value=gamma, min_value=0.2, max_value=3.0, format="%.2f", width=120, tag=gamma_tag, callback=lambda *args: (self.update_node_plot(nid), recompile_cb()))
 
                 with dpg.plot(no_title=True, height=120, width=180, tag=plot_tag):
                     dpg.add_plot_axis(dpg.mvXAxis, no_tick_labels=True, tag=xaxis_tag)
@@ -685,7 +685,7 @@ class NodeUIFactory:
                         dpg.add_line_series([-1, -1], [0, 1], tag=cursor_tag)
 
             with dpg.node_attribute(label="Input Signal", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Transformed Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Signal Out")
@@ -797,9 +797,9 @@ class NodeUIFactory:
 
         with dpg.node(label=f"Waveform Shape #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
             with dpg.node_attribute(label="Parameters", attribute_type=dpg.mvNode_Attr_Static):
-                dpg.add_combo(items=["Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"], default_value=shape, width=170, tag=shape_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_combo(items=["Square (Pulsed)", "Sawtooth (Scrub)", "Sine (Smooth)", "Burst (Impact)"], default_value=shape, width=170, tag=shape_tag, callback=lambda *args: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=4)
-                dpg.add_input_float(label="Duty", default_value=float(duty), step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_input_float(label="Duty", default_value=float(duty), step=0.05, step_fast=0.1, format="%.2f", width=100, tag=duty_tag, callback=lambda *args: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_spacer(height=2)
                 dpg.add_text("ON: 20.0ms | OFF: 30.0ms", tag=ms_lbl_tag, color=[0, 210, 255, 255])
                 dpg.add_spacer(height=4)
@@ -812,10 +812,10 @@ class NodeUIFactory:
                         dpg.add_line_series([], [], tag=series_tag)
 
             with dpg.node_attribute(label="Signal In", attribute_type=dpg.mvNode_Attr_Input, tag=in_tag):
-                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda: recompile_cb())
+                dpg.add_drag_float(label="Signal In", default_value=float(val_in), width=90, tag=val_in_tag, callback=lambda *args: recompile_cb())
                 dpg.add_text("Signal In", tag=lbl_in_tag, show=False)
             with dpg.node_attribute(label="Freq In (Hz)", attribute_type=dpg.mvNode_Attr_Input, tag=in_freq_tag):
-                dpg.add_input_float(label="Freq (Hz)", default_value=float(freq), step=1.0, step_fast=5.0, format="%.1f", width=100, tag=freq_tag, callback=lambda: (self.update_shape_plot(nid), recompile_cb()))
+                dpg.add_input_float(label="Freq (Hz)", default_value=float(freq), step=1.0, step_fast=5.0, format="%.1f", width=100, tag=freq_tag, callback=lambda *args: (self.update_shape_plot(nid), recompile_cb()))
                 dpg.add_text("Freq In (Hz)", tag=lbl_freq_tag, show=False)
             with dpg.node_attribute(label="Shaped Out", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
                 dpg.add_text("Shaped Out")
