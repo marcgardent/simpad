@@ -44,6 +44,7 @@ class GraphProfile:
         return cls(name=name, graph_data=graph_data, is_preset=is_preset, created=created, prof_id=prof_id)
 
 
+# TODO: [SRP] GraphProfileManager handles file persistence, preset rules, display name formatting, and directory watching.
 class GraphProfileManager:
     """Manages profile loading, saving, cloning, renaming, and dynamic directory watching."""
 
@@ -90,6 +91,7 @@ class GraphProfileManager:
         Polls the profiles/ directory for file additions, deletions or modifications.
         Returns True if changes occurred on disk and profiles were reloaded.
         """
+        # TODO [SLAP]: Directory watching polling re-executes full reload_all() indiscriminately
         current_files = set(_PROFILES_DIR.glob("*.json"))
         known_files = set(self._file_mtimes.keys())
 
@@ -114,6 +116,7 @@ class GraphProfileManager:
 
     def list_display_names(self) -> List[str]:
         """Returns list of profile names with a star indicator (★) for presets."""
+        # TODO [DRY]: Preset star formatting logic duplicated across display helper functions
         display_list = []
         for name in self.list_names():
             prof = self.profiles[name]
@@ -163,8 +166,20 @@ class GraphProfileManager:
         prof = GraphProfile(name=clean_name, graph_data=graph_data, is_preset=False, prof_id=existing.id if existing else clean_name)
         return self._write_profile_to_disk(prof)
 
+    def _remove_file_from_disk(self, file_path: Path) -> Optional[str]:
+        """SLAP Helper: Safely unlinks a file from disk and cleans up mtime tracking."""
+        if file_path in self._file_mtimes:
+            del self._file_mtimes[file_path]
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception as e:
+                return f"Error deleting file: {e}"
+        return None
+
     def rename_profile(self, identifier: str, new_name: str) -> Tuple[Optional[GraphProfile], str]:
         """Renames a user profile. Rejects renaming if target profile is a read-only preset."""
+        # TODO [SLAP]: Profile renaming delegates file unlinking to _remove_file_from_disk
         clean_name = self.get_profile_name_from_display(identifier)
         prof = self.profiles.get(clean_name)
         if not prof:
@@ -182,13 +197,9 @@ class GraphProfileManager:
 
         old_file_path = _PROFILES_DIR / f"{clean_name}.json"
         del self.profiles[clean_name]
-        if old_file_path in self._file_mtimes:
-            del self._file_mtimes[old_file_path]
-        if old_file_path.exists():
-            try:
-                old_file_path.unlink()
-            except Exception as e:
-                return None, f"Error deleting old profile file: {e}"
+        err = self._remove_file_from_disk(old_file_path)
+        if err:
+            return None, err
 
         prof.name = new_name
         return self._write_profile_to_disk(prof)
@@ -227,6 +238,7 @@ class GraphProfileManager:
 
     def delete_profile(self, identifier: str) -> Tuple[bool, str]:
         """Deletes a user profile. Rejects deletion if it's a built-in preset."""
+        # TODO [SLAP]: Profile deletion delegates file unlinking to _remove_file_from_disk
         clean_name = self.get_profile_name_from_display(identifier)
         prof = self.profiles.get(clean_name)
         if not prof:
@@ -237,14 +249,9 @@ class GraphProfileManager:
 
         del self.profiles[clean_name]
         file_path = _PROFILES_DIR / f"{clean_name}.json"
-        if file_path.exists():
-            try:
-                file_path.unlink()
-            except Exception as e:
-                return False, f"Error deleting file: {e}"
-
-        if file_path in self._file_mtimes:
-            del self._file_mtimes[file_path]
+        err = self._remove_file_from_disk(file_path)
+        if err:
+            return False, err
 
         if self._active_profile_name == clean_name:
             self._active_profile_name = next(iter(self.profiles.keys()), "Default")

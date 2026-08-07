@@ -155,13 +155,10 @@ class LMUParser:
 
     ENABLE_DISK_DUMP: bool = True
 
-
-
-
-
     @classmethod
     def _dump_to_file(cls, js: dict) -> None:
         """Enregistre le paquet JSON brut si le dump est activé."""
+        # TODO [SLAP]: File dumping operations mixed with telemetry parser logic.
         if not cls.ENABLE_DISK_DUMP:
             return
         try:
@@ -186,10 +183,304 @@ class LMUParser:
         except Exception as e:
             logger.debug(f"[LMUParser] Error dumping scoring: {e}")
 
+    @classmethod
+    def _extract_player_vehicle(cls, vehicles: list) -> Optional[dict]:
+        """Extracts the player vehicle dictionary from the vehicle list (DRY helper)."""
+        if not isinstance(vehicles, list):
+            return None
+        for v in vehicles:
+            if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
+                return v
+        for v in vehicles:
+            if isinstance(v, dict) and v.get("mControl") == 0:
+                return v
+        return None
 
+    @classmethod
+    def _calculate_sector_status(cls, val: float, best_val: float, session_best: float) -> str:
+        """Determines sector time status color (purple, green, or default)."""
+        if session_best < 999900.0 and val <= (session_best + 0.001):
+            return "purple"
+        elif best_val > 0.0 and val <= (best_val + 0.001):
+            return "green"
+        return "default"
+
+    @classmethod
+    def _calculate_session_bests(cls, vehicles: list) -> Tuple[float, float, float]:
+        """SLAP Helper: Computes session best sector 1, individual sector 2, and individual sector 3 times."""
+        s1, s2_indiv, s3_indiv = 999999.0, 999999.0, 999999.0
+        if not isinstance(vehicles, list):
+            return s1, s2_indiv, s3_indiv
+
+        for v in vehicles:
+            if isinstance(v, dict):
+                bs1 = float(v.get("mBestSector1", -1.0))
+                bs2 = float(v.get("mBestSector2", -1.0))
+                blap = float(v.get("mBestLapTime", -1.0))
+
+                if 0.0 < bs1 < s1:
+                    s1 = bs1
+                if 0.0 < bs1 and 0.0 < bs2 and (bs2 - bs1) > 0.0:
+                    if (bs2 - bs1) < s2_indiv:
+                        s2_indiv = bs2 - bs1
+                if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
+                    if (blap - bs2) < s3_indiv:
+                        s3_indiv = blap - bs2
+
+        return s1, s2_indiv, s3_indiv
+
+    @classmethod
+    def _update_player_sector_times(cls, player_veh: dict, session_bests: Tuple[float, float, float]) -> None:
+        """SLAP Helper: Formats sector times and assigns purple/green/default status colors for player vehicle."""
+        session_best_s1, session_best_s2_indiv, session_best_s3_indiv = session_bests
+
+        # Sector 1
+        cur_s1 = float(player_veh.get("mCurSector1", -1.0))
+        last_s1 = float(player_veh.get("mLastSector1", -1.0))
+        best_s1 = float(player_veh.get("mBestSector1", -1.0))
+
+        if cur_s1 > 0.0:
+            cls._last_sector1_time = format_time_sec(cur_s1)
+            cls._last_sector1_status = cls._calculate_sector_status(cur_s1, best_s1, session_best_s1)
+        elif last_s1 > 0.0:
+            cls._last_sector1_time = format_time_sec(last_s1)
+            cls._last_sector1_status = "default"
+
+        # Sector 2
+        cur_s2 = float(player_veh.get("mCurSector2", -1.0))
+        last_s2 = float(player_veh.get("mLastSector2", -1.0))
+        best_s2 = float(player_veh.get("mBestSector2", -1.0))
+
+        if cur_s2 > 0.0 and cur_s1 > 0.0:
+            indiv_s2 = cur_s2 - cur_s1
+            best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
+            if indiv_s2 > 0.0:
+                cls._last_sector2_time = format_time_sec(indiv_s2)
+                cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
+        elif last_s2 > 0.0 and last_s1 > 0.0:
+            indiv_s2 = last_s2 - last_s1
+            if indiv_s2 > 0.0:
+                cls._last_sector2_time = format_time_sec(indiv_s2)
+                cls._last_sector2_status = "default"
+
+        # Sector 3
+        last_lap = float(player_veh.get("mLastLapTime", -1.0))
+        best_lap = float(player_veh.get("mBestLapTime", -1.0))
+
+        if last_lap > 0.0 and last_s2 > 0.0:
+            indiv_s3 = last_lap - last_s2
+            best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
+            if indiv_s3 > 0.0:
+                cls._last_sector3_time = format_time_sec(indiv_s3)
+                cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
+
+    @classmethod
+    def _parse_json_scoring(cls, js: dict) -> TelemetryData:
+        """Parses ScoringInfoV01 packets (SLAP/KISS/SRP helper, CCN < 8)."""
+        cls._dump_scoring_to_file(js)
+
+        in_rt_top = js.get("mInRealtime", js.get("inRealtime", False))
+        is_in_realtime = bool(in_rt_top != 0 and in_rt_top is not False)
+
+        max_laps = int(js.get("mMaxLaps", js.get("maxLaps", 0)))
+        if 0 < max_laps < 1000:
+            cls._last_total_laps = max_laps
+
+        vehicles = js.get("mVehicles", [])
+        session_bests = cls._calculate_session_bests(vehicles)
+        player_veh = cls._extract_player_vehicle(vehicles)
+
+        cls._in_garage_trap = False
+        if player_veh:
+            in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
+            ctrl = player_veh.get("mControl", 0)
+            if in_garage or ctrl != 0:
+                is_in_realtime = False
+                cls._in_garage_trap = True
+
+            if "mTotalLaps" in player_veh:
+                cls._last_laps_completed = int(player_veh["mTotalLaps"])
+
+            if "mCountLapFlag" in player_veh:
+                cls._last_lap_flag = int(player_veh["mCountLapFlag"])
+            elif "countLapFlag" in player_veh:
+                cls._last_lap_flag = int(player_veh["countLapFlag"])
+
+            cls._update_player_sector_times(player_veh, session_bests)
+
+            cls._delta_engine.update_scoring(js)
+            cls._last_delta_time = cls._delta_engine.live_delta
+            cls._last_sector1_delta = cls._delta_engine.sector1_delta
+            cls._last_sector2_delta = cls._delta_engine.sector2_delta
+            cls._last_sector3_delta = cls._delta_engine.sector3_delta
+            cls._last_current_sector = int(player_veh.get("mSector", 1))
+
+        cls._last_in_realtime = is_in_realtime
+        return TelemetryData(
+            in_realtime=cls._last_in_realtime,
+            fuel=cls._last_fuel,
+            total_laps=cls._last_total_laps,
+            laps_completed=cls._last_laps_completed,
+            delta_time=cls._last_delta_time,
+            sector1_time=cls._last_sector1_time,
+            sector1_status=cls._last_sector1_status,
+            sector2_time=cls._last_sector2_time,
+            sector2_status=cls._last_sector2_status,
+            sector3_time=cls._last_sector3_time,
+            sector3_status=cls._last_sector3_status,
+            aero_downforce=cls._last_aero_downforce,
+            current_sector=cls._last_current_sector,
+            sector1_delta=cls._last_sector1_delta,
+            sector2_delta=cls._last_sector2_delta,
+            sector3_delta=cls._last_sector3_delta,
+            lap_flag=cls._last_lap_flag,
+        )
+
+    @classmethod
+    def _extract_wheel_velocities(cls, wheels: list, veh_speed: float):
+        """SLAP Helper: Computes wheel longitudinal, lateral, suspension travel and velocity vectors."""
+        def _get_ground_vel(w: dict, default_speed: float) -> float:
+            for k in ("mLongitudinalGroundVel", "longitudinalGroundVel", "mGroundSpeed", "groundSpeed"):
+                if k in w:
+                    return float(w[k])
+            return default_speed
+
+        def _get_patch_vel(w: dict, default_speed: float, ground_v: float) -> float:
+            if "mRotation" in w and "mUnloadedRadius" in w:
+                r = float(w["mUnloadedRadius"]) if float(w.get("mUnloadedRadius", 0)) > 0.05 else 0.33
+                return float(w["mRotation"]) * r
+            for k in ("mLongitudinalPatchVel", "longitudinalPatchVel", "mWheelSpeed", "wheelSpeed"):
+                if k in w:
+                    val = float(w[k])
+                    if val == 0.0 and abs(ground_v) > 0.5:
+                        return 0.0
+                    if abs(ground_v) > 0.5 and abs(abs(val) - abs(ground_v)) < 0.3 * abs(ground_v):
+                        return val
+                    if abs(ground_v) > 0.5 and 0.0 < abs(val) < 0.5 * abs(ground_v):
+                        return ground_v
+                    return val
+            return ground_v if abs(ground_v) > 0.1 else default_speed
+
+        lgv = tuple(_get_ground_vel(w, veh_speed) for w in wheels[:4])
+        lpv = tuple(_get_patch_vel(w, veh_speed, lgv[i]) for i, w in enumerate(wheels[:4]))
+        lat_pv = tuple(float(w.get("mLateralPatchVel", w.get("lateralPatchVel", 0.0))) for w in wheels[:4])
+        lat_gv = tuple(float(w.get("mLateralGroundVel", w.get("lateralGroundVel", 0.0))) for w in wheels[:4])
+        raw_deflections = tuple(float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) for w in wheels[:4])
+        travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
+        susp_vels = tuple(abs(float(w.get("mSuspensionVelocity", w.get("suspensionVelocity", 0.0)))) for w in wheels[:4])
+
+        return lpv, lgv, lat_pv, lat_gv, travels, susp_vels
+
+    @classmethod
+    def _determine_realtime_status(cls, js: dict) -> bool:
+        """SLAP Helper: Determines if game engine is currently driving in active realtime."""
+        if "mInRealtime" in js or "inRealtime" in js:
+            in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
+            in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
+            in_rt = False if (not in_rt_flag or cls._in_garage_trap) else True
+            cls._last_in_realtime = in_rt
+            return in_rt
+        return False if cls._in_garage_trap else cls._last_in_realtime
+
+    @classmethod
+    def _parse_json_telemetry(cls, js: dict) -> TelemetryData:
+        """Parses TelemInfoV01 packets (SLAP/KISS helper, CCN < 6)."""
+        if "mFuel" in js:
+            cls._last_fuel = float(js["mFuel"])
+
+        if "mFrontDownforce" in js and "mRearDownforce" in js:
+            f_df = abs(float(js["mFrontDownforce"]))
+            r_df = abs(float(js["mRearDownforce"]))
+            cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
+
+        wheels = js.get("mWheel") or js.get("wheels") or []
+        lpv, lgv, lat_pv, lat_gv, travels, susp_vels = (
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0, 0.0),
+        )
+
+        if isinstance(wheels, list) and len(wheels) >= 4:
+            veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+            cls._delta_engine.update_physics(veh_speed)
+            cls._last_delta_time = cls._delta_engine.live_delta
+            cls._last_sector1_delta = cls._delta_engine.sector1_delta
+            cls._last_sector2_delta = cls._delta_engine.sector2_delta
+            cls._last_sector3_delta = cls._delta_engine.sector3_delta
+
+            lpv, lgv, lat_pv, lat_gv, travels, susp_vels = cls._extract_wheel_velocities(wheels, veh_speed)
+
+        e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
+        e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
+        in_rt = cls._determine_realtime_status(js)
+
+        gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
+        unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
+        unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
+
+        return TelemetryData(
+            longitudinal_patch_vel=lpv,
+            longitudinal_ground_vel=lgv,
+            lateral_patch_vel=lat_pv,
+            lateral_ground_vel=lat_gv,
+            engine_rpm=e_rpm,
+            engine_max_rpm=e_max_rpm,
+            suspension_travels=travels,
+            suspension_velocities=susp_vels,
+            unfiltered_throttle=unfiltered_throttle,
+            unfiltered_brake=unfiltered_brake,
+            in_realtime=in_rt,
+            gear=gear_val,
+            fuel=cls._last_fuel,
+            total_laps=cls._last_total_laps,
+            laps_completed=cls._last_laps_completed,
+            delta_time=cls._last_delta_time,
+            sector1_time=cls._last_sector1_time,
+            sector1_status=cls._last_sector1_status,
+            sector2_time=cls._last_sector2_time,
+            sector2_status=cls._last_sector2_status,
+            sector3_time=cls._last_sector3_time,
+            sector3_status=cls._last_sector3_status,
+            aero_downforce=cls._last_aero_downforce,
+            current_sector=cls._last_current_sector,
+            sector1_delta=cls._last_sector1_delta,
+            sector2_delta=cls._last_sector2_delta,
+            sector3_delta=cls._last_sector3_delta,
+            lap_flag=cls._last_lap_flag,
+        )
+
+    @classmethod
+    def _build_telemetry_snapshot(cls) -> TelemetryData:
+        """Helper to instantiate TelemetryData with current class state (DRY helper)."""
+        return TelemetryData(
+            in_realtime=cls._last_in_realtime,
+            fuel=cls._last_fuel,
+            total_laps=cls._last_total_laps,
+            laps_completed=cls._last_laps_completed,
+            delta_time=cls._last_delta_time,
+            sector1_time=cls._last_sector1_time,
+            sector1_status=cls._last_sector1_status,
+            sector2_time=cls._last_sector2_time,
+            sector2_status=cls._last_sector2_status,
+            sector3_time=cls._last_sector3_time,
+            sector3_status=cls._last_sector3_status,
+            aero_downforce=cls._last_aero_downforce,
+            current_sector=cls._last_current_sector,
+            sector1_delta=cls._last_sector1_delta,
+            sector2_delta=cls._last_sector2_delta,
+            sector3_delta=cls._last_sector3_delta,
+            lap_flag=cls._last_lap_flag,
+        )
 
     @classmethod
     def parse(cls, data: bytes) -> Optional[TelemetryData]:
+        """
+        Décodeur principal conforme SLAP/KISS.
+        Délègue le traitement aux sous-fonctions spécialisées par type de paquet.
+        """
         if not data or len(data) < 10:
             return None
 
@@ -199,280 +490,17 @@ class LMUParser:
                 js = json.loads(raw_strip.decode("utf-8", errors="ignore"))
                 msg_type = js.get("Type") or js.get("type", "")
 
-                # Enregistrement silencieux sur le disque
                 cls._dump_to_file(js)
 
-                # 1. Message ScoringInfoV01 (Données de session, secteurs, chronos joueur)
                 if msg_type == "ScoringInfoV01" or "mVehicles" in js:
-                    cls._dump_scoring_to_file(js)
+                    return cls._parse_json_scoring(js)
 
-                    in_rt_top = js.get("mInRealtime", js.get("inRealtime", False))
-                    is_in_realtime = bool(in_rt_top != 0 and in_rt_top is not False)
-
-                    max_laps = int(js.get("mMaxLaps", js.get("maxLaps", 0)))
-                    if 0 < max_laps < 1000:
-                        cls._last_total_laps = max_laps
-
-                    session_best_s1 = 999999.0
-                    session_best_s2_indiv = 999999.0
-                    session_best_s3_indiv = 999999.0
-
-                    vehicles = js.get("mVehicles", [])
-                    player_veh = None
-                    if isinstance(vehicles, list):
-                        for v in vehicles:
-                            if isinstance(v, dict):
-                                if v.get("mIsPlayer") or v.get("isPlayer"):
-                                    player_veh = v
-                                bs1 = float(v.get("mBestSector1", -1.0))
-                                bs2 = float(v.get("mBestSector2", -1.0))
-                                blap = float(v.get("mBestLapTime", -1.0))
-
-                                if 0.0 < bs1 < session_best_s1:
-                                    session_best_s1 = bs1
-                                if 0.0 < bs1 and 0.0 < bs2 and (bs2 - bs1) > 0.0:
-                                    if (bs2 - bs1) < session_best_s2_indiv:
-                                        session_best_s2_indiv = bs2 - bs1
-                                if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
-                                    if (blap - bs2) < session_best_s3_indiv:
-                                        session_best_s3_indiv = blap - bs2
-
-                        if not player_veh and vehicles:
-                            for v in vehicles:
-                                if isinstance(v, dict) and v.get("mControl") == 0:
-                                    player_veh = v
-                                    break
-
-                    cls._in_garage_trap = False
-                    if player_veh:
-                        # Piège Stand/Garage
-                        in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
-                        ctrl = player_veh.get("mControl", 0)
-                        if in_garage or ctrl != 0:
-                            is_in_realtime = False
-                            cls._in_garage_trap = True
-
-                        # Tours du joueur
-                        if "mTotalLaps" in player_veh:
-                            cls._last_laps_completed = int(player_veh["mTotalLaps"])
-
-                        # Statut du tour (0=Invalid, 1=Outlap/Warmup, 2=Clean)
-                        if "mCountLapFlag" in player_veh:
-                            cls._last_lap_flag = int(player_veh["mCountLapFlag"])
-                        elif "countLapFlag" in player_veh:
-                            cls._last_lap_flag = int(player_veh["countLapFlag"])
-
-
-                        # ── Calcul des Temps de Secteurs Individuels (S1, S2, S3) ──
-                        cur_s1 = float(player_veh.get("mCurSector1", -1.0))
-                        last_s1 = float(player_veh.get("mLastSector1", -1.0))
-                        best_s1 = float(player_veh.get("mBestSector1", -1.0))
-
-                        cur_s2 = float(player_veh.get("mCurSector2", -1.0))
-                        last_s2 = float(player_veh.get("mLastSector2", -1.0))
-                        best_s2 = float(player_veh.get("mBestSector2", -1.0))
-
-                        last_lap = float(player_veh.get("mLastLapTime", -1.0))
-                        best_lap = float(player_veh.get("mBestLapTime", -1.0))
-
-                        # Temps du Secteur 1 (Violet = Meilleur absolu session, Vert = Meilleur personnel)
-                        if cur_s1 > 0.0:
-                            cls._last_sector1_time = format_time_sec(cur_s1)
-                            if session_best_s1 < 999900.0 and cur_s1 <= (session_best_s1 + 0.001):
-                                cls._last_sector1_status = "purple"
-                            elif best_s1 > 0.0 and cur_s1 <= (best_s1 + 0.001):
-                                cls._last_sector1_status = "green"
-                            else:
-                                cls._last_sector1_status = "default"
-                        elif last_s1 > 0.0:
-                            cls._last_sector1_time = format_time_sec(last_s1)
-                            cls._last_sector1_status = "default"
-
-                        # Temps du Secteur 2 (Retrancher le Secteur 1)
-                        if cur_s2 > 0.0 and cur_s1 > 0.0:
-                            indiv_s2 = cur_s2 - cur_s1
-                            best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
-                            if indiv_s2 > 0.0:
-                                cls._last_sector2_time = format_time_sec(indiv_s2)
-                                if session_best_s2_indiv < 999900.0 and indiv_s2 <= (session_best_s2_indiv + 0.001):
-                                    cls._last_sector2_status = "purple"
-                                elif best_indiv_s2 > 0.0 and indiv_s2 <= (best_indiv_s2 + 0.001):
-                                    cls._last_sector2_status = "green"
-                                else:
-                                    cls._last_sector2_status = "default"
-                        elif last_s2 > 0.0 and last_s1 > 0.0:
-                            indiv_s2 = last_s2 - last_s1
-                            if indiv_s2 > 0.0:
-                                cls._last_sector2_time = format_time_sec(indiv_s2)
-                                cls._last_sector2_status = "default"
-
-                        # Temps du Secteur 3 (Retrancher le Secteur 2 cumulé)
-                        if last_lap > 0.0 and last_s2 > 0.0:
-                            indiv_s3 = last_lap - last_s2
-                            best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
-                            if indiv_s3 > 0.0:
-                                cls._last_sector3_time = format_time_sec(indiv_s3)
-                                if session_best_s3_indiv < 999900.0 and indiv_s3 <= (session_best_s3_indiv + 0.001):
-                                    cls._last_sector3_status = "purple"
-                                elif best_indiv_s3 > 0.0 and indiv_s3 <= (best_indiv_s3 + 0.001):
-                                    cls._last_sector3_status = "green"
-                                else:
-                                    cls._last_sector3_status = "default"
-
-
-                        # ── Calcul du Delta Live & Secteurs via DeltaEngine ──
-                        cls._delta_engine.update_scoring(js)
-                        cls._last_delta_time = cls._delta_engine.live_delta
-                        cls._last_sector1_delta = cls._delta_engine.sector1_delta
-                        cls._last_sector2_delta = cls._delta_engine.sector2_delta
-                        cls._last_sector3_delta = cls._delta_engine.sector3_delta
-                        cls._last_current_sector = int(player_veh.get("mSector", 1))
-
-                    cls._last_in_realtime = is_in_realtime
-
-                    return TelemetryData(
-                        in_realtime=cls._last_in_realtime,
-                        fuel=cls._last_fuel,
-                        total_laps=cls._last_total_laps,
-                        laps_completed=cls._last_laps_completed,
-                        delta_time=cls._last_delta_time,
-                        sector1_time=cls._last_sector1_time,
-                        sector1_status=cls._last_sector1_status,
-                        sector2_time=cls._last_sector2_time,
-                        sector2_status=cls._last_sector2_status,
-                        sector3_time=cls._last_sector3_time,
-                        sector3_status=cls._last_sector3_status,
-                        aero_downforce=cls._last_aero_downforce,
-                        current_sector=cls._last_current_sector,
-                        sector1_delta=cls._last_sector1_delta,
-                        sector2_delta=cls._last_sector2_delta,
-                        sector3_delta=cls._last_sector3_delta,
-                        lap_flag=cls._last_lap_flag,
-                    )
-
-
-                # 2. Message TelemInfoV01 (Données télémétriques directes)
                 if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js or "mEngineRPM" in js:
-                    # Note: Dans TelemInfoV01, mDeltaTime est le pas de temps physique (dt = 0.010s / 10ms) et NON le chrono delta de tour!
-
-                    # Carburant (Directement exposé sous mFuel)
-                    if "mFuel" in js:
-                        cls._last_fuel = float(js["mFuel"])
-
-
-                    # Appui aérodynamique (mFrontDownforce + mRearDownforce)
-                    if "mFrontDownforce" in js and "mRearDownforce" in js:
-                        f_df = abs(float(js["mFrontDownforce"]))
-                        r_df = abs(float(js["mRearDownforce"]))
-                        cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
-
-                    wheels = js.get("mWheel") or js.get("wheels") or []
-                    lpv, lgv, lat_pv, lat_gv, travels, susp_vels = (
-                        (0.0, 0.0, 0.0, 0.0),
-                        (0.0, 0.0, 0.0, 0.0),
-                        (0.0, 0.0, 0.0, 0.0),
-                        (0.0, 0.0, 0.0, 0.0),
-                        (0.0, 0.0, 0.0, 0.0),
-                        (0.0, 0.0, 0.0, 0.0),
-                    )
-
-                    if isinstance(wheels, list) and len(wheels) >= 4:
-                        veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
-
-                        # Mise à jour haute fréquence (50Hz) du DeltaEngine
-                        cls._delta_engine.update_physics(veh_speed)
-                        cls._last_delta_time = cls._delta_engine.live_delta
-                        cls._last_sector1_delta = cls._delta_engine.sector1_delta
-                        cls._last_sector2_delta = cls._delta_engine.sector2_delta
-                        cls._last_sector3_delta = cls._delta_engine.sector3_delta
-
-                        def _get_ground_vel(w: dict, default_speed: float) -> float:
-                            for k in ("mLongitudinalGroundVel", "longitudinalGroundVel", "mGroundSpeed", "groundSpeed"):
-                                if k in w:
-                                    return float(w[k])
-                            return default_speed
-
-                        def _get_patch_vel(w: dict, default_speed: float, ground_v: float) -> float:
-                            if "mRotation" in w and "mUnloadedRadius" in w:
-                                r = float(w["mUnloadedRadius"]) if float(w.get("mUnloadedRadius", 0)) > 0.05 else 0.33
-                                return float(w["mRotation"]) * r
-
-                            for k in ("mLongitudinalPatchVel", "longitudinalPatchVel", "mWheelSpeed", "wheelSpeed"):
-                                if k in w:
-                                    val = float(w[k])
-                                    if val == 0.0 and abs(ground_v) > 0.5:
-                                        return 0.0
-                                    if abs(ground_v) > 0.5 and abs(abs(val) - abs(ground_v)) < 0.3 * abs(ground_v):
-                                        return val
-                                    if abs(ground_v) > 0.5 and 0.0 < abs(val) < 0.5 * abs(ground_v):
-                                        return ground_v
-                                    return val
-
-                            return ground_v if abs(ground_v) > 0.1 else default_speed
-
-                        lgv = tuple(_get_ground_vel(w, veh_speed) for w in wheels[:4])
-                        lpv = tuple(_get_patch_vel(w, veh_speed, lgv[i]) for i, w in enumerate(wheels[:4]))
-                        lat_pv = tuple(float(w.get("mLateralPatchVel", w.get("lateralPatchVel", 0.0))) for w in wheels[:4])
-                        lat_gv = tuple(float(w.get("mLateralGroundVel", w.get("lateralGroundVel", 0.0))) for w in wheels[:4])
-
-                        raw_deflections = tuple(float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) for w in wheels[:4])
-                        travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
-                        susp_vels = tuple(abs(float(w.get("mSuspensionVelocity", w.get("suspensionVelocity", 0.0)))) for w in wheels[:4])
-
-                    e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
-                    e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
-
-                    if "mInRealtime" in js or "inRealtime" in js:
-                        in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
-                        in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
-                        if not in_rt_flag or cls._in_garage_trap:
-                            in_rt = False
-                        else:
-                            in_rt = True
-                        cls._last_in_realtime = in_rt
-                    else:
-                        in_rt = False if cls._in_garage_trap else cls._last_in_realtime
-
-                    gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
-
-                    unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
-                    unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
-
-                    return TelemetryData(
-                        longitudinal_patch_vel=lpv,
-                        longitudinal_ground_vel=lgv,
-                        lateral_patch_vel=lat_pv,
-                        lateral_ground_vel=lat_gv,
-                        engine_rpm=e_rpm,
-                        engine_max_rpm=e_max_rpm,
-                        suspension_travels=travels,
-                        suspension_velocities=susp_vels,
-                        unfiltered_throttle=unfiltered_throttle,
-                        unfiltered_brake=unfiltered_brake,
-                        in_realtime=in_rt,
-                        gear=gear_val,
-                        fuel=cls._last_fuel,
-                        total_laps=cls._last_total_laps,
-                        laps_completed=cls._last_laps_completed,
-                        delta_time=cls._last_delta_time,
-                        sector1_time=cls._last_sector1_time,
-                        sector1_status=cls._last_sector1_status,
-                        sector2_time=cls._last_sector2_time,
-                        sector2_status=cls._last_sector2_status,
-                        sector3_time=cls._last_sector3_time,
-                        sector3_status=cls._last_sector3_status,
-                        aero_downforce=cls._last_aero_downforce,
-                        current_sector=cls._last_current_sector,
-                        sector1_delta=cls._last_sector1_delta,
-                        sector2_delta=cls._last_sector2_delta,
-                        sector3_delta=cls._last_sector3_delta,
-                        lap_flag=cls._last_lap_flag,
-                    )
+                    return cls._parse_json_telemetry(js)
 
             except Exception as e:
                 logger.debug(f"[LMUParser] JSON decode error: {e}")
 
-        # 3. Format binaire standard SimPad (32 octets = 8 floats)
         if len(data) >= cls.PACKET_SIZE:
             try:
                 values = struct.unpack(cls.PACKET_FORMAT, data[:cls.PACKET_SIZE])
@@ -502,8 +530,6 @@ class LMUParser:
                     sector3_delta=cls._last_sector3_delta,
                     lap_flag=cls._last_lap_flag,
                 )
-
-
             except Exception as e:
                 logger.debug(f"[LMUParser] Erreur unpack 32b: {e}")
 

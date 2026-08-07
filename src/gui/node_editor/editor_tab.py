@@ -341,26 +341,34 @@ class NodeEditorTab:
             self._custom_nodes, self._node_links, self._factory, self.recompile_and_update_synth
         )
 
-    def _update_embedded_controls_visibility(self):
-        """Hides embedded input widgets and displays pin text labels when connected via link."""
+    def _collect_connected_attributes(self) -> set:
+        """SLAP Helper: Collects all connected input attribute pin tags and alias IDs."""
         connected_attrs = set()
         for link_id, (attr_out, attr_in) in self._node_links.items():
             connected_attrs.add(attr_in)
             if dpg.does_item_exist(attr_in):
                 connected_attrs.add(dpg.get_alias_id(attr_in))
+        return connected_attrs
+
+    def _collect_node_input_controls(self, ninfo: dict) -> list:
+        """SLAP Helper: Aggregates embedded input widgets and labels for a node."""
+        input_controls = list(ninfo.get("input_controls", []))
+        if ninfo.get("type") == "shape":
+            for attr_key, widget_key, lbl_key in [("in_on", "on_ms_tag", "on_lbl_tag"), ("in_off", "off_ms_tag", "off_lbl_tag")]:
+                if ninfo.get(attr_key) and ninfo.get(widget_key):
+                    input_controls.append({
+                        "attr": ninfo.get(attr_key),
+                        "widget": ninfo.get(widget_key),
+                        "label": ninfo.get(lbl_key)
+                    })
+        return input_controls
+
+    def _update_embedded_controls_visibility(self):
+        """Hides embedded input widgets and displays pin text labels when connected via link (CCN < 5)."""
+        connected_attrs = self._collect_connected_attributes()
 
         for ntag, ninfo in self._custom_nodes.items():
-            input_controls = list(ninfo.get("input_controls", []))
-
-            if ninfo.get("type") == "shape":
-                for attr_key, widget_key, lbl_key in [("in_on", "on_ms_tag", "on_lbl_tag"), ("in_off", "off_ms_tag", "off_lbl_tag")]:
-                    if ninfo.get(attr_key) and ninfo.get(widget_key):
-                        input_controls.append({
-                            "attr": ninfo.get(attr_key),
-                            "widget": ninfo.get(widget_key),
-                            "label": ninfo.get(lbl_key)
-                        })
-
+            input_controls = self._collect_node_input_controls(ninfo)
             for ctrl in input_controls:
                 attr_tag = ctrl.get("attr")
                 widget_tag = ctrl.get("widget")

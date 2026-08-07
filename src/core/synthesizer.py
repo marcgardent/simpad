@@ -51,6 +51,15 @@ class HapticSynthesizerEngine:
         with self._lock:
             self._compiled_func = func
 
+    def _assign_channel_triplet(self, key_base: str, val: float, left: Optional[float], right: Optional[float]) -> None:
+        """SLAP Helper: Assigns main, left, and right telemetry channel values with fallback."""
+        val_f = float(val)
+        self._telemetry[key_base] = val_f
+        l_key = f"{key_base}_l" if key_base not in ["oversteer", "understeer"] else ("over_l" if key_base == "oversteer" else "und_l")
+        r_key = f"{key_base}_r" if key_base not in ["oversteer", "understeer"] else ("over_r" if key_base == "oversteer" else "und_r")
+        self._telemetry[l_key] = float(left) if left is not None else val_f
+        self._telemetry[r_key] = float(right) if right is not None else val_f
+
     def update_telemetry(
         self,
         abs_val: float = 0.0, abs_l: Optional[float] = None, abs_r: Optional[float] = None,
@@ -64,7 +73,7 @@ class HapticSynthesizerEngine:
         grip_val: float = 1.0, grip_l: Optional[float] = None, grip_r: Optional[float] = None,
         in_realtime: bool = True
     ):
-        """Updates live telemetry input values thread-safely for all channels."""
+        """Updates live telemetry input values thread-safely for all channels (CCN < 4)."""
         with self._lock:
             if not in_realtime:
                 for k in self._telemetry:
@@ -75,38 +84,23 @@ class HapticSynthesizerEngine:
                 self._telemetry["grip_r"] = 1.0
                 return
 
-            self._telemetry["abs"] = float(abs_val)
-            self._telemetry["abs_l"] = float(abs_l) if abs_l is not None else float(abs_val)
-            self._telemetry["abs_r"] = float(abs_r) if abs_r is not None else float(abs_val)
-
-            self._telemetry["tc"] = float(tc_val)
-            self._telemetry["tc_l"] = float(tc_l) if tc_l is not None else float(tc_val)
-            self._telemetry["tc_r"] = float(tc_r) if tc_r is not None else float(tc_val)
-
-            self._telemetry["oversteer"] = float(over_val)
-            self._telemetry["over_l"] = float(over_l) if over_l is not None else float(over_val)
-            self._telemetry["over_r"] = float(over_r) if over_r is not None else float(over_val)
-
-            self._telemetry["understeer"] = float(und_val)
-            self._telemetry["und_l"] = float(und_l) if und_l is not None else float(und_val)
-            self._telemetry["und_r"] = float(und_r) if und_r is not None else float(und_val)
+            self._assign_channel_triplet("abs", abs_val, abs_l, abs_r)
+            self._assign_channel_triplet("tc", tc_val, tc_l, tc_r)
+            self._assign_channel_triplet("oversteer", over_val, over_l, over_r)
+            self._assign_channel_triplet("understeer", und_val, und_l, und_r)
 
             self._telemetry["over_rev"] = float(over_rev)
             self._telemetry["under_rev"] = float(under_rev)
             self._telemetry["rpm"] = float(rpm)
             self._telemetry["gear"] = float(gear)
 
-            self._telemetry["travel"] = float(travel_val)
-            self._telemetry["travel_l"] = float(travel_l) if travel_l is not None else float(travel_val)
-            self._telemetry["travel_r"] = float(travel_r) if travel_r is not None else float(travel_val)
+            self._assign_channel_triplet("travel", travel_val, travel_l, travel_r)
             self._telemetry["travel_fl"] = float(travel_fl) if travel_fl is not None else float(travel_val)
             self._telemetry["travel_fr"] = float(travel_fr) if travel_fr is not None else float(travel_val)
             self._telemetry["travel_rl"] = float(travel_rl) if travel_rl is not None else float(travel_val)
             self._telemetry["travel_rr"] = float(travel_rr) if travel_rr is not None else float(travel_val)
 
-            self._telemetry["grip"] = float(grip_val)
-            self._telemetry["grip_l"] = float(grip_l) if grip_l is not None else float(grip_val)
-            self._telemetry["grip_r"] = float(grip_r) if grip_r is not None else float(grip_val)
+            self._assign_channel_triplet("grip", grip_val, grip_l, grip_r)
 
     def get_current_outputs(self) -> Tuple[float, float]:
         """Returns the most recent calculated (low_freq_rumble, high_freq_buzz) outputs."""

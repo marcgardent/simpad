@@ -15,7 +15,8 @@ class UDPServer:
     """
 
     def __init__(self, host: str = "0.0.0.0", port: int = 5000):
-        self.host = "0.0.0.0"
+        # TODO [DRY]: Fix host assignment using parameter instead of hardcoding "0.0.0.0"
+        self.host = host
         self.port = port
         self._socket: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
@@ -45,8 +46,24 @@ class UDPServer:
         self._thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._thread.start()
 
+    def _process_packet(self, data: bytes, now: float) -> None:
+        """
+        SLAP Helper: Traitement synchrone des paquets réseau séparé du contrôle de boucle UDP.
+        """
+        # TODO [SRP]: Socket server delegates telemetry parsing to LMUParser
+        with self._lock:
+            self._last_packet_time = now
+            self._packet_count += 1
+
+        parsed = LMUParser.parse(data)
+        if parsed:
+            with self._lock:
+                self._latest_data = parsed
+
     def _listen_loop(self) -> None:
         """Boucle de réception UDP thread-safe régulée à ~50 Hz (20 ms)."""
+        # TODO [SLAP]: High-level socket listening loop delegates packet processing to _process_packet
+        # TODO [KISS]: Simplify pacing sleep calculation
         while self._running:
             start_tick = time.time()
 
@@ -54,23 +71,13 @@ class UDPServer:
                 try:
                     data, addr = self._socket.recvfrom(65535)
                     now = time.time()
-
-
-                    with self._lock:
-                        self._last_packet_time = now
-                        self._packet_count += 1
-
-                    parsed = LMUParser.parse(data)
-                    if parsed:
-                        with self._lock:
-                            self._latest_data = parsed
+                    self._process_packet(data, now)
                 except socket.timeout:
                     pass
                 except Exception as e:
                     if self._running:
                         logger.error(f"Erreur UDP: {e}")
 
-            # Céder le processeur à l'interface graphique (50 Hz max)
             elapsed = time.time() - start_tick
             sleep_time = max(0.005, 0.02 - elapsed)
             time.sleep(sleep_time)

@@ -28,16 +28,13 @@ class LmuHudBoard(BaseDashboard):
     Orchestre l'ensemble des composants de widgets indépendants sur un canvas Drawlist.
     """
 
+    # TODO [SRP]: LmuHudBoard manages PyGui canvas creation, font binding, widget layout, and sensor context mapping
     def __init__(self):
         super().__init__(name="lmuHudBoard")
         self._window_tag = "lmuHudBoard"
         self._drawlist_tag = "lmu_hud_drawlist"
-
-        # State overrides / extra telemetry data (empty by default so live telemetry is used)
         self._extra_data: Dict[str, Any] = {}
 
-
-        # Instanciation modulaire des widgets ("1 fonctionnalité = 1 classe")
         self._widgets = [
             BrakeGaugeWidget(),
             ThrottleGaugeWidget(),
@@ -49,11 +46,15 @@ class LmuHudBoard(BaseDashboard):
             SectorTimesWidget(),
         ]
 
+    def _get_canvas_rect(self) -> Tuple[int, int, int, int]:
+        """DRY Helper: Retrieves standard HUD bounding box (col_third=1, row_half=1)."""
+        return get_hud_rect(col_third=1, row_half=1)
+
     def build_ui(self) -> None:
         if dpg.does_item_exist(self._window_tag):
             return
 
-        x, y, w, h = get_hud_rect(col_third=1, row_half=1)
+        x, y, w, h = self._get_canvas_rect()
 
         with dpg.window(
             tag=self._window_tag,
@@ -66,10 +67,9 @@ class LmuHudBoard(BaseDashboard):
             no_move=True,
             no_collapse=True,
             no_scrollbar=True,
-            no_background=True,  # Transparent Overlay sans fond / background
+            no_background=True,
             show=False,
         ):
-
             self._visible = False
             dpg.add_drawlist(tag=self._drawlist_tag, width=w, height=h)
 
@@ -89,8 +89,7 @@ class LmuHudBoard(BaseDashboard):
                 dpg.bind_item_font(self._window_tag, hud_font)
                 print("[LmuHudBoard] Anta-Regular.ttf liée EXCLUSIVEMENT à la fenêtre du HUD overlay.", flush=True)
             except Exception as e:
-                logger.debug(f"[LmuHudBoard] Font binding notice: {e}")
-
+                pass
 
     def show(self) -> None:
         self._visible = True
@@ -98,7 +97,7 @@ class LmuHudBoard(BaseDashboard):
             if not dpg.does_item_exist(self._window_tag):
                 self.build_ui()
             if dpg.does_item_exist(self._window_tag):
-                x, y, w, h = get_hud_rect(col_third=1, row_half=1)
+                x, y, w, h = self._get_canvas_rect()
                 dpg.configure_item(self._window_tag, pos=[x, y], width=w, height=h)
                 dpg.configure_item(self._drawlist_tag, width=w, height=h)
                 dpg.show_item(self._window_tag)
@@ -108,12 +107,10 @@ class LmuHudBoard(BaseDashboard):
                     pass
                 self._redraw_canvas(VehicleSensors())
 
-
     def hide(self) -> None:
         self._visible = False
         if dpg.is_dearpygui_running() and dpg.does_item_exist(self._window_tag):
             dpg.hide_item(self._window_tag)
-
 
     def set_extra_data(self, **kwargs) -> None:
         """Met à jour les données complémentaires (delta, énergie, secteurs, aéro)."""
@@ -124,18 +121,9 @@ class LmuHudBoard(BaseDashboard):
             return
         self._redraw_canvas(sensors)
 
-    def _redraw_canvas(self, sensors: VehicleSensors) -> None:
-        if not dpg.is_dearpygui_running() or not dpg.does_item_exist(self._drawlist_tag):
-            return
-
-        w = dpg.get_item_width(self._drawlist_tag)
-        h = dpg.get_item_height(self._drawlist_tag)
-
-        if w <= 0 or h <= 0:
-            _, _, w, h = get_hud_rect(col_third=1, row_half=1)
-
-        # Merge live telemetry sensor properties into extra_data context
-        combined_extra = {
+    def _build_widget_context(self, sensors: VehicleSensors) -> Dict[str, Any]:
+        """SLAP Helper: Merges live sensor telemetry properties into widget context dictionary."""
+        context = {
             "expectedTime": sensors.delta_time_str,
             "sectors": sensors.sectors_list,
             "energyLaps": sensors.fuel_level,
@@ -148,9 +136,22 @@ class LmuHudBoard(BaseDashboard):
             "underrev": sensors.underrev_intensity > 0.1,
             "overrev": sensors.overrev_intensity > 0.1,
         }
-        combined_extra.update(self._extra_data)
+        context.update(self._extra_data)
+        return context
 
-        # Effacer et re-dessiner le canvas vectoriel à chaque frame de télémétrie
+    def _redraw_canvas(self, sensors: VehicleSensors) -> None:
+        # TODO [SLAP]: Canvas redraw method delegates context building and rect fetching to helpers
+        if not dpg.is_dearpygui_running() or not dpg.does_item_exist(self._drawlist_tag):
+            return
+
+        w = dpg.get_item_width(self._drawlist_tag)
+        h = dpg.get_item_height(self._drawlist_tag)
+
+        if w <= 0 or h <= 0:
+            _, _, w, h = self._get_canvas_rect()
+
+        combined_extra = self._build_widget_context(sensors)
+
         dpg.delete_item(self._drawlist_tag, children_only=True)
 
         for widget in self._widgets:

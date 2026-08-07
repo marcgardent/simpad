@@ -33,28 +33,19 @@ class GraphSchemaValidator:
     """Validates node graph dictionaries generated manually or by AI models."""
 
     @staticmethod
-    def validate(graph_data: dict) -> Tuple[bool, str]:
-        """
-        Validates the structure, nodes, parameters and link connections of a graph dictionary.
-        Returns (is_valid, error_message).
-        """
+    def _validate_structure(graph_data: dict) -> Tuple[bool, str]:
+        """SLAP Helper: Verifies JSON object top-level structure keys."""
         if not isinstance(graph_data, dict):
             return False, "Graph data must be a JSON object (dict)."
-
         if "nodes" not in graph_data or not isinstance(graph_data["nodes"], dict):
             return False, "Graph data must contain a 'nodes' dict."
-
         if "links" not in graph_data or not isinstance(graph_data["links"], list):
             return False, "Graph data must contain a 'links' list."
+        return True, "OK"
 
-        nodes = graph_data["nodes"]
-        links = graph_data["links"]
-
-        # Track registered attribute pins (outputs and inputs)
-        available_outputs = set(VALID_SENSOR_OUTPUTS)
-        available_inputs = set(VALID_MOTOR_INPUTS)
-
-        # Validate nodes
+    @staticmethod
+    def _validate_node_entries(nodes: dict, available_outputs: set, available_inputs: set) -> Tuple[bool, str]:
+        """SLAP Helper: Validates individual node types and collects output/input attribute pins."""
         for ntag, ninfo in nodes.items():
             if not isinstance(ninfo, dict):
                 return False, f"Node '{ntag}' definition must be a dict."
@@ -63,29 +54,55 @@ class GraphSchemaValidator:
             if ntype not in VALID_NODE_TYPES:
                 return False, f"Node '{ntag}' has invalid type '{ntype}'. Allowed: {sorted(list(VALID_NODE_TYPES))}"
 
-            # Collect all output attributes (out_attr, out_l, out_r, out_over_rev, etc.)
             for key, val in ninfo.items():
                 if key.startswith("out_") and isinstance(val, str):
                     available_outputs.add(val)
 
-            # Collect input attributes for link validation
             for key in ["in_attr", "in_a", "in_b", "in_on", "in_off", "in_low", "in_high", "in_freq"]:
                 val = ninfo.get(key)
                 if val and isinstance(val, str):
                     available_inputs.add(val)
 
-        # Validate links
+        return True, "OK"
+
+    @staticmethod
+    def _validate_link_entries(links: list, available_outputs: set, available_inputs: set) -> Tuple[bool, str]:
+        """SLAP Helper: Validates link tuple format and pin attribute registration."""
         for idx, link in enumerate(links):
             if not isinstance(link, (list, tuple)) or len(link) != 2:
                 return False, f"Link #{idx} must be a 2-element list [src_output_attr, tgt_input_attr]."
 
             src_out, tgt_in = link[0], link[1]
-
             if src_out not in available_outputs:
                 return False, f"Link #{idx} references unknown source output pin '{src_out}'."
-
             if tgt_in not in available_inputs:
                 return False, f"Link #{idx} references unknown target input pin '{tgt_in}'."
+
+        return True, "OK"
+
+    @staticmethod
+    def validate(graph_data: dict) -> Tuple[bool, str]:
+        """
+        Validates the structure, nodes, parameters and link connections of a graph dictionary (CCN < 5).
+        Returns (is_valid, error_message).
+        """
+        valid_struct, err_msg = GraphSchemaValidator._validate_structure(graph_data)
+        if not valid_struct:
+            return False, err_msg
+
+        nodes = graph_data["nodes"]
+        links = graph_data["links"]
+
+        available_outputs = set(VALID_SENSOR_OUTPUTS)
+        available_inputs = set(VALID_MOTOR_INPUTS)
+
+        valid_nodes, err_msg = GraphSchemaValidator._validate_node_entries(nodes, available_outputs, available_inputs)
+        if not valid_nodes:
+            return False, err_msg
+
+        valid_links, err_msg = GraphSchemaValidator._validate_link_entries(links, available_outputs, available_inputs)
+        if not valid_links:
+            return False, err_msg
 
         return True, "Valid Graph Schema"
 

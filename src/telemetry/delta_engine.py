@@ -77,34 +77,70 @@ class DeltaEngine:
         self._sector2_delta: float = 0.0
         self._sector3_delta: float = 0.0
 
+    def _find_player_vehicle(self, vehicles: list) -> Optional[dict]:
+        """SLAP Helper: Finds player vehicle in scoring vehicles list."""
+        if not isinstance(vehicles, list):
+            return None
+        for v in vehicles:
+            if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
+                return v
+        for v in vehicles:
+            if isinstance(v, dict) and v.get("mControl") == 0:
+                return v
+        return None
+
+    def _handle_lap_transition(self, laps_comp: int, last_lap_time: float, lap_flag: int, in_garage: bool, in_pits: bool) -> None:
+        """SLAP Helper: Finalizes previous lap and resets state for new lap."""
+        if self._last_laps_completed >= 0 and laps_comp > self._last_laps_completed:
+            self._finalize_completed_lap(
+                lap_time=last_lap_time,
+                lap_flag=lap_flag,
+                in_garage=in_garage,
+                in_pits=in_pits,
+            )
+            self._current_lap_samples = []
+            self._s1_checkpoint_captured = False
+            self._s2_checkpoint_captured = False
+            self._s1_checkpoint_delta = 0.0
+            self._s2_checkpoint_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+        self._last_laps_completed = laps_comp
+
+    def _handle_sector_transition(self, curr_sec: int) -> None:
+        """SLAP Helper: Captures sector checkpoint deltas on boundary change."""
+        if curr_sec != self._last_current_sector:
+            if curr_sec == 2 and not self._s1_checkpoint_captured:
+                self._s1_checkpoint_delta = self._live_delta
+                self._s1_checkpoint_captured = True
+            elif curr_sec == 3 and not self._s2_checkpoint_captured:
+                self._s2_checkpoint_delta = self._live_delta
+                self._s2_checkpoint_captured = True
+            self._last_current_sector = curr_sec
+
+    def _collect_lap_sample(self, in_garage: bool, in_pits: bool, time_into: float, player_dist: float) -> None:
+        """SLAP Helper: Collects live lap samples for reference spline building."""
+        if not in_garage and not in_pits and time_into > 0.0 and player_dist >= 0.0:
+            if self._track_length <= 0.0 or player_dist <= self._track_length + 200.0:
+                if not self._current_lap_samples or player_dist > self._current_lap_samples[-1][0]:
+                    self._current_lap_samples.append((player_dist, time_into))
+
     def update_scoring(self, scoring_js: dict) -> None:
         """
         Traite un paquet ScoringInfoV01 (1-2 Hz).
-        Met à jour la position du joueur, enregistre le tour en cours et valide les fins de tour.
+        Complexité réduites (CCN < 5) grâce à la délégation vers les sous-fonctions SLAP.
         """
         now = time.time()
         track_name = str(scoring_js.get("mTrackName", ""))
         track_len = float(scoring_js.get("mLapDist", 0.0))
 
-        vehicles = scoring_js.get("mVehicles", [])
-        player_veh = None
-        if isinstance(vehicles, list):
-            for v in vehicles:
-                if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
-                    player_veh = v
-                    break
-            if not player_veh and vehicles:
-                for v in vehicles:
-                    if isinstance(v, dict) and v.get("mControl") == 0:
-                        player_veh = v
-                        break
-
+        player_veh = self._find_player_vehicle(scoring_js.get("mVehicles", []))
         if not player_veh:
             return
 
         veh_name = str(player_veh.get("mVehicleName", ""))
 
-        # Détection de changement de circuit ou véhicule
         if (track_name and track_name != self._track_name) or (veh_name and veh_name != self._vehicle_name):
             self._track_name = track_name
             self._vehicle_name = veh_name
@@ -124,53 +160,15 @@ class DeltaEngine:
         lap_flag = int(player_veh.get("mCountLapFlag", player_veh.get("countLapFlag", 2)))
         last_lap_time = float(player_veh.get("mLastLapTime", -1.0))
 
-        # Passage d'un tour à un autre (Nouvelle ligne de départ/arrivée franchie)
-        if self._last_laps_completed >= 0 and laps_comp > self._last_laps_completed:
-            # Valider et potentiellement sauvegarder le tour qui vient de s'achever
-            self._finalize_completed_lap(
-                lap_time=last_lap_time,
-                lap_flag=lap_flag,
-                in_garage=in_garage,
-                in_pits=in_pits,
-            )
+        self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits)
+        self._handle_sector_transition(curr_sec)
+        self._collect_lap_sample(in_garage, in_pits, time_into, player_dist)
 
-            # Réinitialiser la collecte pour le nouveau tour
-            self._current_lap_samples = []
-            self._s1_checkpoint_captured = False
-            self._s2_checkpoint_captured = False
-            self._s1_checkpoint_delta = 0.0
-            self._s2_checkpoint_delta = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
-
-        self._last_laps_completed = laps_comp
-
-        # Gestion des changements de secteur (Captures de checkpoint exacts)
-        if curr_sec != self._last_current_sector:
-            if curr_sec == 2 and not self._s1_checkpoint_captured:
-                self._s1_checkpoint_delta = self._live_delta
-                self._s1_checkpoint_captured = True
-            elif curr_sec == 3 and not self._s2_checkpoint_captured:
-                self._s2_checkpoint_delta = self._live_delta
-                self._s2_checkpoint_captured = True
-            self._last_current_sector = curr_sec
-
-        # Collecte d'échantillons si la voiture avance normalement en piste (pas au garage)
-        if not in_garage and not in_pits and time_into > 0.0 and player_dist >= 0.0:
-            # S'assurer que les échantillons restent dans la borne [0, track_len]
-            if self._track_length <= 0.0 or player_dist <= self._track_length + 200.0:
-                # Éviter d'ajouter des points redondants si la voiture est immobile
-                if not self._current_lap_samples or player_dist > self._current_lap_samples[-1][0]:
-                    self._current_lap_samples.append((player_dist, time_into))
-
-        # Enregistrer le point de scoring pour l'extrapolation 50Hz
         self._last_scoring_dist = player_dist
         self._last_scoring_time_into = time_into
         self._last_scoring_timestamp = now
         self._last_dist = player_dist
 
-        # Calcul immédiat du delta
         self._calculate_delta(player_dist, time_into)
 
     def update_physics(self, veh_speed_ms: float) -> None:
@@ -235,67 +233,15 @@ class DeltaEngine:
         elif self._last_current_sector == 3:
             self._sector3_delta = self._live_delta - self._s2_checkpoint_delta
 
-    def _finalize_completed_lap(
-        self,
-        lap_time: float,
-        lap_flag: int,
-        in_garage: bool,
-        in_pits: bool,
-    ) -> None:
-        """Valide et enregistre le tour complété s'il s'agit d'un tour valide et d'un meilleur temps."""
-        # 1. Validation stricte du tour
-        # mCountLapFlag == 2 : Tour valide/propre (ni outlap ni tour coupé)
-        if lap_flag != 2:
-            logger.debug(f"[DeltaEngine] Lap rejected: Invalid lap flag {lap_flag}")
-            return
-
-        if in_garage or in_pits:
-            logger.debug("[DeltaEngine] Lap rejected: Pit/Garage stop detected")
-            return
-
-        if lap_time <= 0.0 or len(self._current_lap_samples) < 20:
-            logger.debug("[DeltaEngine] Lap rejected: Insufficient samples")
-            return
-
-        # Vérifier la couverture du tour (doit commencer près du départ et finir près de l'arrivée)
-        first_dist = self._current_lap_samples[0][0]
-        last_dist = self._current_lap_samples[-1][0]
-
-        if first_dist > 200.0:
-            logger.debug(f"[DeltaEngine] Lap rejected: First sample distance too far ({first_dist:.1f}m)")
-            return
-
-        if self._track_length > 0.0 and (self._track_length - last_dist) > 200.0:
-            logger.debug(f"[DeltaEngine] Lap rejected: End sample distance too short ({last_dist:.1f}m vs {self._track_length:.1f}m)")
-            return
-
-        # Vérifier si ce tour est meilleur que la référence actuelle
-        if lap_time >= self._ref_lap_time and self._ref_t_grid is not None:
-            logger.debug(f"[DeltaEngine] Lap clean but slower than reference ({lap_time:.3f}s vs {self._ref_lap_time:.3f}s)")
-            return
-
-        # 2. Construction du profil ré-échantillonné sur grille spatiale uniforme
-        # Filtrer la liste pour garantir une monotonie stricte des distances (pas de retour arrière)
-        clean_samples: List[Tuple[float, float]] = []
-        last_d = -1.0
-        for d, t in self._current_lap_samples:
-            if d > last_d:
-                clean_samples.append((d, t))
-                last_d = d
-
-        if len(clean_samples) < 10:
-            return
-
+    def _resample_spatial_grid(self, clean_samples: List[Tuple[float, float]], spatial_step: float = 1.0) -> Tuple[List[float], int]:
+        """
+        SLAP Helper: Construction du profil ré-échantillonné sur grille spatiale uniforme.
+        Opère au niveau d'abstraction de l'interpolation mathématique.
+        """
+        import bisect
         track_dist = clean_samples[-1][0]
-        if track_dist <= 0.0:
-            return
-
-        # Grille spatiale uniforme pas de 1.0m
-        spatial_step = 1.0
         num_points = int(track_dist / spatial_step) + 1
         t_grid = []
-
-        import bisect
         d_keys = [s[0] for s in clean_samples]
 
         for i in range(num_points):
@@ -311,15 +257,66 @@ class DeltaEngine:
                 frac = (target_d - d1) / (d2 - d1) if d2 > d1 else 0.0
                 t_grid.append(t1 + frac * (t2 - t1))
 
+        return t_grid, num_points
+
+    def _finalize_completed_lap(
+        self,
+        lap_time: float,
+        lap_flag: int,
+        in_garage: bool,
+        in_pits: bool,
+    ) -> None:
+        """Valide et enregistre le tour complété (SLAP: Orchestration haut niveau)."""
+        # TODO [SLAP]: High-level lap validation separated from low-level grid interpolation math
+        if lap_flag != 2:
+            logger.debug(f"[DeltaEngine] Lap rejected: Invalid lap flag {lap_flag}")
+            return
+
+        if in_garage or in_pits:
+            logger.debug("[DeltaEngine] Lap rejected: Pit/Garage stop detected")
+            return
+
+        if lap_time <= 0.0 or len(self._current_lap_samples) < 20:
+            logger.debug("[DeltaEngine] Lap rejected: Insufficient samples")
+            return
+
+        first_dist = self._current_lap_samples[0][0]
+        last_dist = self._current_lap_samples[-1][0]
+
+        if first_dist > 200.0:
+            logger.debug(f"[DeltaEngine] Lap rejected: First sample distance too far ({first_dist:.1f}m)")
+            return
+
+        if self._track_length > 0.0 and (self._track_length - last_dist) > 200.0:
+            logger.debug(f"[DeltaEngine] Lap rejected: End sample distance too short ({last_dist:.1f}m vs {self._track_length:.1f}m)")
+            return
+
+        if lap_time >= self._ref_lap_time and self._ref_t_grid is not None:
+            logger.debug(f"[DeltaEngine] Lap clean but slower than reference ({lap_time:.3f}s vs {self._ref_lap_time:.3f}s)")
+            return
+
+        # Filtrer la liste pour garantir une monotonie stricte des distances
+        clean_samples: List[Tuple[float, float]] = []
+        last_d = -1.0
+        for d, t in self._current_lap_samples:
+            if d > last_d:
+                clean_samples.append((d, t))
+                last_d = d
+
+        if len(clean_samples) < 10 or clean_samples[-1][0] <= 0.0:
+            return
+
+        spatial_step = 1.0
+        t_grid, num_points = self._resample_spatial_grid(clean_samples, spatial_step=spatial_step)
+
         self._ref_lap_time = lap_time
         self._ref_t_grid = t_grid
         self._ref_spatial_step = spatial_step
-        self._ref_num_points = len(t_grid)
+        self._ref_num_points = num_points
 
         logger.info(f"[DeltaEngine] New Best Reference Lap Recorded! Time: {lap_time:.3f}s ({num_points} grid points)")
         print(f"[DeltaEngine] New Reference Lap Set: {lap_time:.3f}s for track '{self._track_name}'", flush=True)
 
-        # 3. Sauvegarde sur disque
         self._save_reference_profile()
 
     def _get_profile_filepath(self) -> Optional[Path]:
@@ -333,6 +330,7 @@ class DeltaEngine:
 
     def _save_reference_profile(self) -> None:
         """Sauvegarde le profil de référence courant sur le disque JSON."""
+        # TODO [SRP]: Disk profile persistence combined into DeltaEngine class
         filepath = self._get_profile_filepath()
         if not filepath or self._ref_t_grid is None:
             return
@@ -353,9 +351,9 @@ class DeltaEngine:
 
     def _load_reference_profile(self) -> None:
         """Tente de charger un profil de référence enregistré sur disque pour le circuit/voiture."""
+        # TODO [SRP]: Disk profile loading combined into DeltaEngine class
         filepath = self._get_profile_filepath()
         if not filepath or not filepath.exists():
-            # Pas de profil enregistré -> Tour 1 sans delta (normal)
             self._ref_lap_time = 999999.0
             self._ref_t_grid = None
             self._ref_num_points = 0

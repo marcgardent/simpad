@@ -23,6 +23,82 @@ class GraphSerializer:
     ]
 
     @staticmethod
+    def _extract_constant_props(ninfo: dict, ntype: str) -> dict:
+        v_tag = ninfo.get("val_tag")
+        return {"val": dpg.get_value(v_tag) if dpg.does_item_exist(v_tag) else (0.5 if ntype == "constant" else 20.0)}
+
+    @staticmethod
+    def _extract_normalize_props(ninfo: dict) -> dict:
+        min_t, max_t, cl_t, in_t = ninfo.get("min_tag"), ninfo.get("max_tag"), ninfo.get("clamp_tag"), ninfo.get("val_in_tag")
+        return {
+            "in_attr": ninfo.get("in_attr"),
+            "min": dpg.get_value(min_t) if dpg.does_item_exist(min_t) else 0.0,
+            "max": dpg.get_value(max_t) if dpg.does_item_exist(max_t) else 100.0,
+            "clamp": dpg.get_value(cl_t) if dpg.does_item_exist(cl_t) else True,
+            "val_in": dpg.get_value(in_t) if in_t and dpg.does_item_exist(in_t) else 0.0,
+        }
+
+    @staticmethod
+    def _extract_math_props(ninfo: dict, is_binary: bool = True) -> dict:
+        op_t = ninfo.get("op_tag")
+        va_t = ninfo.get("val_a_tag")
+        vb_t = ninfo.get("val_b_tag")
+        def_v = 1.0 if not is_binary else 0.0
+        props = {"in_a": ninfo.get("in_a"), "in_b": ninfo.get("in_b")}
+        if op_t:
+            props["op"] = dpg.get_value(op_t) if dpg.does_item_exist(op_t) else "Multiply (*)"
+        props["val_a"] = dpg.get_value(va_t) if va_t and dpg.does_item_exist(va_t) else def_v
+        props["val_b"] = dpg.get_value(vb_t) if vb_t and dpg.does_item_exist(vb_t) else def_v
+        return props
+
+    @staticmethod
+    def _extract_transform_props(ninfo: dict) -> dict:
+        g_t, gm_t, tr_t, in_t = ninfo.get("gain_tag"), ninfo.get("gamma_tag"), ninfo.get("thresh_tag"), ninfo.get("val_in_tag")
+        return {
+            "in_attr": ninfo.get("in_attr"),
+            "gain": dpg.get_value(g_t) if dpg.does_item_exist(g_t) else 1.0,
+            "gamma": dpg.get_value(gm_t) if dpg.does_item_exist(gm_t) else 1.0,
+            "thresh": dpg.get_value(tr_t) if dpg.does_item_exist(tr_t) else 0.0,
+            "val_in": dpg.get_value(in_t) if in_t and dpg.does_item_exist(in_t) else 0.0,
+        }
+
+    @staticmethod
+    def _extract_shape_props(ninfo: dict) -> dict:
+        sh_t, fr_t, du_t, in_t = ninfo.get("shape_tag"), ninfo.get("freq_tag"), ninfo.get("duty_tag"), ninfo.get("val_in_tag")
+        return {
+            "in_attr": ninfo.get("in_attr"),
+            "in_freq": ninfo.get("in_freq"),
+            "shape": dpg.get_value(sh_t) if dpg.does_item_exist(sh_t) else "Square (Pulsed)",
+            "freq": dpg.get_value(fr_t) if dpg.does_item_exist(fr_t) else 20.0,
+            "duty": dpg.get_value(du_t) if dpg.does_item_exist(du_t) else 0.40,
+            "val_in": dpg.get_value(in_t) if in_t and dpg.does_item_exist(in_t) else 0.0,
+        }
+
+    @staticmethod
+    def _serialize_node_properties(ninfo: dict) -> dict:
+        """SLAP Helper: Extracts serialized node-specific property values from DPG item tags (CCN < 6)."""
+        ntype = ninfo["type"]
+        if ntype in ["constant", "float_constant"]:
+            return GraphSerializer._extract_constant_props(ninfo, ntype)
+        elif ntype == "normalize":
+            return GraphSerializer._extract_normalize_props(ninfo)
+        elif ntype == "math":
+            return GraphSerializer._extract_math_props(ninfo, is_binary=True)
+        elif ntype in ["multiply", "logic_bool"]:
+            return GraphSerializer._extract_math_props(ninfo, is_binary=False)
+        elif ntype == "transform":
+            return GraphSerializer._extract_transform_props(ninfo)
+        elif ntype == "shape":
+            return GraphSerializer._extract_shape_props(ninfo)
+        elif ntype in ["array_multiply", "invert"]:
+            in_t = ninfo.get("val_in_tag")
+            res = {"in_attr": ninfo.get("in_attr")}
+            if in_t:
+                res["val_in"] = dpg.get_value(in_t) if dpg.does_item_exist(in_t) else 0.0
+            return res
+        return {}
+
+    @staticmethod
     def export_graph_to_dict(custom_nodes: Dict[str, dict], node_links: Dict[int, Tuple[str, str]]) -> dict:
         """Serializes current node graph (nodes, properties, positions, links) to a dictionary."""
         nodes_dict = {}
@@ -33,50 +109,7 @@ class GraphSerializer:
                 if (k.startswith("out_") or k.startswith("in_")) and isinstance(v, str):
                     ndata[k] = v
 
-            ntype = ninfo["type"]
-            if ntype in ["constant", "float_constant"]:
-                ndata["val"] = dpg.get_value(ninfo["val_tag"]) if dpg.does_item_exist(ninfo["val_tag"]) else (0.5 if ntype == "constant" else 20.0)
-            elif ntype == "normalize":
-                ndata["in_attr"] = ninfo.get("in_attr")
-                ndata["min"] = dpg.get_value(ninfo["min_tag"]) if dpg.does_item_exist(ninfo["min_tag"]) else 0.0
-                ndata["max"] = dpg.get_value(ninfo["max_tag"]) if dpg.does_item_exist(ninfo["max_tag"]) else 100.0
-                ndata["clamp"] = dpg.get_value(ninfo["clamp_tag"]) if dpg.does_item_exist(ninfo["clamp_tag"]) else True
-                ndata["val_in"] = dpg.get_value(ninfo["val_in_tag"]) if "val_in_tag" in ninfo and dpg.does_item_exist(ninfo["val_in_tag"]) else 0.0
-            elif ntype == "math":
-                ndata["in_a"] = ninfo.get("in_a")
-                ndata["in_b"] = ninfo.get("in_b")
-                ndata["op"] = dpg.get_value(ninfo["op_tag"]) if "op_tag" in ninfo and dpg.does_item_exist(ninfo["op_tag"]) else "Multiply (*)"
-                ndata["val_a"] = dpg.get_value(ninfo["val_a_tag"]) if "val_a_tag" in ninfo and dpg.does_item_exist(ninfo["val_a_tag"]) else 0.0
-                ndata["val_b"] = dpg.get_value(ninfo["val_b_tag"]) if "val_b_tag" in ninfo and dpg.does_item_exist(ninfo["val_b_tag"]) else 0.0
-            elif ntype == "multiply":
-                ndata["in_a"] = ninfo.get("in_a")
-                ndata["in_b"] = ninfo.get("in_b")
-                ndata["val_a"] = dpg.get_value(ninfo["val_a_tag"]) if "val_a_tag" in ninfo and dpg.does_item_exist(ninfo["val_a_tag"]) else 1.0
-                ndata["val_b"] = dpg.get_value(ninfo["val_b_tag"]) if "val_b_tag" in ninfo and dpg.does_item_exist(ninfo["val_b_tag"]) else 1.0
-            elif ntype == "logic_bool":
-                ndata["in_a"] = ninfo.get("in_a")
-                ndata["in_b"] = ninfo.get("in_b")
-                ndata["op"] = dpg.get_value(ninfo["op_tag"]) if "op_tag" in ninfo and dpg.does_item_exist(ninfo["op_tag"]) else "AND"
-                ndata["val_a"] = dpg.get_value(ninfo["val_a_tag"]) if "val_a_tag" in ninfo and dpg.does_item_exist(ninfo["val_a_tag"]) else 0.0
-                ndata["val_b"] = dpg.get_value(ninfo["val_b_tag"]) if "val_b_tag" in ninfo and dpg.does_item_exist(ninfo["val_b_tag"]) else 0.0
-            elif ntype == "array_multiply":
-                ndata["in_attr"] = ninfo.get("in_attr")
-            elif ntype == "transform":
-                ndata["in_attr"] = ninfo.get("in_attr")
-                ndata["gain"] = dpg.get_value(ninfo["gain_tag"]) if dpg.does_item_exist(ninfo["gain_tag"]) else 1.0
-                ndata["gamma"] = dpg.get_value(ninfo["gamma_tag"]) if dpg.does_item_exist(ninfo["gamma_tag"]) else 1.0
-                ndata["thresh"] = dpg.get_value(ninfo["thresh_tag"]) if dpg.does_item_exist(ninfo["thresh_tag"]) else 0.0
-                ndata["val_in"] = dpg.get_value(ninfo["val_in_tag"]) if "val_in_tag" in ninfo and dpg.does_item_exist(ninfo["val_in_tag"]) else 0.0
-            elif ntype == "invert":
-                ndata["in_attr"] = ninfo.get("in_attr")
-                ndata["val_in"] = dpg.get_value(ninfo["val_in_tag"]) if "val_in_tag" in ninfo and dpg.does_item_exist(ninfo["val_in_tag"]) else 0.0
-            elif ntype == "shape":
-                ndata["in_attr"] = ninfo.get("in_attr")
-                ndata["in_freq"] = ninfo.get("in_freq")
-                ndata["shape"] = dpg.get_value(ninfo["shape_tag"]) if dpg.does_item_exist(ninfo["shape_tag"]) else "Square (Pulsed)"
-                ndata["freq"] = dpg.get_value(ninfo["freq_tag"]) if dpg.does_item_exist(ninfo["freq_tag"]) else 20.0
-                ndata["duty"] = dpg.get_value(ninfo["duty_tag"]) if dpg.does_item_exist(ninfo["duty_tag"]) else 0.40
-                ndata["val_in"] = dpg.get_value(ninfo["val_in_tag"]) if "val_in_tag" in ninfo and dpg.does_item_exist(ninfo["val_in_tag"]) else 0.0
+            ndata.update(GraphSerializer._serialize_node_properties(ninfo))
 
             if dpg.does_item_exist(ntag):
                 lbl = dpg.get_item_label(ntag)
@@ -89,12 +122,35 @@ class GraphSerializer:
         return {"nodes": nodes_dict, "links": links_list}
 
     @staticmethod
-    def import_graph_from_dict(editor_tab, graph_data: dict):
-        """Clears current graph canvas and rebuilds visual nodes and links from dictionary."""
-        if not dpg.does_item_exist("node_editor_canvas"):
-            return
+    def _instantiate_node(editor_tab, ntype: str, ndata: dict, pos: Tuple[int, int]) -> Optional[str]:
+        """SLAP Helper: Dispatches node instantiation on the editor canvas using a creation dispatch map (CCN < 4)."""
+        creators = {
+            "constant": lambda: editor_tab._add_node_constant(val=ndata.get("val", 0.5), pos=pos),
+            "float_constant": lambda: editor_tab._add_node_float_constant(val=ndata.get("val", 20.0), pos=pos),
+            "invert": lambda: editor_tab._add_node_invert(val_in=ndata.get("val_in", 0.0), pos=pos),
+            "multiply": lambda: editor_tab._add_node_multiply(val_a=ndata.get("val_a", 1.0), val_b=ndata.get("val_b", 1.0), pos=pos),
+            "array_multiply": lambda: editor_tab._add_node_array_multiply(pos=pos),
+            "normalize": lambda: editor_tab._add_node_normalize(min_val=ndata.get("min", 0.0), max_val=ndata.get("max", 100.0), clamp=ndata.get("clamp", True), val_in=ndata.get("val_in", 0.0), pos=pos),
+            "math": lambda: editor_tab._add_node_math(op=ndata.get("op", "Multiply (*)"), val_a=ndata.get("val_a", 0.0), val_b=ndata.get("val_b", 0.0), pos=pos),
+            "transform": lambda: editor_tab._add_node_transform(thresh=ndata.get("thresh", 0.15), gain=ndata.get("gain", 1.0), gamma=ndata.get("gamma", 1.0), val_in=ndata.get("val_in", 0.0), pos=pos),
+            "shape": lambda: editor_tab._add_node_shape(shape=ndata.get("shape", "Square (Pulsed)"), freq=ndata.get("freq", 20.0), duty=ndata.get("duty", 0.40), val_in=ndata.get("val_in", 0.0), pos=pos),
+            "sensor_over_braking": lambda: editor_tab._add_node_sensor_abs(pos=pos),
+            "sensor_over_accel": lambda: editor_tab._add_node_sensor_tc(pos=pos),
+            "sensor_oversteer": lambda: editor_tab._add_node_sensor_over(pos=pos),
+            "sensor_understeer": lambda: editor_tab._add_node_sensor_und(pos=pos),
+            "sensor_engine_regime": lambda: editor_tab._add_node_sensor_engine(pos=pos),
+            "sensor_gear": lambda: editor_tab._add_node_sensor_gear(pos=pos),
+            "logic_bool": lambda: editor_tab._add_node_boolean(op=ndata.get("op", "AND"), val_a=ndata.get("val_a", 0.0), val_b=ndata.get("val_b", 0.0), pos=pos),
+            "sensor_wheel_travel": lambda: editor_tab._add_node_sensor_travel(pos=pos),
+            "sensor_grip_fract": lambda: editor_tab._add_node_sensor_grip(pos=pos),
+            "output_xinput": lambda: editor_tab._add_node_output_xinput(pos=pos),
+        }
+        creator = creators.get(ntype)
+        return creator() if creator else None
 
-        # 1. Clear current dynamic nodes and links
+    @staticmethod
+    def _clear_canvas(editor_tab) -> None:
+        """SLAP Helper: Clears dynamic node items and link items from PyGui canvas."""
         for link_id in list(editor_tab._node_links.keys()):
             if dpg.does_item_exist(link_id):
                 dpg.delete_item(link_id)
@@ -105,67 +161,17 @@ class GraphSerializer:
                 dpg.delete_item(ntag)
         editor_tab._custom_nodes.clear()
 
-        # Tag mapping table to re-wire loaded links to newly created attribute tags
+    @staticmethod
+    def _rebuild_nodes(editor_tab, nodes: dict) -> Dict[str, str]:
+        """SLAP Helper: Re-instantiates nodes from JSON dict and constructs tag remapping dictionary."""
         tag_remap: Dict[str, str] = {}
-
-        # Helper mapping table for node instantiation logic
-        nodes = graph_data.get("nodes", {})
         for old_ntag, ndata in nodes.items():
             ntype = ndata.get("type")
             pos = tuple(ndata.get("pos", [240, 100]))
-            new_ntag = None
-
-            if ntype == "constant":
-                new_ntag = editor_tab._add_node_constant(val=ndata.get("val", 0.5), pos=pos)
-            elif ntype == "float_constant":
-                new_ntag = editor_tab._add_node_float_constant(val=ndata.get("val", 20.0), pos=pos)
-            elif ntype == "invert":
-                new_ntag = editor_tab._add_node_invert(val_in=ndata.get("val_in", 0.0), pos=pos)
-            elif ntype == "multiply":
-                new_ntag = editor_tab._add_node_multiply(val_a=ndata.get("val_a", 1.0), val_b=ndata.get("val_b", 1.0), pos=pos)
-            elif ntype == "array_multiply":
-                new_ntag = editor_tab._add_node_array_multiply(pos=pos)
-            elif ntype == "normalize":
-                new_ntag = editor_tab._add_node_normalize(min_val=ndata.get("min", 0.0), max_val=ndata.get("max", 100.0), clamp=ndata.get("clamp", True), val_in=ndata.get("val_in", 0.0), pos=pos)
-            elif ntype == "math":
-                new_ntag = editor_tab._add_node_math(op=ndata.get("op", "Multiply (*)"), val_a=ndata.get("val_a", 0.0), val_b=ndata.get("val_b", 0.0), pos=pos)
-            elif ntype == "transform":
-                new_ntag = editor_tab._add_node_transform(thresh=ndata.get("thresh", 0.15), gain=ndata.get("gain", 1.0), gamma=ndata.get("gamma", 1.0), val_in=ndata.get("val_in", 0.0), pos=pos)
-            elif ntype == "shape":
-                new_ntag = editor_tab._add_node_shape(
-                    shape=ndata.get("shape", "Square (Pulsed)"),
-                    freq=ndata.get("freq", 20.0),
-                    duty=ndata.get("duty", 0.40),
-                    val_in=ndata.get("val_in", 0.0),
-                    pos=pos
-                )
-            elif ntype == "sensor_over_braking":
-                new_ntag = editor_tab._add_node_sensor_abs(pos=pos)
-            elif ntype == "sensor_over_accel":
-                new_ntag = editor_tab._add_node_sensor_tc(pos=pos)
-            elif ntype == "sensor_oversteer":
-                new_ntag = editor_tab._add_node_sensor_over(pos=pos)
-            elif ntype == "sensor_understeer":
-                new_ntag = editor_tab._add_node_sensor_und(pos=pos)
-            elif ntype == "sensor_engine_regime":
-                new_ntag = editor_tab._add_node_sensor_engine(pos=pos)
-            elif ntype == "sensor_gear":
-                new_ntag = editor_tab._add_node_sensor_gear(pos=pos)
-            elif ntype == "logic_bool":
-                op = ndata.get("op", "AND")
-                val_a = ndata.get("val_a", 0.0)
-                val_b = ndata.get("val_b", 0.0)
-                new_ntag = editor_tab._add_node_boolean(op=op, val_a=val_a, val_b=val_b, pos=pos)
-            elif ntype == "sensor_wheel_travel":
-                new_ntag = editor_tab._add_node_sensor_travel(pos=pos)
-            elif ntype == "sensor_grip_fract":
-                new_ntag = editor_tab._add_node_sensor_grip(pos=pos)
-            elif ntype == "output_xinput":
-                new_ntag = editor_tab._add_node_output_xinput(pos=pos)
+            new_ntag = GraphSerializer._instantiate_node(editor_tab, ntype, ndata, pos)
 
             if new_ntag and new_ntag in editor_tab._custom_nodes:
                 created_ninfo = editor_tab._custom_nodes[new_ntag]
-                # Auto-remap matching input/output pin attributes
                 for key, val in ndata.items():
                     if (key.startswith("out_") or key.startswith("in_")) and key in created_ninfo:
                         tag_remap[val] = created_ninfo[key]
@@ -174,18 +180,27 @@ class GraphSerializer:
                     dpg.configure_item(new_ntag, label=ndata["label"])
                     created_ninfo["label"] = ndata["label"]
 
-        # Base static sensors & motors map to themselves
         for base_tag in GraphSerializer.BASE_TAG_MAP:
             tag_remap[base_tag] = base_tag
 
-        # 3. Re-wire links
-        links = graph_data.get("links", [])
+        return tag_remap
+
+    @staticmethod
+    def _rebuild_links(editor_tab, links: list, tag_remap: Dict[str, str]) -> None:
+        """SLAP Helper: Re-wires link connections between attribute pins."""
         for src_out, tgt_in in links:
             mapped_src = tag_remap.get(src_out, src_out)
             mapped_tgt = tag_remap.get(tgt_in, tgt_in)
-
             if dpg.does_item_exist(mapped_src) and dpg.does_item_exist(mapped_tgt):
                 editor_tab._cb_node_link("node_editor_canvas", (mapped_src, mapped_tgt))
 
-        # 4. Auto-arrange node layout neatly into topological columns
+    @staticmethod
+    def import_graph_from_dict(editor_tab, graph_data: dict):
+        """Clears current graph canvas and rebuilds visual nodes and links from dictionary (CCN < 4)."""
+        if not dpg.does_item_exist("node_editor_canvas"):
+            return
+
+        GraphSerializer._clear_canvas(editor_tab)
+        tag_remap = GraphSerializer._rebuild_nodes(editor_tab, graph_data.get("nodes", {}))
+        GraphSerializer._rebuild_links(editor_tab, graph_data.get("links", []), tag_remap)
         editor_tab.auto_arrange_nodes()
