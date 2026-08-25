@@ -8,11 +8,15 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.gui.dpg_app import SimPadDPGApp
+from src.gui.overlay.overlay_runner import run_overlay_app
 
 if __name__ == "__main__":
     try:
-        app = SimPadDPGApp()
-        app.run()
+        if "--overlay" in sys.argv:
+            run_overlay_app()
+        else:
+            app = SimPadDPGApp()
+            app.run()
     except Exception as e:
         import traceback
         print(f"[FATAL] Error starting SimPad: {e}", flush=True)

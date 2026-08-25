@@ -169,3 +169,50 @@ class TestLMUSteamDetection(unittest.TestCase):
             self.assertTrue(found_lmu.exists())
             self.assertTrue((found_lmu / "Le Mans Ultimate.exe").exists())
 
+    def test_lmu_plugin_manager_install_all_and_check(self):
+        """Verify LMUPluginManager.install_all and check_plugin_installed workflow."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            # Create mock project structure
+            dll_dir = tmp_path / "assets" / "plugins" / "lmu" / "LeMansUltimateTelemetryPlugin"
+            dll_dir.mkdir(parents=True)
+            mock_dll = dll_dir / "LeMansUltimateTelemetryPlugin.dll"
+
+            real_dll = Path(__file__).resolve().parent.parent / "assets" / "plugins" / "lmu" / "LeMansUltimateTelemetryPlugin" / "LeMansUltimateTelemetryPlugin.dll"
+            if real_dll.exists():
+                mock_dll.write_bytes(real_dll.read_bytes())
+            else:
+                mock_dll.write_bytes(b"mock_dll_data")
+
+            # Create mock LMU directory
+            lmu_dir = tmp_path / "LMU"
+            plugins_dir = lmu_dir / "Plugins"
+            plugins_dir.mkdir(parents=True)
+
+            manager = LMUPluginManager(project_root=tmp_path)
+            self.assertEqual(manager.get_source_dll(tmp_path), mock_dll)
+
+            # Test install_plugin with mock lmu_dir override via patch (both find_lmu_install_dir and get_all_lmu_install_dirs)
+            from unittest.mock import patch
+            with patch.object(LMUPluginManager, "find_lmu_install_dir", return_value=lmu_dir), \
+                 patch.object(LMUPluginManager, "get_all_lmu_install_dirs", return_value=[lmu_dir]):
+                # Before install check
+                installed, msg, _ = manager.check_plugin_installed(tmp_path)
+                self.assertFalse(installed)
+
+                # Execute install_all
+                res = manager.install_all(tmp_path)
+                self.assertTrue(res["installed"])
+                self.assertIn("Successfully installed", res["message"])
+                self.assertTrue((plugins_dir / "LeMansUltimateTelemetryPlugin.dll").exists())
+
+                # Check json created
+                user_json = lmu_dir / "UserData" / "player" / "CustomPluginVariables.JSON"
+                self.assertTrue(user_json.exists())
+
+                # After install check
+                installed, msg, _ = manager.check_plugin_installed(tmp_path)
+                self.assertTrue(installed)
+
+
+

@@ -19,9 +19,13 @@ For each wheel $i \in \{\text{FrontLeft}, \text{FrontRight}, \text{RearLeft}, \t
 3. **Lateral Patch Velocity**: $v_{\text{lat\_patch}, i}$
 
 #### Dimensionless Relative Slip Ratios:
-$$\text{long\_slip}_i = \frac{v_{\text{long\_patch}, i} - v_{\text{ground}, i}}{\max(0.5, |v_{\text{ground}, i}|)}$$
+$$
+\text{long\_slip}_i = \frac{v_{\text{long\_patch}, i} - v_{\text{ground}, i}}{\max(0.5, |v_{\text{ground}, i}|)}
+$$
 
-$$\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_patch}, i}|}{\max(0.5, v_{\text{ground}, i})}\right)\right)$$
+$$
+\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_patch}, i}|}{\max(0.5, v_{\text{ground}, i})}\right)\right)
+$$
 
 ---
 
@@ -29,30 +33,42 @@ $$\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_
 
 ### 1. 🔴 Over-Braking (Front Wheel Lock)
 - **Formula**:
-  $$\text{lock}_i = \max\left(0.0, \min\left(1.0, -\text{long\_slip}_i\right)\right)$$
-  $$\text{Over-Braking Sensor} = \max\left(\text{lock}_{\text{FrontLeft}}, \text{lock}_{\text{FrontRight}}\right)$$
+  $$
+  \begin{aligned}
+  \text{lock}_i &= \max\left(0.0, \min\left(1.0, -\text{long\_slip}_i\right)\right) \\
+  \text{Over-Braking Sensor} &= \max\left(\text{lock}_{\text{FrontLeft}}, \text{lock}_{\text{FrontRight}}\right)
+  \end{aligned}
+  $$
 - **Physics**: Under heavy braking, front wheel rotation speed drops below vehicle ground speed ($v_{\text{patch}} < v_{\text{ground}}$). `long_slip` becomes negative. The sensor measures the magnitude of front wheel lockup (0.0 = rolling freely, 1.0 = total wheel lockup).
 
 ---
 
 ### 2. 🟡 Over-Acceleration (Rear Wheel Spin)
 - **Formula**:
-  $$\text{spin}_i = \max\left(0.0, \min\left(1.0, \text{long\_slip}_i\right)\right)$$
-  $$\text{Over-Acceleration Sensor} = \max\left(\text{spin}_{\text{RearLeft}}, \text{spin}_{\text{RearRight}}\right)$$
+  $$
+  \begin{aligned}
+  \text{spin}_i &= \max\left(0.0, \min\left(1.0, \text{long\_slip}_i\right)\right) \\
+  \text{Over-Acceleration Sensor} &= \max\left(\text{spin}_{\text{RearLeft}}, \text{spin}_{\text{RearRight}}\right)
+  \end{aligned}
+  $$
 - **Physics**: Under heavy acceleration out of corners, driven rear wheel rotation exceeds ground speed ($v_{\text{patch}} > v_{\text{ground}}$). `long_slip` is positive and measures rear wheel power spin intensity (0.0 = full traction, 1.0 = free spin).
 
 ---
 
 ### 3. 🔴 Oversteer (Rear Lateral Slip)
 - **Formula**:
-  $$\text{Oversteer Sensor} = \max\left(\text{lat\_slip}_{\text{RearLeft}}, \text{lat\_slip}_{\text{RearRight}}\right)$$
+  $$
+  \text{Oversteer Sensor} = \max\left(\text{lat\_slip}_{\text{RearLeft}}, \text{lat\_slip}_{\text{RearRight}}\right)
+  $$
 - **Physics**: Measures the lateral sliding velocity of the rear axle relative to ground speed. When the rear tail breaks away in a turn or drift, rear lateral slip ratio increases from 0.0 (clean grip line) to 1.0 (complete breakaway).
 
 ---
 
 ### 4. 🔵 Understeer (Front Lateral Scrub)
 - **Formula**:
-  $$\text{Understeer Sensor} = \max\left(\text{lat\_slip}_{\text{FrontLeft}}, \text{lat\_slip}_{\text{FrontRight}}\right)$$
+  $$
+  \text{Understeer Sensor} = \max\left(\text{lat\_slip}_{\text{FrontLeft}}, \text{lat\_slip}_{\text{FrontRight}}\right)
+  $$
 - **Physics**: Measures the lateral sliding/scrubbing velocity of the front axle. When turning in aggressively and the front tires scrub wide, front lateral slip increases from 0.0 (crisp turn-in) to 1.0 (heavy front scrub).
 
 ---
@@ -60,8 +76,12 @@ $$\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_
 ### 5. ⚙️ Engine Regime (Sur-régime / Sous-régime & Shift Sweet Spots)
 - **Formula & Normalization**:
   For engine RPM ratio $r = \frac{\text{RPM}}{\text{RPM}_{\max}}$:
-  $$\text{Sur-régime (Over-rev / Upshift)} = \text{clamp}\left(\frac{r - 0.90}{1.0 - 0.90}, \, 0.0, \, 1.0\right)$$
-  $$\text{Sous-régime (Under-rev / Downshift)} = \text{clamp}\left(\frac{0.45 - r}{0.45 - 0.20}, \, 0.0, \, 1.0\right)$$
+  $$
+  \begin{aligned}
+  \text{Sur-régime (Over-rev / Upshift)} &= \text{clamp}\left(\frac{r - 0.90}{1.0 - 0.90}, \, 0.0, \, 1.0\right) \\
+  \text{Sous-régime (Under-rev / Downshift)} &= \text{clamp}\left(\frac{0.45 - r}{0.45 - 0.20}, \, 0.0, \, 1.0\right)
+  \end{aligned}
+  $$
 - **Physics & Shift Sweet Spots**:
   - 🏎️ **Upshift Sweet Spot**: Shift up right when the **Sur-régime** haptic signal reaches **`0.70` - `0.90`**. Upshifting at this exact window maximizes power output right before bouncing off the engine rev limiter (`1.0`).
   - 📉 **Downshift Sweet Spot**: Downshift under heavy braking when the **Sous-régime** signal enters **`0.30` - `0.60`**. Downshifting within this sweet spot keeps the engine landed cleanly in peak torque without causing rear compression lockup (rear wheel axle hop from excessive engine braking).
@@ -70,9 +90,13 @@ $$\text{lat\_slip}_i = \min\left(1.0, \, \max\left(0.0, \, \frac{|v_{\text{lat\_
 
 ### 6. 🛞 Wheel Suspension Travel (Vibreurs / Curbs)
 - **Formula**:
-  $$\text{travel}_i = \text{clamp}\left(\frac{\text{deflection}_i}{\text{max\_stroke}}, \, 0.0, \, 1.0\right)$$
-  $$\text{Travel Left} = \max\left(\text{travel}_{\text{FrontLeft}}, \text{travel}_{\text{RearLeft}}\right)$$
-  $$\text{Travel Right} = \max\left(\text{travel}_{\text{FrontRight}}, \text{travel}_{\text{RearRight}}\right)$$
+  $$
+  \begin{aligned}
+  \text{travel}_i &= \text{clamp}\left(\frac{\text{deflection}_i}{\text{max\_stroke}}, \, 0.0, \, 1.0\right) \\
+  \text{Travel Left} &= \max\left(\text{travel}_{\text{FrontLeft}}, \text{travel}_{\text{RearLeft}}\right) \\
+  \text{Travel Right} &= \max\left(\text{travel}_{\text{FrontRight}}, \text{travel}_{\text{RearRight}}\right)
+  \end{aligned}
+  $$
 - **Physics**: Measures wheel vertical displacement / suspension compression relative to max suspension travel stroke. Riding over left curbs triggers `Travel Left`, while riding over right curbs triggers `Travel Right`.
 
 ---
@@ -129,7 +153,6 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 
 ### 📌 Registered Pins Reference
 
-#### 1. Telemetry Sensor Output Pins (Source Pins)
 #### 1. Telemetry Sensor Output Pins (Source Pins)
 - **Over-Braking**: `attr_out_abs` (Max), `attr_out_abs_l` (Left), `attr_out_abs_r` (Right)
 - **Over-Acceleration**: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right)

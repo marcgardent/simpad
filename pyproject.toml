@@ -6,5 +6,8 @@ dependencies = [
     "dearpygui>=2.3.1",
     "sdl3>=0.2.0rc0",
     "glfw>=2.7.0",
+    "pyside6>=6.11.2",
+    "imgui-bundle>=1.92.900",
+    "numpy>=2.5.2",
 ]
 

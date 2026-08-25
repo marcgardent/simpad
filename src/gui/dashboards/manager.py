@@ -1,13 +1,13 @@
-"""
-DashboardManager — Centralized Manager for HUD Overlay Dashboards.
-Manages dashboard registration, visibility lifecycle, and telemetry updates.
-"""
-
+import os
+import sys
 import logging
 from typing import Dict, Optional, List
+from PySide6.QtWidgets import QApplication
+
 from src.gui.dashboards.base import BaseDashboard
 from src.gui.dashboards.monitoring_board import MonitoringBoard
 from src.gui.dashboards.lmu_hud_board import LmuHudBoard
+from src.gui.overlay.lmu_hud_window import LmuHudQtWindow
 from src.telemetry.sensors import VehicleSensors
 
 import dearpygui.dearpygui as dpg
@@ -19,14 +19,17 @@ class DashboardManager:
     """
     Gestionnaire centralisé pour la création, le positionnement, la visibilité
     et la mise à jour télémétrique des tableaux de bord (dashboards).
-    Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlays transparents).
+    Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlay transparent Qt).
     """
 
     def __init__(self):
         self._dashboards: Dict[str, BaseDashboard] = {}
         self._enabled_dashboards: Dict[str, bool] = {}
         self._display_mode = "desktop"
-        # Enregistrement des dashboards : LMU HUD activé par défaut (True), MonitoringBoard désactivé par défaut (False)
+        
+        self._qt_app = QApplication.instance() or QApplication(sys.argv)
+        self._qt_overlay = LmuHudQtWindow()
+        # Enregistrement des dashboards
         self.register_dashboard(MonitoringBoard(), enabled=False)
         self.register_dashboard(LmuHudBoard(), enabled=True)
 
@@ -45,12 +48,16 @@ class DashboardManager:
         if self._display_mode == "ingame":
             if enabled:
                 self.show(name)
+                if name == "lmuHudBoard":
+                    self._qt_overlay.show()
             else:
                 self.hide(name)
+                if name == "lmuHudBoard":
+                    self._qt_overlay.hide()
 
     def update_auto_display_state(self, is_lmu_foreground: bool, on_track: bool) -> str:
         """
-        Décision d'affichage centralisée et partagée par tous les overlays HUD enregistrés :
+        Décision d'affichage centralisée :
         - 'ingame'  : LMU actif au premier plan ET conduite en piste (on_track=True / in_realtime=True).
         - 'pause'   : LMU actif au premier plan MAIS dans les menus/garages/stands/pause (on_track=False).
         - 'desktop' : LMU non actif au premier plan.
@@ -68,54 +75,29 @@ class DashboardManager:
         return target_mode
 
     def set_display_mode(self, mode: str) -> None:
-
         """
         Bascule strictement entre les 3 modes d'affichage :
-        - 'desktop': Console de configuration principale affichée en mode fenêtré décoré. Overlays masqués.
-        - 'ingame' : Overlays HUD (monitoringBoard) affichés en plein écran transparent borderless. Console masquée.
-        - 'pause'  : Menus/Garages/Pause dans LMU. Console et overlays masqués pour laisser l'écran de jeu totalement dégagé.
+        - 'desktop': Console de configuration principale affichée. Overlay masqué.
+        - 'ingame' : Overlay HUD Qt transparent lancé au premier plan.
+        - 'pause'  : Menus/Garages/Pause dans LMU. Overlay masqué pour laisser l'écran de jeu totalement dégagé.
         """
         if mode not in ("desktop", "ingame", "pause"):
             return
 
-        from src.utils.window_utils import (
-            force_viewport_fullscreen_overlay,
-            restore_viewport_windowed,
-        )
-        viewport_title = "SimPad Haptic Middleware (Synthesizer Engine)"
-
         self._display_mode = mode
-        if dpg.is_dearpygui_running():
-            if mode == "ingame":
-                if dpg.does_item_exist("primary_window"):
-                    dpg.set_primary_window("primary_window", False)
-                    dpg.hide_item("primary_window")
-
-                force_viewport_fullscreen_overlay(viewport_title)
-                self.show_all()
-                print("[DashboardManager] Mode INGAME actif -> Overlays HUD visibles.", flush=True)
-
-            elif mode == "pause":
-                self.hide_all()
-                if dpg.does_item_exist("primary_window"):
-                    dpg.set_primary_window("primary_window", False)
-                    dpg.hide_item("primary_window")
-
-                force_viewport_fullscreen_overlay(viewport_title)
-                print("[DashboardManager] Mode PAUSE / GARAGE actif -> Overlays masqués, écran de jeu dégagé.", flush=True)
-
-            else:
-                self.hide_all()
-                restore_viewport_windowed(viewport_title)
-                if dpg.does_item_exist("primary_window"):
-                    dpg.show_item("primary_window")
-                    dpg.set_primary_window("primary_window", True)
-                print("[DashboardManager] Mode DESKTOP actif -> Console de configuration fenêtrée.", flush=True)
+        if mode == "ingame":
+            self.show_all()
+            if self.is_dashboard_enabled("lmuHudBoard"):
+                self._qt_overlay.update_geometry()
+                self._qt_overlay.show()
+                print("[DashboardManager] Mode INGAME actif -> Overlay HUD Qt affiché.", flush=True)
         else:
-            if mode == "ingame":
-                self.show_all()
+            self.hide_all()
+            self._qt_overlay.hide()
+            if mode == "pause":
+                print("[DashboardManager] Mode PAUSE / GARAGE -> Overlay masqué.", flush=True)
             else:
-                self.hide_all()
+                print("[DashboardManager] Mode DESKTOP -> Console Studio active.", flush=True)
 
     def register_dashboard(self, board: BaseDashboard, enabled: bool = True) -> None:
         """Enregistre un nouveau dashboard dans le gestionnaire."""
@@ -168,6 +150,12 @@ class DashboardManager:
 
     def update_telemetry(self, sensors: VehicleSensors) -> None:
         """Transmet la mise à jour des capteurs à tous les dashboards visibles."""
+        if self._display_mode == "ingame" and self.is_dashboard_enabled("lmuHudBoard"):
+            try:
+                self._qt_overlay.update_telemetry(sensors)
+            except Exception as e:
+                logger.debug(f"[DashboardManager] Erreur Qt Overlay update_telemetry: {e}")
+
         for board in self._dashboards.values():
             if board.is_visible:
                 try:

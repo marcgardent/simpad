@@ -64,17 +64,16 @@ class SimPadDPGApp:
         self._last_lmu_active_time = 0.0
 
     def run(self):
-        from src.utils.window_utils import make_transparent_overlay
-        viewport_title = "SimPad Haptic Middleware (Synthesizer Engine)"
+        viewport_title = "SimPad Haptic Middleware (Studio Console)"
 
         dpg.create_context()
         dpg.create_viewport(
             title=viewport_title,
-            width=1240,
-            height=780,
-            clear_color=[0, 0, 0, 0],
-            always_on_top=True,
-            decorated=False,
+            width=1280,
+            height=820,
+            clear_color=[18, 18, 22, 255],
+            always_on_top=False,
+            decorated=True,
         )
         dpg.setup_dearpygui()
 
@@ -83,7 +82,7 @@ class SimPadDPGApp:
         self._build_gui()
 
         dpg.show_viewport()
-        make_transparent_overlay(viewport_title)
+        dpg.set_primary_window("primary_window", True)
 
         # Initialize backends in background
         threading.Thread(target=self._init_backends, daemon=True).start()
@@ -101,10 +100,7 @@ class SimPadDPGApp:
             dpg.add_key_release_handler(key=dpg.mvKey_F5, callback=self._toggle_pin)
 
     def _toggle_pin(self, sender=None, app_data=None, user_data=None):
-        self._is_pinned = not self._is_pinned
-        if self._is_pinned:
-            dpg.show_viewport()
-        dpg.configure_viewport(0, always_on_top=self._is_pinned, decorated=not self._is_pinned)
+        self._toggle_monitoring_board()
 
     # ── Background Backends Init ──────────────────────────────────────────────
     def _init_backends(self):
@@ -128,6 +124,19 @@ class SimPadDPGApp:
             self._physics = PhysicsToHaptic()
         except Exception as e:
             print(f"[PHYSICS] Init error: {e}", flush=True)
+
+        try:
+            installed, status_msg, _ = self._lmu_installer.check_plugin_installed()
+            if dpg.does_item_exist("lbl_plugin_status"):
+                if installed:
+                    dpg.set_value("lbl_plugin_status", "Installed")
+                    dpg.configure_item("lbl_plugin_status", color=[46, 204, 113, 255])
+                else:
+                    dpg.set_value("lbl_plugin_status", "Not Installed")
+                    dpg.configure_item("lbl_plugin_status", color=[231, 76, 60, 255])
+        except Exception as e:
+            print(f"[PLUGIN] Check status error: {e}", flush=True)
+
 
     # ── Styling ───────────────────────────────────────────────────────────────
     def _apply_theme(self):
@@ -200,7 +209,7 @@ class SimPadDPGApp:
 
                 dpg.add_spacer(width=15)
                 dpg.add_text("LMU Window:", color=[180, 180, 180, 255])
-                dpg.add_text("Background", tag="lbl_lmu_fg_status", color=[231, 76, 60, 255])
+                dpg.add_text("Not Running", tag="lbl_lmu_fg_status", color=[231, 76, 60, 255])
 
                 dpg.add_spacer(width=15)
                 dpg.add_text("UDP Telemetry:", color=[180, 180, 180, 255])
@@ -288,6 +297,12 @@ class SimPadDPGApp:
         if not hasattr(self, "_lmu_installer"):
             return
 
+        if hasattr(self, "_dashboard_mgr") and hasattr(self._dashboard_mgr, "_qt_app"):
+            try:
+                self._dashboard_mgr._qt_app.processEvents()
+            except Exception:
+                pass
+
         self._update_status_indicators()
         self._check_lmu_auto_overlay()
 
@@ -295,7 +310,7 @@ class SimPadDPGApp:
         if udp_active:
             self._was_udp_receiving = True
             data = self._udp.get_latest_data()
-            if data and data.in_realtime:
+            if data:
                 self._process_telemetry_frame(data)
             else:
                 self._clear_telemetry_frame(clear_synth=True)
@@ -308,41 +323,55 @@ class SimPadDPGApp:
 
     def _clear_telemetry_frame(self, clear_synth: bool = True):
         from src.telemetry.sensors import VehicleSensors
-        if hasattr(self, "_dashboard_mgr"):
-            self._dashboard_mgr.update_telemetry(VehicleSensors(in_realtime=False))
         if clear_synth and self._synth:
             self._synth.update_telemetry(in_realtime=False)
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()
+        if hasattr(self, "_dashboard_mgr") and self._udp and not self._udp.is_receiving(timeout=2.0):
+            self._dashboard_mgr.update_telemetry(VehicleSensors(in_realtime=False))
 
 
     def _check_lmu_auto_overlay(self):
         """
-        Délègue la décision d'affichage au DashboardManager pour l'ensemble des overlays HUD enregistrés.
+        Délègue la décision d'affichage au DashboardManager pour l'ensemble des overlays HUD enregistrés :
+        - 'ingame'  : Télémétrie active et conduite en piste (on_track=True / in_realtime=True).
+        - 'pause'   : Télémétrie connectée mais arrêt en garage/stands/pause (on_track=False).
+        - 'desktop' : Télémétrie en attente ou jeu fermé (Console Studio active).
         """
-        from src.utils.window_utils import is_lmu_foreground
+        from src.utils.window_utils import is_lmu_running
 
-        is_lmu_fg = is_lmu_foreground()
-        udp_recv = self._udp and self._udp.is_receiving()
+        udp_recv = bool(self._udp and self._udp.is_receiving())
         latest = self._udp.get_latest_data() if self._udp else None
-        on_track = latest.in_realtime if (latest and udp_recv) else False
+        on_track = bool(latest.in_realtime if (latest and udp_recv) else False)
+        lmu_running = is_lmu_running()
 
-        try:
-            self._dashboard_mgr.update_auto_display_state(is_lmu_foreground=is_lmu_fg, on_track=on_track)
-        except Exception as e:
-            print(f"[AUTO-OVERLAY] Error updating auto display state: {e}", flush=True)
+        now = time.time()
+        if udp_recv and on_track:
+            self._last_lmu_active_time = now
+            if self._dashboard_mgr.display_mode != "ingame":
+                self._dashboard_mgr.set_display_mode("ingame")
+        elif udp_recv and not on_track:
+            self._last_lmu_active_time = now
+            if self._dashboard_mgr.display_mode != "pause":
+                self._dashboard_mgr.set_display_mode("pause")
+        elif (now - getattr(self, "_last_lmu_active_time", 0.0)) > 1.0:
+            if self._dashboard_mgr.display_mode != "desktop":
+                self._dashboard_mgr.set_display_mode("desktop")
 
 
     def _update_status_indicators(self):
-        from src.utils.window_utils import is_lmu_foreground
-        is_lmu_fg = is_lmu_foreground()
+        from src.utils.window_utils import get_lmu_window_status
+        lmu_status = get_lmu_window_status()
 
         if dpg.does_item_exist("lbl_lmu_fg_status"):
-            if is_lmu_fg:
+            if lmu_status == "foreground":
                 dpg.set_value("lbl_lmu_fg_status", "Foreground (Active)")
                 dpg.configure_item("lbl_lmu_fg_status", color=[46, 204, 113, 255])
-            else:
+            elif lmu_status == "background":
                 dpg.set_value("lbl_lmu_fg_status", "Background")
+                dpg.configure_item("lbl_lmu_fg_status", color=[241, 196, 15, 255])
+            else:
+                dpg.set_value("lbl_lmu_fg_status", "Not Running")
                 dpg.configure_item("lbl_lmu_fg_status", color=[231, 76, 60, 255])
 
         if dpg.does_item_exist("lbl_udp_status"):
@@ -358,8 +387,28 @@ class SimPadDPGApp:
             else:
                 status_str = "Waiting..."
                 status_col = [231, 76, 60, 255]
+
+            prev_status = getattr(self, "_last_udp_status_str", None)
+            if status_str != prev_status:
+                self._last_udp_status_str = status_str
+                prev_lbl = prev_status if prev_status is not None else "INIT"
+                import logging
+                logging.getLogger(__name__).info(f"[UDP STATUS GUI] {prev_lbl} -> {status_str}")
+
             dpg.set_value("lbl_udp_status", status_str)
             dpg.configure_item("lbl_udp_status", color=status_col)
+
+        if dpg.does_item_exist("lbl_pad_status"):
+            pad_connected = self._haptics is not None and self._haptics.is_connected()
+            if pad_connected:
+                pad_name = self._haptics.get_gamepad_name()
+                status_str = f"Connected ({pad_name})"
+                status_col = [46, 204, 113, 255]
+            else:
+                status_str = "Disconnected"
+                status_col = [231, 76, 60, 255]
+            dpg.set_value("lbl_pad_status", status_str)
+            dpg.configure_item("lbl_pad_status", color=status_col)
 
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()
@@ -401,7 +450,12 @@ class SimPadDPGApp:
 
         low_val, high_val = self._node_editor.evaluate_graph()
 
-        self._t.append(now)
+        if len(self._t) == HISTORY and self._t[0] < 0:
+            # Smoothly re-base initial time window to span [now - 7.45s, now]
+            self._t = deque([now - (HISTORY - 1 - i) * 0.05 for i in range(HISTORY)], maxlen=HISTORY)
+        else:
+            self._t.append(now)
+
         self._d_abs.append(sensors.lock_intensity)
         self._d_tc.append(sensors.spin_intensity)
         self._d_over.append(sensors.oversteer_intensity)
@@ -430,7 +484,7 @@ class SimPadDPGApp:
             dpg.set_value("mon_series_grip", [t_list, list(self._d_grip)])
             dpg.set_value("mon_series_low", [t_list, list(self._d_low)])
             dpg.set_value("mon_series_high", [t_list, list(self._d_high)])
-            if t_list:
+            if len(t_list) >= 2:
                 dpg.set_axis_limits("mon_xaxis", t_list[0], t_list[-1])
 
         self._dashboard_mgr.update_history_plots(
@@ -447,6 +501,7 @@ class SimPadDPGApp:
 
     # ── Shutdown ───────────────────────────────────────────────────────────────
     def _on_close(self):
+        self._dashboard_mgr.set_display_mode("desktop")
         if self._synth:
             self._synth.stop()
         if self._haptics:

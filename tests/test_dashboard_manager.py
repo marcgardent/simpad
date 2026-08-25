@@ -105,6 +105,28 @@ class TestDashboardManager(unittest.TestCase):
         self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
         self.assertFalse(mgr.get_dashboard("lmuHudBoard").is_visible)
 
+    def test_gamepad_status_indicator_update(self):
+        """Verify that _update_status_indicators correctly updates lbl_pad_status."""
+        from src.gui.dpg_app import SimPadDPGApp
+        from src.haptics.mock_controller import MockHapticController
+
+        app = SimPadDPGApp()
+        if not dpg.does_item_exist("lbl_pad_status"):
+            with dpg.window():
+                dpg.add_text("Disconnected", tag="lbl_pad_status")
+
+        # Case 1: _haptics is None -> Disconnected
+        app._haptics = None
+        app._update_status_indicators()
+        self.assertEqual(dpg.get_value("lbl_pad_status"), "Disconnected")
+
+        # Case 2: _haptics is connected -> Connected (Gamepad Name)
+        mock_pad = MockHapticController()
+        app._haptics = mock_pad
+        app._update_status_indicators()
+        self.assertIn("Connected", dpg.get_value("lbl_pad_status"))
+        self.assertIn(mock_pad.get_gamepad_name(), dpg.get_value("lbl_pad_status"))
+
 
 if __name__ == "__main__":
     unittest.main()

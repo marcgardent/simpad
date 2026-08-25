@@ -1,111 +1,62 @@
 """
 SimPad — Utility functions for system window state management and screen dimensions.
-Provides cross-platform screen resolution detection via GLFW and foreground window detection for Le Mans Ultimate (LMU).
+Provides facade methods delegating to WindowManagerFactory (Abstract Factory Pattern).
 """
 
-import sys
-import ctypes
-import os
 from pathlib import Path
-from typing import Optional, Tuple
-
-
 from src.utils.glfw_manager import GLFWWindowManager
+from src.utils.window import WindowManagerFactory, BaseWindowManager
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-if sys.platform == "win32":
-    from ctypes import wintypes
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-else:
-    user32 = None
-    kernel32 = None
+def get_window_manager() -> BaseWindowManager:
+    """Retourne l'instance du gestionnaire de fenêtres approprié pour l'OS hôte."""
+    return WindowManagerFactory.get_manager()
 
 
 def get_foreground_window_title() -> str:
     """Returns the title of the currently active foreground window on Windows/Linux."""
-    if sys.platform == "win32" and user32:
-        hwnd = user32.GetForegroundWindow()
-        if not hwnd:
-            return ""
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return ""
-        buf = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, buf, length + 1)
-        return buf.value
-    elif sys.platform.startswith("linux"):
-        try:
-            import subprocess
-            out = subprocess.check_output(["xdotool", "getactivewindow", "getwindowname"], stderr=subprocess.DEVNULL)
-            return out.decode("utf-8", errors="ignore").strip()
-        except Exception:
-            return ""
-    return ""
+    return WindowManagerFactory.get_manager().get_foreground_window_title()
 
 
 def get_foreground_process_name() -> str:
     """Returns the executable filename of the currently active foreground process on Windows/Linux."""
-    if sys.platform == "win32" and user32 and kernel32:
-        hwnd = user32.GetForegroundWindow()
-        if not hwnd:
-            return ""
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if not pid.value:
-            return ""
+    return WindowManagerFactory.get_manager().get_foreground_process_name()
 
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        hProcess = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
-        if not hProcess:
-            return ""
-        try:
-            buf_size = wintypes.DWORD(1024)
-            buf = ctypes.create_unicode_buffer(1024)
-            if kernel32.QueryFullProcessImageNameW(hProcess, 0, ctypes.byref(buf), ctypes.byref(buf_size)):
-                return Path(buf.value).name.lower()
-        except Exception:
-            pass
-        finally:
-            kernel32.CloseHandle(hProcess)
 
-    elif sys.platform.startswith("linux"):
-        try:
-            import subprocess
-            out = subprocess.check_output(["xdotool", "getactivewindow", "getwindowpid"], stderr=subprocess.DEVNULL)
-            pid = out.decode("utf-8").strip()
-            if pid:
-                comm_path = Path(f"/proc/{pid}/comm")
-                if comm_path.exists():
-                    return comm_path.read_text(encoding="utf-8").strip().lower()
-        except Exception:
-            pass
-
-    return ""
+def is_lmu_running() -> bool:
+    """Returns True if Le Mans Ultimate process is running on the system."""
+    return WindowManagerFactory.get_manager().is_lmu_running()
 
 
 def is_lmu_foreground() -> bool:
-    """
-    Returns True if Le Mans Ultimate game executable is the active window in the foreground.
-    Strictly matches process executable name and game window title on Windows & Linux (Proton/Wine).
-    """
-    proc_name = get_foreground_process_name().lower()
-    if proc_name in ("lemansultimate.exe", "rfactor2.exe", "lemansultimate", "rfactor2"):
-        return True
+    """Returns True if Le Mans Ultimate game executable is the active window in the foreground."""
+    return WindowManagerFactory.get_manager().is_lmu_foreground()
 
-    title = get_foreground_window_title().lower().strip()
-    if title == "le mans ultimate" or title.startswith("le mans ultimate") or title == "lemansultimate":
-        return True
 
-    return False
+def get_lmu_window_status() -> str:
+    """Returns 'foreground', 'background', or 'not_running'."""
+    return WindowManagerFactory.get_manager().get_lmu_window_status()
+
+
+def make_transparent_overlay(window_title: str) -> bool:
+    """Enables transparent background overlay for the specified window."""
+    return WindowManagerFactory.get_manager().make_transparent_overlay(window_title)
+
+
+def force_viewport_fullscreen_overlay(window_title: str) -> bool:
+    """Forces the DPG viewport window to full physical screen resolution."""
+    return WindowManagerFactory.get_manager().force_viewport_fullscreen_overlay(window_title)
+
+
+def restore_viewport_windowed(window_title: str) -> bool:
+    """Restores the DPG viewport to windowed desktop console mode."""
+    return WindowManagerFactory.get_manager().restore_viewport_windowed(window_title)
 
 
 def get_screen_dimensions() -> tuple[int, int]:
-    """
-    Returns primary monitor resolution (width, height) using GLFW.
-    """
+    """Returns primary monitor resolution (width, height) using GLFW."""
     return GLFWWindowManager.get_screen_dimensions()
 
 
@@ -132,118 +83,3 @@ def get_hud_rect(col_third: int = 1, row_half: int = 1) -> tuple[int, int, int, 
     x = (sw - w) // 2 if col_third == 1 else col_third * w
     y = row_half * (sh // 2)
     return (int(x), int(y), int(w), int(h))
-
-
-if sys.platform == "win32":
-    class MARGINS(ctypes.Structure):
-        _fields_ = [
-            ("cxLeftWidth", ctypes.c_int),
-            ("cxRightWidth", ctypes.c_int),
-            ("cyTopHeight", ctypes.c_int),
-            ("cyBottomHeight", ctypes.c_int),
-        ]
-
-
-def make_transparent_overlay(window_title: str) -> bool:
-    """
-    Extends DWM frame into client area for full window background transparency on Windows.
-    Enables transparent GPU rendering and mouse click pass-through on clear areas.
-    """
-    if sys.platform != "win32" or not user32:
-        return False
-
-    try:
-        hwnd = user32.FindWindowW(None, window_title)
-        if hwnd:
-            margins = MARGINS(-1, -1, -1, -1)
-            dwmapi = ctypes.windll.dwmapi
-            dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-            print(f"[DWM OVERLAY] Transparent DWM overlay enabled for HWND {hwnd}", flush=True)
-            return True
-    except Exception as e:
-        print(f"[DWM OVERLAY] Error injecting DWM transparency: {e}", flush=True)
-
-    return False
-
-
-def force_viewport_fullscreen_overlay(window_title: str) -> bool:
-    """
-    Forces the DPG viewport window to full physical screen resolution (0, 0, SW, SH)
-    with HWND_TOPMOST, WS_EX_TRANSPARENT (click pass-through), WS_EX_NOACTIVATE (focus protection),
-    and DWM background transparency.
-    """
-    try:
-        import dearpygui.dearpygui as dpg
-        dpg.configure_viewport(0, decorated=False, always_on_top=True)
-        dpg.maximize_viewport()
-    except Exception:
-        pass
-
-    if sys.platform != "win32" or not user32:
-        return False
-
-    try:
-        hwnd = user32.FindWindowW(None, window_title)
-        if hwnd:
-            sw, sh = get_screen_dimensions()
-
-            # Apply Win32 Extended Window Styles for true click-through & no-activate
-            GWL_EXSTYLE = -20
-            WS_EX_TOPMOST = 0x00000008
-            WS_EX_LAYERED = 0x00080000
-            WS_EX_TRANSPARENT = 0x00000020
-            WS_EX_NOACTIVATE = 0x08000000
-
-            style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            style |= (WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
-            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-
-            # Stretch to full physical screen bounds (0, 0, sw, sh)
-            SWP_SHOWWINDOW = 0x0040
-            user32.SetWindowPos(hwnd, -1, 0, 0, sw, sh, SWP_SHOWWINDOW)
-
-            margins = MARGINS(-1, -1, -1, -1)
-            dwmapi = ctypes.windll.dwmapi
-            dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-            print(f"[VIEWPORT OVERLAY] HWND {hwnd} forced to Fullscreen Click-Through Overlay (0, 0, {sw}, {sh})", flush=True)
-            return True
-    except Exception as e:
-        print(f"[VIEWPORT OVERLAY] Error forcing fullscreen overlay: {e}", flush=True)
-
-    return False
-
-
-def restore_viewport_windowed(window_title: str) -> bool:
-    """
-    Restores the DPG viewport to maximized desktop console mode with standard window decorations (decorated=True),
-    removing WS_EX_TRANSPARENT and WS_EX_NOACTIVATE flags.
-    """
-    try:
-        import dearpygui.dearpygui as dpg
-        dpg.configure_viewport(0, decorated=True, always_on_top=False)
-        dpg.maximize_viewport()
-    except Exception:
-        pass
-
-    if sys.platform != "win32" or not user32:
-        return False
-
-    try:
-        hwnd = user32.FindWindowW(None, window_title)
-        if hwnd:
-            GWL_EXSTYLE = -20
-            WS_EX_TRANSPARENT = 0x00000020
-            WS_EX_NOACTIVATE = 0x08000000
-
-            style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            style &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
-            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-
-            SW_MAXIMIZE = 3
-            user32.ShowWindow(hwnd, SW_MAXIMIZE)
-            print(f"[VIEWPORT OVERLAY] HWND {hwnd} restored to Maximized Desktop Console (decorated=True)", flush=True)
-            return True
-    except Exception as e:
-        print(f"[VIEWPORT OVERLAY] Error restoring windowed console: {e}", flush=True)
-
-    return False

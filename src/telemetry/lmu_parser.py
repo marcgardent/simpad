@@ -154,7 +154,7 @@ class LMUParser:
     _last_recorded_lap_num: int = -1
     _best_lap_time_val: float = 999999.0
 
-    ENABLE_DISK_DUMP: bool = True
+    ENABLE_DISK_DUMP: bool = False
 
     @classmethod
     def _dump_to_file(cls, js: dict) -> None:
@@ -245,7 +245,7 @@ class LMUParser:
             cls._last_sector1_status = cls._calculate_sector_status(cur_s1, best_s1, session_best_s1)
         elif last_s1 > 0.0:
             cls._last_sector1_time = format_time_sec(last_s1)
-            cls._last_sector1_status = "default"
+            cls._last_sector1_status = cls._calculate_sector_status(last_s1, best_s1, session_best_s1)
 
         # Sector 2
         cur_s2 = float(player_veh.get("mCurSector2", -1.0))
@@ -260,9 +260,10 @@ class LMUParser:
                 cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
         elif last_s2 > 0.0 and last_s1 > 0.0:
             indiv_s2 = last_s2 - last_s1
+            best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
             if indiv_s2 > 0.0:
                 cls._last_sector2_time = format_time_sec(indiv_s2)
-                cls._last_sector2_status = "default"
+                cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
 
         # Sector 3
         last_lap = float(player_veh.get("mLastLapTime", -1.0))
@@ -381,13 +382,26 @@ class LMUParser:
     def _determine_realtime_status(cls, js: dict) -> bool:
         """SLAP Helper: Determines if game engine is currently driving in active realtime."""
         if "mInRealtime" in js or "inRealtime" in js:
-            in_rt_val = js.get("mInRealtime", js.get("inRealtime", 1))
-            in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
-            if in_rt_flag:
-                cls._in_garage_trap = False
-            in_rt = False if (not in_rt_flag or cls._in_garage_trap) else True
-            cls._last_in_realtime = in_rt
-            return in_rt
+            in_rt_val = js.get("mInRealtime", js.get("inRealtime", None))
+            if in_rt_val is not None:
+                in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
+                if in_rt_flag:
+                    cls._in_garage_trap = False
+                in_rt = False if (not in_rt_flag or cls._in_garage_trap) else True
+                cls._last_in_realtime = in_rt
+                return in_rt
+
+        # Fallback for TelemInfoV01 packets where mInRealtime is omitted:
+        # If the packet contains active telemetry (engine RPM > 0, speed > 0, or pedal inputs), mark as in_realtime
+        e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
+        speed = float(js.get("mSpeed", js.get("speed", 0.0)))
+        throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", 0.0))))
+        brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", 0.0))))
+
+        if e_rpm > 0.0 or speed > 0.0 or throttle > 0.0 or brake > 0.0:
+            cls._in_garage_trap = False
+            cls._last_in_realtime = True
+            return True
 
         return False if cls._in_garage_trap else cls._last_in_realtime
 

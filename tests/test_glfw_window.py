@@ -36,6 +36,19 @@ class TestGLFWWindow(unittest.TestCase):
         # Cleanup window
         glfw.destroy_window(window)
 
+    def test_foreground_window_detection(self):
+        """Verifies foreground window title and process name detection functions execute without error."""
+        from src.utils.window_utils import get_foreground_window_title, get_foreground_process_name, is_lmu_foreground
+
+        title = get_foreground_window_title()
+        self.assertIsInstance(title, str)
+
+        proc = get_foreground_process_name()
+        self.assertIsInstance(proc, str)
+
+        is_fg = is_lmu_foreground()
+        self.assertIsInstance(is_fg, bool)
+
 
 if __name__ == "__main__":
     unittest.main()

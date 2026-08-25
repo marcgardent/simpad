@@ -110,7 +110,25 @@ class VehicleSensors:
     ) -> "VehicleSensors":
 
         if not in_realtime:
-            return cls(in_realtime=False, gear=gear)
+            return cls(
+                in_realtime=False,
+                gear=gear,
+                fuel_level=fuel_level,
+                remaining_laps=remaining_laps,
+                delta_time=delta_time,
+                sector1_time=sector1_time,
+                sector1_status=sector1_status,
+                sector2_time=sector2_time,
+                sector2_status=sector2_status,
+                sector3_time=sector3_time,
+                sector3_status=sector3_status,
+                explicit_aero_load=explicit_aero_load,
+                current_sector=current_sector,
+                sector1_delta=sector1_delta,
+                sector2_delta=sector2_delta,
+                sector3_delta=sector3_delta,
+                lap_flag=lap_flag,
+            )
 
         locks = []
         spins = []
@@ -213,6 +231,8 @@ class VehicleSensors:
             return f"-{abs(val):.3f}"
         elif val > 0.0:
             return f"+{val:.3f}"
+        elif val == 0.0 and (self.delta_time != 0.0 or self.sector1_time != "--" or self.sector1_delta != 0.0 or self.sector2_delta != 0.0 or self.sector3_delta != 0.0):
+            return "+0.000"
         return "--"
 
     @property
