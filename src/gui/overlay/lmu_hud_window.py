@@ -68,9 +68,9 @@ class LmuHudQtWindow(QWidget):
 
         self.update_geometry()
 
-        # Timer 60 FPS pour fluidité LERP et rafraîchissement continu
+        # Timer 120 FPS pour fluidité ultra-réactive et rafraîchissement continu
         self._timer = QTimer(self)
-        self._timer.setInterval(16)
+        self._timer.setInterval(8)
         self._timer.timeout.connect(self.update)
         self._timer.start()
 
@@ -154,7 +154,7 @@ class LmuHudQtWindow(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:
-        """Cycle de rendu vectoriel 60 FPS de l'ensemble des 8 widgets HUD."""
+        """Cycle de rendu vectoriel 120 FPS de l'ensemble des 8 widgets HUD (Affichage Tête Haute)."""
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -163,14 +163,13 @@ class LmuHudQtWindow(QWidget):
             sw = float(self.width())
             sh = float(self.height())
 
-            # Mise à l'échelle automatique selon la résolution d'écran
-            scale = min(sw / 1920.0, sh / 1080.0)
-            hud_w = 800.0 * scale
-            hud_h = 300.0 * scale
+            # Dimensions exactes HUD Tête Haute (Base 800x600 proportionnelle à l'écran)
+            hud_w = max(300.0, sw / 3.0)
+            hud_h = max(240.0, sh / 2.0)
 
-            # Centré horizontalement et calé au niveau du tableau de bord (cockpit) en bas
+            # Positionné au 2ème tiers horizontal (centré) et 2ème moitié verticale (tête haute cockpit)
             hud_x = (sw - hud_w) / 2.0
-            hud_y = sh - hud_h - (40.0 * scale)
+            hud_y = sh / 2.0
 
             painter.save()
             painter.translate(hud_x, hud_y)

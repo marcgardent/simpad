@@ -35,12 +35,14 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             text_color = QColor(239, 68, 68, 255)  # Red
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
 
-        font_size = int(round(32.0 * scale_y))
+        font_size = max(14, int(round(32.0 * scale_y)))
         y_pos = 170.0 * scale_y
 
-        font = QFont(self.font_family, font_size, QFont.Weight.Bold)
+        font = QFont(self.font_family)
+        font.setPixelSize(font_size)
+        font.setBold(True)
         painter.setFont(font)
         painter.setPen(QPen(text_color))
-        painter.drawText(QRectF(0, y_pos, canvas_w, font_size + 10), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, expected_str)
+        painter.drawText(QRectF(0, y_pos, canvas_w, font_size + 10 * scale_y), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, expected_str)

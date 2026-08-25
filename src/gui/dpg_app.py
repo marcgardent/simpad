@@ -306,7 +306,7 @@ class SimPadDPGApp:
         self._update_status_indicators()
         self._check_lmu_auto_overlay()
 
-        udp_active = bool(self._udp and self._udp.is_receiving() and self._telemetry_enabled)
+        udp_active = bool(self._udp and self._udp.is_receiving(timeout=2.0) and self._telemetry_enabled)
         if udp_active:
             self._was_udp_receiving = True
             data = self._udp.get_latest_data()
@@ -322,41 +322,38 @@ class SimPadDPGApp:
                 self._clear_telemetry_frame(clear_synth=False)
 
     def _clear_telemetry_frame(self, clear_synth: bool = True):
-        from src.telemetry.sensors import VehicleSensors
         if clear_synth and self._synth:
             self._synth.update_telemetry(in_realtime=False)
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()
-        if hasattr(self, "_dashboard_mgr") and self._udp and not self._udp.is_receiving(timeout=2.0):
-            self._dashboard_mgr.update_telemetry(VehicleSensors(in_realtime=False))
 
 
     def _check_lmu_auto_overlay(self):
         """
         Délègue la décision d'affichage au DashboardManager pour l'ensemble des overlays HUD enregistrés :
-        - 'ingame'  : Télémétrie active et conduite en piste (on_track=True / in_realtime=True).
-        - 'pause'   : Télémétrie connectée mais arrêt en garage/stands/pause (on_track=False).
-        - 'desktop' : Télémétrie en attente ou jeu fermé (Console Studio active).
+        - 'ingame'  : LMU actif au premier plan ET conduite en piste (is_fg=True, on_track=True).
+        - 'pause'   : LMU actif au premier plan MAIS en pause/garage/stands (is_fg=True, on_track=False).
+        - 'desktop' : LMU en arrière-plan (Background) ou fermé -> Overlay masqué immédiatement.
         """
-        from src.utils.window_utils import is_lmu_running
+        from src.utils.window_utils import is_lmu_foreground
 
+        is_lmu_fg = is_lmu_foreground()
         udp_recv = bool(self._udp and self._udp.is_receiving())
         latest = self._udp.get_latest_data() if self._udp else None
         on_track = bool(latest.in_realtime if (latest and udp_recv) else False)
-        lmu_running = is_lmu_running()
 
-        now = time.time()
-        if udp_recv and on_track:
-            self._last_lmu_active_time = now
-            if self._dashboard_mgr.display_mode != "ingame":
-                self._dashboard_mgr.set_display_mode("ingame")
-        elif udp_recv and not on_track:
-            self._last_lmu_active_time = now
-            if self._dashboard_mgr.display_mode != "pause":
-                self._dashboard_mgr.set_display_mode("pause")
-        elif (now - getattr(self, "_last_lmu_active_time", 0.0)) > 1.0:
+        if not is_lmu_fg:
+            # LMU en arrière-plan ou fermé -> masquer immédiatement l'overlay HUD
             if self._dashboard_mgr.display_mode != "desktop":
                 self._dashboard_mgr.set_display_mode("desktop")
+        elif udp_recv and on_track:
+            # LMU au premier plan ET en train de rouler en piste -> afficher le HUD Qt
+            if self._dashboard_mgr.display_mode != "ingame":
+                self._dashboard_mgr.set_display_mode("ingame")
+        else:
+            # LMU au premier plan MAIS en pause / menu / garage -> masquer le HUD Qt
+            if self._dashboard_mgr.display_mode != "pause":
+                self._dashboard_mgr.set_display_mode("pause")
 
 
     def _update_status_indicators(self):

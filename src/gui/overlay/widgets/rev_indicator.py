@@ -28,7 +28,7 @@ class QtRevIndicatorWidget(BaseQtHudWidget):
         overrev = extra_data.get("overrev", sensors.overrev_intensity > 0.1)
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
         painter.setBrush(QBrush(QColor(255, 255, 255, 255)))

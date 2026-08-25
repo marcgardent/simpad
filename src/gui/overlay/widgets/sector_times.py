@@ -3,7 +3,7 @@ Sector Times Widget — 3-sector time boxes (S1, S2, S3) positioned below Delta 
 """
 
 from typing import Dict, Any, List
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
 from src.gui.overlay.base_widget import BaseQtHudWidget
 from src.telemetry.sensors import VehicleSensors
@@ -28,7 +28,7 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         sectors: List[Dict[str, Any]] = extra_data.get("sectors", sensors.sectors_list)
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
         sector_w = 90.0 * scale_x
@@ -39,8 +39,10 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         start_x = center_x - (total_width / 2.0)
         sector_y = 210.0 * scale_y
 
-        font_size = int(round(14.0 * scale_y))
-        font = QFont(self.font_family, font_size, QFont.Weight.Bold)
+        font_size = max(10, int(round(14.0 * scale_y)))
+        font = QFont(self.font_family)
+        font.setPixelSize(font_size)
+        font.setBold(True)
         painter.setFont(font)
 
         for i in range(min(3, len(sectors))):
@@ -65,6 +67,7 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
             else:
+                # Secteur terminé ou en attente -> Affichage du chrono de secteur gelé
                 disp_text = s_time
                 if s_status == "invalid":
                     bg_color = QColor(15, 23, 42, 255)

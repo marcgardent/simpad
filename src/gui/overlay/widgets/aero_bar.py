@@ -54,11 +54,11 @@ class QtAeroBarWidget(BaseQtHudWidget):
         else:
             raw_aero = sensors.aero_load * 100.0
 
-        # LERP Smoothing
-        self.display_aero = lerp(self.display_aero, raw_aero, 0.15)
+        # LERP Smoothing (0.65 réactivité immédiate)
+        self.display_aero = lerp(self.display_aero, raw_aero, 0.65)
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
         aero_width = 440.0 * scale_x

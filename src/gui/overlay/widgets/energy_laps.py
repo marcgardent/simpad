@@ -32,10 +32,10 @@ class QtEnergyLapsWidget(BaseQtHudWidget):
         sub_str = "ÉNERGIE / TOURS"
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
 
-        val_font_size = int(round(16.0 * scale_y))
-        sub_font_size = int(round(10.0 * scale_y))
+        val_font_size = max(10, int(round(16.0 * scale_y)))
+        sub_font_size = max(8, int(round(10.0 * scale_y)))
 
         right_margin = 40.0 * scale_x
         val_x_pos = canvas_w - right_margin - (len(val_str) * val_font_size * 0.55)
@@ -44,13 +44,17 @@ class QtEnergyLapsWidget(BaseQtHudWidget):
         base_y = 170.0 * scale_y
 
         # Value text
-        val_font = QFont(self.font_family, val_font_size, QFont.Weight.Bold)
+        val_font = QFont(self.font_family)
+        val_font.setPixelSize(val_font_size)
+        val_font.setBold(True)
         painter.setFont(val_font)
         painter.setPen(QPen(QColor(255, 255, 255, 255)))
         painter.drawText(QRectF(val_x_pos, base_y, 200, val_font_size + 6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, val_str)
 
         # Subtext label
-        sub_font = QFont(self.font_family, sub_font_size, QFont.Weight.Bold)
+        sub_font = QFont(self.font_family)
+        sub_font.setPixelSize(sub_font_size)
+        sub_font.setBold(True)
         painter.setFont(sub_font)
         painter.setPen(QPen(QColor(148, 163, 184, 255)))
         painter.drawText(QRectF(sub_x_pos, base_y + (20.0 * scale_y), 200, sub_font_size + 6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, sub_str)

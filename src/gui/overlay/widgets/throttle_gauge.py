@@ -36,11 +36,11 @@ class QtThrottleGaugeWidget(BaseQtHudWidget):
 
         is_spinning = extra_data.get("wheelspin", False) or (sensors.spin_intensity > 0.05)
 
-        # LERP smoothing
-        self.display_throttle = lerp(self.display_throttle, raw_throttle, 0.15)
+        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        self.display_throttle = lerp(self.display_throttle, raw_throttle, 0.65)
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
         gauge_width = 32.0 * scale_x

@@ -36,11 +36,11 @@ class QtBrakeGaugeWidget(BaseQtHudWidget):
 
         is_locking = extra_data.get("overbrake", False) or (sensors.lock_intensity > 0.05)
 
-        # LERP smoothing
-        self.display_brake = lerp(self.display_brake, raw_brake, 0.15)
+        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        self.display_brake = lerp(self.display_brake, raw_brake, 0.65)
 
         scale_x = canvas_w / 800.0
-        scale_y = canvas_h / 300.0
+        scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
         gauge_width = 32.0 * scale_x

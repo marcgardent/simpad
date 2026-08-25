@@ -34,10 +34,10 @@ class UDPServer:
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._socket.settimeout(0.05)  # 50ms non-blocking
+            self._socket.setblocking(False)
             self._socket.bind((self.host, self.port))
             logger.info(f"Serveur UDP démarré sur port {self.port}")
-            print(f"[UDP] Listening on UDP {self.host}:{self.port}", flush=True)
+            print(f"[UDP] Listening on UDP {self.host}:{self.port} (120 Hz+ ultra-low latency)", flush=True)
         except Exception as e:
             logger.warning(f"Could not bind UDP port {self.port}: {e}")
             print(f"[UDP WARNING] Could not bind port {self.port}: {e}", flush=True)
@@ -46,39 +46,39 @@ class UDPServer:
         self._thread.start()
 
     def _listen_loop(self) -> None:
-        """Boucle de réception UDP thread-safe régulée à ~50 Hz (20 ms)."""
+        """Boucle de réception UDP ultra-rapide à 120 Hz+ (sans latence ni mise en tampon)."""
+        import select
         while self._running:
-            start_tick = time.time()
+            if not self._socket:
+                time.sleep(0.005)
+                continue
 
-            if self._socket:
-                try:
-                    data, addr = self._socket.recvfrom(65535)
-                    now = time.time()
+            try:
+                # Réveil immédiat dès réception (< 0.5 ms), timeout max 8 ms (~125 Hz)
+                r, _, _ = select.select([self._socket], [], [], 0.008)
+                if r:
+                    while self._running:
+                        try:
+                            data, addr = self._socket.recvfrom(65535)
+                            now = time.time()
 
-                    with self._lock:
-                        self._last_packet_time = now
-                        self._packet_count += 1
+                            with self._lock:
+                                self._last_packet_time = now
+                                self._packet_count += 1
 
-                    parsed = LMUParser.parse(data)
-                    if parsed:
-                        with self._lock:
-                            self._latest_data = parsed
-                except socket.timeout:
-                    pass
-                except Exception as e:
-                    if self._running:
-                        logger.error(f"Erreur UDP: {e}")
-
-            # Céder le processeur à l'interface graphique (50 Hz max)
-            elapsed = time.time() - start_tick
-            sleep_time = max(0.005, 0.02 - elapsed)
-            time.sleep(sleep_time)
+                            parsed = LMUParser.parse(data)
+                            if parsed:
+                                with self._lock:
+                                    self._latest_data = parsed
+                        except (BlockingIOError, socket.error):
+                            break
+            except Exception as e:
+                if self._running:
+                    logger.debug(f"Erreur UDP: {e}")
 
     def get_latest_data(self, timeout: float = 1.0) -> Optional[TelemetryData]:
-        """Récupère les dernières données reçues de manière thread-safe. Retourne None si la connexion est interrompue (timeout)."""
+        """Récupère les dernières données reçues de manière thread-safe. Conserve l'état gelé en cas de paquet manquant."""
         with self._lock:
-            if self._last_packet_time > 0 and (time.time() - self._last_packet_time) > timeout:
-                return TelemetryData(in_realtime=False)
             return self._latest_data
 
     def is_receiving_packets(self, timeout: float = 1.0) -> Tuple[bool, float, int]:

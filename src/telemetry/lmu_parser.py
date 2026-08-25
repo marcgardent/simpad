@@ -139,6 +139,18 @@ class LMUParser:
     _last_sector3_status: str = "default"
     _last_aero_downforce: float = 0.0
 
+    _last_gear: int = 1
+    _last_engine_rpm: float = 0.0
+    _last_engine_max_rpm: float = 7500.0
+    _last_unfiltered_throttle: float = 0.0
+    _last_unfiltered_brake: float = 0.0
+    _last_lpv: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_lgv: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_lat_pv: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_lat_gv: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_travels: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_susp_vels: tuple = (0.0, 0.0, 0.0, 0.0)
+
     _last_current_sector: int = 1
     _last_sector1_delta: float = 0.0
     _last_sector2_delta: float = 0.0
@@ -323,25 +335,7 @@ class LMUParser:
             cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
         cls._last_in_realtime = is_in_realtime
-        return TelemetryData(
-            in_realtime=cls._last_in_realtime,
-            fuel=cls._last_fuel,
-            total_laps=cls._last_total_laps,
-            laps_completed=cls._last_laps_completed,
-            delta_time=cls._last_delta_time,
-            sector1_time=cls._last_sector1_time,
-            sector1_status=cls._last_sector1_status,
-            sector2_time=cls._last_sector2_time,
-            sector2_status=cls._last_sector2_status,
-            sector3_time=cls._last_sector3_time,
-            sector3_status=cls._last_sector3_status,
-            aero_downforce=cls._last_aero_downforce,
-            current_sector=cls._last_current_sector,
-            sector1_delta=cls._last_sector1_delta,
-            sector2_delta=cls._last_sector2_delta,
-            sector3_delta=cls._last_sector3_delta,
-            lap_flag=cls._last_lap_flag,
-        )
+        return cls._build_telemetry_snapshot()
 
     @classmethod
     def _extract_wheel_velocities(cls, wheels: list, veh_speed: float):
@@ -385,23 +379,9 @@ class LMUParser:
             in_rt_val = js.get("mInRealtime", js.get("inRealtime", None))
             if in_rt_val is not None:
                 in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
-                if in_rt_flag:
-                    cls._in_garage_trap = False
-                in_rt = False if (not in_rt_flag or cls._in_garage_trap) else True
-                cls._last_in_realtime = in_rt
-                return in_rt
-
-        # Fallback for TelemInfoV01 packets where mInRealtime is omitted:
-        # If the packet contains active telemetry (engine RPM > 0, speed > 0, or pedal inputs), mark as in_realtime
-        e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
-        speed = float(js.get("mSpeed", js.get("speed", 0.0)))
-        throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", 0.0))))
-        brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", 0.0))))
-
-        if e_rpm > 0.0 or speed > 0.0 or throttle > 0.0 or brake > 0.0:
-            cls._in_garage_trap = False
-            cls._last_in_realtime = True
-            return True
+                cls._in_garage_trap = not in_rt_flag
+                cls._last_in_realtime = in_rt_flag
+                return in_rt_flag
 
         return False if cls._in_garage_trap else cls._last_in_realtime
 
@@ -417,15 +397,6 @@ class LMUParser:
             cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
 
         wheels = js.get("mWheel") or js.get("wheels") or []
-        lpv, lgv, lat_pv, lat_gv, travels, susp_vels = (
-            (0.0, 0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0, 0.0),
-            (0.0, 0.0, 0.0, 0.0),
-        )
-
         if isinstance(wheels, list) and len(wheels) >= 4:
             vel = js.get("mLocalVel")
             if isinstance(vel, dict) and any(k in vel for k in ("x", "y", "z")):
@@ -438,7 +409,6 @@ class LMUParser:
             else:
                 veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
 
-
             cls._delta_engine.update_physics(veh_speed)
             cls._last_delta_time = cls._delta_engine.live_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
@@ -446,51 +416,47 @@ class LMUParser:
             cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
             lpv, lgv, lat_pv, lat_gv, travels, susp_vels = cls._extract_wheel_velocities(wheels, veh_speed)
+            cls._last_lpv = lpv
+            cls._last_lgv = lgv
+            cls._last_lat_pv = lat_pv
+            cls._last_lat_gv = lat_gv
+            cls._last_travels = travels
+            cls._last_susp_vels = susp_vels
 
-        e_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
-        e_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
-        in_rt = cls._determine_realtime_status(js)
+        if "mEngineRPM" in js or "engineRPM" in js:
+            cls._last_engine_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
+        if "mEngineMaxRPM" in js or "engineMaxRPM" in js:
+            cls._last_engine_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
 
-        gear_val = int(js["mGear"]) if "mGear" in js else (int(js["gear"]) if "gear" in js else 1)
-        unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
-        unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
+        cls._last_in_realtime = cls._determine_realtime_status(js)
 
-        return TelemetryData(
-            longitudinal_patch_vel=lpv,
-            longitudinal_ground_vel=lgv,
-            lateral_patch_vel=lat_pv,
-            lateral_ground_vel=lat_gv,
-            engine_rpm=e_rpm,
-            engine_max_rpm=e_max_rpm,
-            suspension_travels=travels,
-            suspension_velocities=susp_vels,
-            unfiltered_throttle=unfiltered_throttle,
-            unfiltered_brake=unfiltered_brake,
-            in_realtime=in_rt,
-            gear=gear_val,
-            fuel=cls._last_fuel,
-            total_laps=cls._last_total_laps,
-            laps_completed=cls._last_laps_completed,
-            delta_time=cls._last_delta_time,
-            sector1_time=cls._last_sector1_time,
-            sector1_status=cls._last_sector1_status,
-            sector2_time=cls._last_sector2_time,
-            sector2_status=cls._last_sector2_status,
-            sector3_time=cls._last_sector3_time,
-            sector3_status=cls._last_sector3_status,
-            aero_downforce=cls._last_aero_downforce,
-            current_sector=cls._last_current_sector,
-            sector1_delta=cls._last_sector1_delta,
-            sector2_delta=cls._last_sector2_delta,
-            sector3_delta=cls._last_sector3_delta,
-            lap_flag=cls._last_lap_flag,
-        )
+        if "mGear" in js or "gear" in js:
+            cls._last_gear = int(js["mGear"]) if "mGear" in js else int(js["gear"])
+
+        if any(k in js for k in ("mUnfilteredThrottle", "mThrottle", "unfilteredThrottle", "throttle")):
+            cls._last_unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
+
+        if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
+            cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
+
+        return cls._build_telemetry_snapshot()
 
     @classmethod
     def _build_telemetry_snapshot(cls) -> TelemetryData:
         """Helper to instantiate TelemetryData with current class state (DRY helper)."""
         return TelemetryData(
+            longitudinal_patch_vel=cls._last_lpv,
+            longitudinal_ground_vel=cls._last_lgv,
+            lateral_patch_vel=cls._last_lat_pv,
+            lateral_ground_vel=cls._last_lat_gv,
+            engine_rpm=cls._last_engine_rpm,
+            engine_max_rpm=cls._last_engine_max_rpm,
+            suspension_travels=cls._last_travels,
+            suspension_velocities=cls._last_susp_vels,
+            unfiltered_throttle=cls._last_unfiltered_throttle,
+            unfiltered_brake=cls._last_unfiltered_brake,
             in_realtime=cls._last_in_realtime,
+            gear=cls._last_gear,
             fuel=cls._last_fuel,
             total_laps=cls._last_total_laps,
             laps_completed=cls._last_laps_completed,
@@ -525,6 +491,17 @@ class LMUParser:
                 msg_type = js.get("Type") or js.get("type", "")
 
                 cls._dump_to_file(js)
+
+                if msg_type == "System" or "Message" in js:
+                    msg_text = str(js.get("Message", "")).lower()
+                    if "enter realtime" in msg_text or "start session" in msg_text:
+                        cls._in_garage_trap = False
+                        cls._last_in_realtime = True
+                        return cls._build_telemetry_snapshot()
+                    elif "exit realtime" in msg_text or "end session" in msg_text:
+                        cls._in_garage_trap = True
+                        cls._last_in_realtime = False
+                        return TelemetryData(in_realtime=False)
 
                 if msg_type == "ScoringInfoV01" or "mVehicles" in js:
                     return cls._parse_json_scoring(js)
