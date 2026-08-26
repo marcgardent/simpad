@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
+from src.engineer.params import RoleParam, FloatRangeParam
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +46,55 @@ class TrafficJamRole(BaseRole):
             enabled=enabled,
             audio_engine=audio_engine,
         )
-        self.slow_speed_threshold_mps = slow_speed_threshold_kmh / 3.6
-        self.warning_distance_m = warning_distance_m
-        self.cooldown_sec = cooldown_sec
+        self.slow_speed_threshold_mps = float(slow_speed_threshold_kmh) / 3.6
+        self.warning_distance_m = float(warning_distance_m)
+        self.cooldown_sec = float(cooldown_sec)
 
         self._last_alert_time: float = 0.0
         self._is_active_alert: bool = False
         self._target_slow_car_info: str = ""
+
+    @property
+    def slow_speed_threshold_kmh(self) -> float:
+        return round(self.slow_speed_threshold_mps * 3.6, 1)
+
+    @slow_speed_threshold_kmh.setter
+    def slow_speed_threshold_kmh(self, value: float) -> None:
+        self.slow_speed_threshold_mps = float(value) / 3.6
+
+    def get_parameters(self) -> List[RoleParam]:
+        return [
+            FloatRangeParam(
+                name="slow_speed_threshold_kmh",
+                label="Vitesse Seuil Ralenti",
+                min_val=10.0,
+                max_val=120.0,
+                step=5.0,
+                unit="km/h",
+                default=50.0,
+                description="Vitesse sous laquelle une voiture devant est considérée au ralenti/accidentée",
+            ),
+            FloatRangeParam(
+                name="warning_distance_m",
+                label="Distance d'Alerte",
+                min_val=50.0,
+                max_val=400.0,
+                step=10.0,
+                unit="m",
+                default=180.0,
+                description="Distance maximale devant le joueur pour détecter les ralentissements",
+            ),
+            FloatRangeParam(
+                name="cooldown_sec",
+                label="Cooldown Alerte",
+                min_val=2.0,
+                max_val=30.0,
+                step=1.0,
+                unit="s",
+                default=8.0,
+                description="Délai minimal entre deux alertes vocales",
+            ),
+        ]
 
     def is_busy(self) -> bool:
         """Occupé si une alerte de trafic ralenti est active."""
@@ -107,6 +150,24 @@ class TrafficJamRole(BaseRole):
         self._last_alert_time = 0.0
         self._is_active_alert = False
         self._target_slow_car_info = ""
+
+    def get_config(self) -> Dict[str, Any]:
+        cfg = super().get_config()
+        cfg.update({
+            "slow_speed_threshold_kmh": self.slow_speed_threshold_mps * 3.6,
+            "warning_distance_m": self.warning_distance_m,
+            "cooldown_sec": self.cooldown_sec,
+        })
+        return cfg
+
+    def set_config(self, config: Dict[str, Any]) -> None:
+        super().set_config(config)
+        if "slow_speed_threshold_kmh" in config:
+            self.slow_speed_threshold_mps = float(config["slow_speed_threshold_kmh"]) / 3.6
+        if "warning_distance_m" in config:
+            self.warning_distance_m = float(config["warning_distance_m"])
+        if "cooldown_sec" in config:
+            self.cooldown_sec = float(config["cooldown_sec"])
 
     def get_state_summary(self) -> Dict[str, Any]:
         summary = super().get_state_summary()

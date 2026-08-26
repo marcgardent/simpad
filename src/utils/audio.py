@@ -218,9 +218,38 @@ class AudioAnnouncer:
         cls._play_file("car_clear", interrupt=interrupt)
 
     @classmethod
+    def play_brake(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce de repère de freinage : Brake (brake.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: BRAKE")
+        cls._play_file("brake", interrupt=interrupt)
+
+    @classmethod
+    def play_turn(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce de repère de braquage : Turn (turn.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: TURN")
+        cls._play_file("turn", interrupt=interrupt)
+
+    @classmethod
+    def play_turn_number(cls, turn_number: int, interrupt: bool = False) -> None:
+        """Déclenche l'annonce du numéro de virage : Turn N (turn_1.wav à turn_30.wav)."""
+        num_clamped = min(30, max(1, turn_number))
+        logger.info(f"[AudioAnnouncer] Announcement: TURN {num_clamped}")
+        cls._play_file(f"turn_{num_clamped}", interrupt=interrupt)
+
+    @classmethod
+    def play_gear(cls, gear: int, interrupt: bool = False) -> None:
+        """Déclenche l'annonce de rapport de boîte dédiée : G1 à G8 (gear_1.wav à gear_8.wav)."""
+        g_clamped = min(8, max(1, gear))
+        logger.info(f"[AudioAnnouncer] Announcement: GEAR {g_clamped} (gear_{g_clamped})")
+        cls._play_file(f"gear_{g_clamped}", interrupt=interrupt)
+
+    @classmethod
     def play_number(cls, number: int) -> None:
-        """Déclenche le décompte numérique (1.wav à 5.wav)."""
-        num_map = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+        """Déclenche le décompte numérique (1.wav à 8.wav)."""
+        num_map = {
+            1: "one", 2: "two", 3: "three", 4: "four",
+            5: "five", 6: "six", 7: "seven", 8: "eight",
+        }
         key = num_map.get(number)
         if key:
             cls._play_file(key)

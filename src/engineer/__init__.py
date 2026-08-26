@@ -8,15 +8,21 @@ from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
 from src.engineer.factory import RoleFactory
 from src.engineer.manager import RaceEngineer
+from src.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
 from src.engineer.roles.lap_validity import LapValidityRole
 from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from src.engineer.roles.traffic_jam import TrafficJamRole
+from src.engineer.roles.pace_notes import PaceNotesRole
 
 __all__ = [
     "BaseRole",
     "RoleStatus",
     "EngineerMessage",
     "EngineerContext",
+    "RoleParam",
+    "BoolParam",
+    "IntRangeParam",
+    "FloatRangeParam",
     "RoleRegistry",
     "RoleFactory",
     "RaceEngineer",
@@ -24,4 +30,5 @@ __all__ = [
     "TrafficSpotterRole",
     "TrafficSpotterState",
     "TrafficJamRole",
+    "PaceNotesRole",
 ]

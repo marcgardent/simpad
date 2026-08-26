@@ -4,11 +4,14 @@ High-precision live lap delta calculator and spatial reference profile engine.
 
 Features:
 - Resampled uniform spatial reference grid (1m resolution) for fast, smooth O(1) interpolation.
+- Full meter-by-meter telemetry capture: time, speed, throttle, brake, steering.
+- Integrated track annotations management (Brake, Turn-in, Turn T1..T30, Gear 1..8).
 - 50Hz dead-reckoning extrapolation using physics speed & delta time.
 - Strict lap validation (mCountLapFlag == 2, no pit stops, full track coverage, monotonic distance).
 - Accurate sector checkpoint deltas (S1, S2, S3) captured at sector boundaries.
 - Disk persistence for best laps per (track, car) pair.
 - Auto-reset on session / track / vehicle change.
+Architecture SOLID.
 """
 
 import os
@@ -18,11 +21,19 @@ import logging
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 
+from src.telemetry.reference_profile import (
+    ReferenceLapProfile,
+    TrackAnnotation,
+    AnnotationType,
+    DEFAULT_REF_LAPS_DIR,
+    get_marks_filepath,
+)
+
 logger = logging.getLogger(__name__)
 
 # Project root for saving reference lap profiles
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_REF_LAPS_DIR = _PROJECT_ROOT / "profiles" / "ref_laps"
+_REF_LAPS_DIR = DEFAULT_REF_LAPS_DIR
 
 
 def _clean_name(name: str) -> str:
@@ -36,10 +47,13 @@ def _clean_name(name: str) -> str:
 class DeltaEngine:
     """
     Moteur de calcul des Deltas Chrono Live & Secteurs pour SimPad.
+    Enregistre et gère le profil spatial mètre par mètre (vitesse, accélérateur, frein, volant)
+    et les annotations de piste associées.
     """
 
     def __init__(self):
         self._pit_or_garage_during_lap: bool = False
+        self._current_profile: Optional[ReferenceLapProfile] = None
         self.reset_session()
 
     def reset_session(self) -> None:
@@ -50,17 +64,23 @@ class DeltaEngine:
         self._track_length: float = 0.0
 
         # Profil de référence haute résolution
-        # d_step = 1.0m, t_grid = [t_0, t_1, ..., t_N], best_lap_time
+        self._current_profile = None
         self._ref_lap_time: float = 999999.0
         self._ref_t_grid: Optional[List[float]] = None
         self._ref_spatial_step: float = 1.0
         self._ref_num_points: int = 0
 
-        # Échantillons du tour en cours : liste de (dist, time_into)
-        self._current_lap_samples: List[Tuple[float, float]] = []
+        # Échantillons du tour en cours : liste de (dist, time_into, speed_ms, throttle, brake, steering)
+        self._current_lap_samples: List[Tuple[float, float, float, float, float, float]] = []
         self._last_laps_completed: int = -1
         self._last_dist: float = -1.0
         self._pit_or_garage_during_lap: bool = False
+
+        # Derniers inputs physiques
+        self._last_speed_ms: float = 0.0
+        self._last_throttle: float = 0.0
+        self._last_brake: float = 0.0
+        self._last_steering: float = 0.0
 
         # Dernier état de scoring (1-2 Hz)
         self._last_scoring_dist: float = 0.0
@@ -80,6 +100,30 @@ class DeltaEngine:
         self._sector2_delta: float = 0.0
         self._sector3_delta: float = 0.0
 
+    @property
+    def current_profile(self) -> Optional[ReferenceLapProfile]:
+        """Retourne le profil de référence actuellement actif."""
+        return self._current_profile
+
+    def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
+        """Getter pour le profil de référence."""
+        return self._current_profile
+
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+        """Définit manuellement le profil de référence actif."""
+        self._current_profile = profile
+        if profile is not None:
+            self._ref_lap_time = profile.lap_time
+            self._ref_spatial_step = profile.spatial_step
+            self._ref_t_grid = profile.t_grid
+            self._ref_num_points = profile.num_points
+            self._track_name = profile.track_name
+            self._track_length = profile.track_length
+        else:
+            self._ref_lap_time = 999999.0
+            self._ref_t_grid = None
+            self._ref_num_points = 0
+
     def _find_player_vehicle(self, vehicles: list) -> Optional[dict]:
         """SLAP Helper: Finds player vehicle in scoring vehicles list."""
         if not isinstance(vehicles, list):
@@ -92,7 +136,14 @@ class DeltaEngine:
                 return v
         return None
 
-    def _handle_lap_transition(self, laps_comp: int, last_lap_time: float, lap_flag: int, in_garage: bool, in_pits: bool) -> None:
+    def _handle_lap_transition(
+        self,
+        laps_comp: int,
+        last_lap_time: float,
+        lap_flag: int,
+        in_garage: bool,
+        in_pits: bool,
+    ) -> None:
         """SLAP Helper: Finalizes previous lap and resets state for new lap."""
         if self._last_laps_completed >= 0 and laps_comp > self._last_laps_completed:
             self._finalize_completed_lap(
@@ -123,8 +174,18 @@ class DeltaEngine:
                 self._s2_checkpoint_captured = True
             self._last_current_sector = curr_sec
 
-    def _collect_lap_sample(self, in_garage: bool, in_pits: bool, time_into: float, player_dist: float) -> None:
-        """SLAP Helper: Collects live lap samples for reference spline building."""
+    def _collect_lap_sample(
+        self,
+        in_garage: bool,
+        in_pits: bool,
+        time_into: float,
+        player_dist: float,
+        speed_ms: float = 0.0,
+        throttle: float = 0.0,
+        brake: float = 0.0,
+        steering: float = 0.0,
+    ) -> None:
+        """SLAP Helper: Collects live lap samples (full telemetry) for reference profile building."""
         if in_garage or in_pits:
             self._pit_or_garage_during_lap = True
             return
@@ -132,12 +193,18 @@ class DeltaEngine:
         if time_into > 0.0 and player_dist >= 0.0:
             if self._track_length <= 0.0 or player_dist <= self._track_length + 200.0:
                 if not self._current_lap_samples or player_dist > self._current_lap_samples[-1][0]:
-                    self._current_lap_samples.append((player_dist, time_into))
+                    self._current_lap_samples.append((
+                        player_dist,
+                        time_into,
+                        speed_ms,
+                        throttle,
+                        brake,
+                        steering,
+                    ))
 
     def update_scoring(self, scoring_js: dict) -> None:
         """
         Traite un paquet ScoringInfoV01 (1-2 Hz).
-        Complexité réduites (CCN < 5) grâce à la délégation vers les sous-fonctions SLAP.
         """
         now = time.time()
         track_name = str(scoring_js.get("mTrackName", ""))
@@ -173,7 +240,16 @@ class DeltaEngine:
 
         self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits)
         self._handle_sector_transition(curr_sec)
-        self._collect_lap_sample(in_garage, in_pits, time_into, player_dist)
+        self._collect_lap_sample(
+            in_garage=in_garage,
+            in_pits=in_pits,
+            time_into=time_into,
+            player_dist=player_dist,
+            speed_ms=self._last_speed_ms,
+            throttle=self._last_throttle,
+            brake=self._last_brake,
+            steering=self._last_steering,
+        )
 
         self._last_scoring_dist = player_dist
         self._last_scoring_time_into = time_into
@@ -182,18 +258,29 @@ class DeltaEngine:
 
         self._calculate_delta(player_dist, time_into)
 
-    def update_physics(self, veh_speed_ms: float) -> None:
+    def update_physics(
+        self,
+        veh_speed_ms: float,
+        throttle: float = 0.0,
+        brake: float = 0.0,
+        steering: float = 0.0,
+    ) -> None:
         """
         Traite un paquet TelemInfoV01 à haute fréquence (50 Hz).
-        Effectue une extrapolation spatiale dead-reckoning pour un calcul du delta ultra-fluide.
+        Effectue une extrapolation spatiale dead-reckoning et capture les inputs réels.
         """
-        if self._last_scoring_timestamp <= 0.0 or self._ref_t_grid is None:
+        self._last_speed_ms = veh_speed_ms
+        self._last_throttle = throttle
+        self._last_brake = brake
+        self._last_steering = steering
+
+        if self._last_scoring_timestamp <= 0.0:
             return
 
         now = time.time()
         dt = now - self._last_scoring_timestamp
 
-        # Extrapolation continue (jusqu'à 60s sans blocage artificiel à 1s)
+        # Extrapolation continue
         if 0.0 < dt < 60.0 and veh_speed_ms >= 0.0:
             extrapol_dist = self._last_scoring_dist + (veh_speed_ms * dt)
             extrapol_time_into = self._last_scoring_time_into + dt
@@ -203,6 +290,18 @@ class DeltaEngine:
                 extrapol_dist = extrapol_dist % self._track_length
 
             self._calculate_delta(extrapol_dist, extrapol_time_into)
+
+            # Collecte haute fréquence pendant le tour
+            if not self._pit_or_garage_during_lap and extrapol_time_into > 0.0 and extrapol_dist >= 0.0:
+                if not self._current_lap_samples or (extrapol_dist - self._current_lap_samples[-1][0]) >= 0.8:
+                    self._current_lap_samples.append((
+                        extrapol_dist,
+                        extrapol_time_into,
+                        veh_speed_ms,
+                        throttle,
+                        brake,
+                        steering,
+                    ))
 
     def _calculate_delta(self, player_dist: float, time_into: float) -> None:
         """Calcul du delta live et des deltas par secteur à partir d'une position et d'un temps."""
@@ -230,7 +329,7 @@ class DeltaEngine:
 
         delta = time_into - ref_time
 
-        # Borner les deltas extrêmes (ex: arrêt en piste, dérapage) à +/- 999.0s
+        # Borner les deltas extrêmes à +/- 999.0s
         if abs(delta) < 999.0:
             self._live_delta = delta
         else:
@@ -244,31 +343,70 @@ class DeltaEngine:
         elif self._last_current_sector == 3:
             self._sector3_delta = self._live_delta - self._s2_checkpoint_delta
 
-    def _resample_spatial_grid(self, clean_samples: List[Tuple[float, float]], spatial_step: float = 1.0) -> Tuple[List[float], int]:
+    def _resample_spatial_grid(
+        self,
+        clean_samples: List[Tuple[float, ...]],
+        spatial_step: float = 1.0,
+    ) -> Tuple[List[float], List[float], List[float], List[float], List[float], int]:
         """
-        SLAP Helper: Construction du profil ré-échantillonné sur grille spatiale uniforme.
-        Opère au niveau d'abstraction de l'interpolation mathématique.
+        SLAP Helper: Construction du profil ré-échantillonné mètre par mètre sur grille spatiale uniforme.
+        Interpole: temps, vitesse, accélérateur, frein, volant.
         """
         import bisect
         track_dist = clean_samples[-1][0]
         num_points = int(track_dist / spatial_step) + 1
-        t_grid = []
+
+        t_grid: List[float] = []
+        speed_grid: List[float] = []
+        throttle_grid: List[float] = []
+        brake_grid: List[float] = []
+        steering_grid: List[float] = []
+
         d_keys = [s[0] for s in clean_samples]
+
+        def _get_val(sample_tuple, idx, default=0.0):
+            return sample_tuple[idx] if len(sample_tuple) > idx else default
 
         for i in range(num_points):
             target_d = i * spatial_step
             idx = bisect.bisect_left(d_keys, target_d)
+
             if idx <= 0:
-                t_grid.append(clean_samples[0][1])
+                s = clean_samples[0]
+                t_grid.append(s[1])
+                speed_grid.append(_get_val(s, 2, 0.0))
+                throttle_grid.append(_get_val(s, 3, 0.0))
+                brake_grid.append(_get_val(s, 4, 0.0))
+                steering_grid.append(_get_val(s, 5, 0.0))
             elif idx >= len(clean_samples):
-                t_grid.append(clean_samples[-1][1])
+                s = clean_samples[-1]
+                t_grid.append(s[1])
+                speed_grid.append(_get_val(s, 2, 0.0))
+                throttle_grid.append(_get_val(s, 3, 0.0))
+                brake_grid.append(_get_val(s, 4, 0.0))
+                steering_grid.append(_get_val(s, 5, 0.0))
             else:
-                d1, t1 = clean_samples[idx - 1]
-                d2, t2 = clean_samples[idx]
+                s1 = clean_samples[idx - 1]
+                s2 = clean_samples[idx]
+                d1, t1 = s1[0], s1[1]
+                d2, t2 = s2[0], s2[1]
                 frac = (target_d - d1) / (d2 - d1) if d2 > d1 else 0.0
+
                 t_grid.append(t1 + frac * (t2 - t1))
 
-        return t_grid, num_points
+                v1, v2 = _get_val(s1, 2, 0.0), _get_val(s2, 2, 0.0)
+                speed_grid.append(v1 + frac * (v2 - v1))
+
+                thr1, thr2 = _get_val(s1, 3, 0.0), _get_val(s2, 3, 0.0)
+                throttle_grid.append(thr1 + frac * (thr2 - thr1))
+
+                brk1, brk2 = _get_val(s1, 4, 0.0), _get_val(s2, 4, 0.0)
+                brake_grid.append(brk1 + frac * (brk2 - brk1))
+
+                str1, str2 = _get_val(s1, 5, 0.0), _get_val(s2, 5, 0.0)
+                steering_grid.append(str1 + frac * (str2 - str1))
+
+        return t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, num_points
 
     def _finalize_completed_lap(
         self,
@@ -278,7 +416,6 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """Valide et enregistre le tour complété (SLAP: Orchestration haut niveau)."""
-        # Seul un tour annulé (lap_flag == 0) par le jeu est invalidé
         if lap_flag == 0:
             logger.debug(f"[DeltaEngine] Lap rejected: Invalidated by game (lap_flag={lap_flag})")
             return
@@ -296,11 +433,12 @@ class DeltaEngine:
             return
 
         # Filtrer la liste pour garantir une monotonie stricte des distances
-        clean_samples: List[Tuple[float, float]] = []
+        clean_samples: List[Tuple[float, ...]] = []
         last_d = -1.0
-        for d, t in self._current_lap_samples:
+        for sample in self._current_lap_samples:
+            d = sample[0]
             if d > last_d:
-                clean_samples.append((d, t))
+                clean_samples.append(sample)
                 last_d = d
 
         if not clean_samples:
@@ -308,18 +446,70 @@ class DeltaEngine:
 
         # Extrapolation automatique du point de départ (0.0m, 0.0s) si absent
         if clean_samples[0][0] > 0.0:
-            clean_samples.insert(0, (0.0, 0.0))
+            first_s = clean_samples[0]
+            clean_samples.insert(0, (
+                0.0,
+                0.0,
+                first_s[2] if len(first_s) > 2 else 0.0,
+                first_s[3] if len(first_s) > 3 else 0.0,
+                first_s[4] if len(first_s) > 4 else 0.0,
+                first_s[5] if len(first_s) > 5 else 0.0,
+            ))
 
         # Extrapolation automatique du point de fin (track_length, lap_time) si absent
         if self._track_length > 0.0 and clean_samples[-1][0] < self._track_length:
-            clean_samples.append((self._track_length, lap_time))
+            last_s = clean_samples[-1]
+            clean_samples.append((
+                self._track_length,
+                lap_time,
+                last_s[2] if len(last_s) > 2 else 0.0,
+                last_s[3] if len(last_s) > 3 else 0.0,
+                last_s[4] if len(last_s) > 4 else 0.0,
+                last_s[5] if len(last_s) > 5 else 0.0,
+            ))
 
         if len(clean_samples) < 2 or clean_samples[-1][0] <= 0.0:
             return
 
         spatial_step = 1.0
-        t_grid, num_points = self._resample_spatial_grid(clean_samples, spatial_step=spatial_step)
+        t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, num_points = self._resample_spatial_grid(
+            clean_samples,
+            spatial_step=spatial_step,
+        )
 
+        # Déterminer les chemins de fichiers (télémétrie .json et marks .marks.json)
+        filepath = self._get_profile_filepath()
+        marks_path = get_marks_filepath(filepath) if filepath else None
+
+        # Conserver les annotations existantes depuis la mémoire ou le disque
+        existing_annotations: List[TrackAnnotation] = []
+        if self._current_profile and self._current_profile.annotations:
+            existing_annotations = list(self._current_profile.annotations)
+
+        # Construction du profil complet
+        effective_len = self._track_length if self._track_length > 0.0 else clean_samples[-1][0]
+        profile = ReferenceLapProfile(
+            track_name=self._track_name,
+            vehicle_name=self._vehicle_name,
+            vehicle_class=self._vehicle_class,
+            lap_time=lap_time,
+            track_length=effective_len,
+            spatial_step=spatial_step,
+            num_points=num_points,
+            t_grid=t_grid,
+            speed_grid=speed_grid,
+            throttle_grid=throttle_grid,
+            brake_grid=brake_grid,
+            steering_grid=steering_grid,
+            annotations=existing_annotations,
+        )
+
+        if marks_path:
+            profile.set_marks_filepath(marks_path)
+            if marks_path.exists() and not existing_annotations:
+                profile.load_marks_from_file(marks_path)
+
+        self._current_profile = profile
         self._ref_lap_time = lap_time
         self._ref_t_grid = t_grid
         self._ref_spatial_step = spatial_step
@@ -340,49 +530,36 @@ class DeltaEngine:
         return _REF_LAPS_DIR / filename
 
     def _save_reference_profile(self) -> None:
-        """Sauvegarde le profil de référence courant sur le disque JSON."""
-        # TODO [SRP]: Disk profile persistence combined into DeltaEngine class
+        """Sauvegarde automatique de la télémétrie du tour de référence courant sur le disque JSON."""
         filepath = self._get_profile_filepath()
-        if not filepath or self._ref_t_grid is None:
+        if not filepath or self._current_profile is None:
             return
-        try:
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "track_name": self._track_name,
-                "vehicle_name": self._vehicle_name,
-                "vehicle_class": self._vehicle_class,
-                "lap_time": self._ref_lap_time,
-                "spatial_step": self._ref_spatial_step,
-                "num_points": self._ref_num_points,
-                "t_grid": self._ref_t_grid,
-            }
-            filepath.write_text(json.dumps(data), encoding="utf-8")
-            logger.info(f"[DeltaEngine] Saved reference profile to {filepath.name}")
-        except Exception as e:
-            logger.warning(f"[DeltaEngine] Failed to save reference profile: {e}")
+        self._current_profile.save_telemetry_to_file(filepath)
 
     def _load_reference_profile(self) -> None:
         """Tente de charger un profil de référence enregistré sur disque pour le circuit/voiture."""
-        # TODO [SRP]: Disk profile loading combined into DeltaEngine class
         filepath = self._get_profile_filepath()
         if not filepath or not filepath.exists():
+            self._current_profile = None
             self._ref_lap_time = 999999.0
             self._ref_t_grid = None
             self._ref_num_points = 0
             return
 
-        try:
-            content = filepath.read_text(encoding="utf-8")
-            data = json.loads(content)
-            self._ref_lap_time = float(data.get("lap_time", 999999.0))
-            self._ref_spatial_step = float(data.get("spatial_step", 1.0))
-            self._ref_t_grid = data.get("t_grid")
-            self._ref_num_points = len(self._ref_t_grid) if self._ref_t_grid else 0
-            logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s)")
-            print(f"[DeltaEngine] Loaded saved reference lap: {self._ref_lap_time:.3f}s", flush=True)
-        except Exception as e:
-            logger.warning(f"[DeltaEngine] Failed to load reference profile: {e}")
+        loaded = ReferenceLapProfile.load_from_file(filepath)
+        if loaded:
+            self._current_profile = loaded
+            self._ref_lap_time = loaded.lap_time
+            self._ref_spatial_step = loaded.spatial_step
+            self._ref_t_grid = loaded.t_grid
+            self._ref_num_points = loaded.num_points
+            logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)")
+            print(f"[DeltaEngine] Loaded saved reference lap: {self._ref_lap_time:.3f}s ({len(loaded.annotations)} annotations)", flush=True)
+        else:
+            self._current_profile = None
+            self._ref_lap_time = 999999.0
             self._ref_t_grid = None
+            self._ref_num_points = 0
 
     @property
     def live_delta(self) -> float:
@@ -403,3 +580,25 @@ class DeltaEngine:
     @property
     def has_reference(self) -> bool:
         return self._ref_t_grid is not None and self._ref_num_points > 0
+
+    @property
+    def track_name(self) -> str:
+        """Retourne le nom du circuit de la session active."""
+        return self._track_name
+
+    @property
+    def last_scoring_dist(self) -> float:
+        """Retourne la dernière distance connue depuis le paquet de scoring."""
+        return self._last_scoring_dist
+
+    def get_live_car_distance(self) -> float:
+        """Retourne la distance courante de la voiture (extrapolée en direct à 50Hz)."""
+        if self._last_scoring_timestamp <= 0.0:
+            return self._last_scoring_dist
+        dt = time.time() - self._last_scoring_timestamp
+        if 0.0 <= dt < 3.0 and self._last_speed_ms >= 0.0:
+            extrapol = self._last_scoring_dist + (self._last_speed_ms * dt)
+            if self._track_length > 0.0 and extrapol > self._track_length:
+                extrapol = extrapol % self._track_length
+            return extrapol
+        return self._last_scoring_dist

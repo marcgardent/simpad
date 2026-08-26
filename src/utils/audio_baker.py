@@ -24,23 +24,38 @@ MODEL_CONFIG_URLS = {
     "en_GB-alan-low.onnx": "https://huggingface.co/rhasspy/piper-voices/raw/main/en/en_GB/alan/low/en_GB-alan-low.onnx.json"
 }
 
-# Standard dictionary of phrases requested for SimPad
 DEFAULT_PHRASES: Dict[str, str] = {
+    # Lap & Spotter Announcements
     "clean_lap": "Clean lap",
     "dirty_lap": "Dirty lap",
     "lap": "Lap",
     "car": "Car",
-    "one": "One",
-    "two": "Two",
-    "three": "Three",
-    "four": "Four",
-    "five": "Five",
     "car_clear": "Car clear",
     "incoming": "Incoming",
     "traffic_5": "Traffic five",
     "alongside": "Alongside",
     "overlap": "Overlap",
     "clear": "Clear",
+
+    # Gear Numbers (1 to 8)
+    "one": "One",
+    "two": "Two",
+    "three": "Three",
+    "four": "Four",
+    "five": "Five",
+    "six": "Six",
+    "seven": "Seven",
+    "eight": "Eight",
+
+    # Reference Lap & Pace Notes Annotations
+    "brake": "Brake",
+    "turn": "Turn",
+
+    # Gear Announcements G1 to G8 (ségrégé du décompte spotter)
+    **{f"gear_{i}": f"Gear {i}" for i in range(1, 9)},
+
+    # Turns T1 to T30 (génération dynamique compressée)
+    **{f"turn_{i}": f"Turn {i}" for i in range(1, 31)},
 }
 
 

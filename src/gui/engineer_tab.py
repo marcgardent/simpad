@@ -11,6 +11,7 @@ import dearpygui.dearpygui as dpg
 
 from src.engineer.manager import RaceEngineer
 from src.engineer.base import BaseRole, RoleStatus
+from src.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
 from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from src.utils.audio import AudioAnnouncer
 
@@ -21,7 +22,7 @@ class RaceEngineerTab:
     """
     Gestionnaire de l'onglet IHM dédié à l'Ingénieur de Course Virtuel.
     Supporte la configuration dynamique, le tri de priorité par glissement/boutons,
-    l'activation unitaire et la visualisation temps réel de la FSM spotter.
+    l'activation unitaire, l'édition des formulaires de paramètres et la visualisation temps réel.
     """
 
     def __init__(self, race_engineer: RaceEngineer):
@@ -57,15 +58,20 @@ class RaceEngineerTab:
                 dpg.add_text("Global Status:", color=[180, 180, 180, 255])
                 dpg.add_text("STANDBY (All roles IDLE)", tag="lbl_engineer_global_status", color=[46, 204, 113, 255])
 
-                dpg.add_spacer(width=25)
+                dpg.add_spacer(width=20)
+                dpg.add_button(
+                    label="Save Config",
+                    width=90,
+                    callback=self._cb_save_config,
+                )
                 dpg.add_button(
                     label="Test Voice",
-                    width=100,
+                    width=85,
                     callback=self._cb_test_voice,
                 )
                 dpg.add_button(
                     label="Reset Roles",
-                    width=100,
+                    width=85,
                     callback=self._cb_reset_roles,
                 )
 
@@ -73,10 +79,10 @@ class RaceEngineerTab:
 
         # ── 2. Corps Principal : Liste des Rôles & Radar ─────────────────────
         with dpg.group(horizontal=True):
-            # Colonne Gauche : Gestion des Rôles (Priorités & États)
-            with dpg.child_window(width=680, height=-1, border=True, tag="child_roles_container"):
+            # Colonne Gauche : Gestion des Rôles (Priorités & Paramètres)
+            with dpg.child_window(width=720, height=-1, border=True, tag="child_roles_container"):
                 dpg.add_text("Active Roles & Priority Queue (Sortable):", color=[255, 200, 0, 255])
-                dpg.add_text("Les rôles supérieurs ont la priorité d'annonce. Utilisez ▲ et ▼ pour réordonner.", color=[150, 150, 150, 255])
+                dpg.add_text("Cochez/décochez les rôles. Utilisez ▲ et ▼ pour réordonner les priorités.", color=[150, 150, 150, 255])
                 dpg.add_separator()
                 dpg.add_spacer(height=6)
 
@@ -117,7 +123,7 @@ class RaceEngineerTab:
                     dpg.add_table_column(label="TTC (s)", width_fixed=True, init_width_or_weight=70)
 
     def _render_roles_cards(self) -> None:
-        """Régénère la liste des cartes de rôles avec leurs boutons de tri et badges."""
+        """Régénère la liste des cartes de rôles avec leurs formulaires de paramètres."""
         if dpg.does_item_exist("group_roles_list"):
             dpg.delete_item("group_roles_list", children_only=True)
 
@@ -127,9 +133,22 @@ class RaceEngineerTab:
             role_id = role.role_id
             card_tag = f"card_role_{role_id}"
 
-            with dpg.child_window(parent="group_roles_list", tag=card_tag, height=130, border=True):
+            with dpg.child_window(parent="group_roles_list", tag=card_tag, auto_resize_y=True, border=True):
                 # Ligne 1 : Boutons UP/DOWN, Priorité, Checkbox Actif, Nom, Badge État
                 with dpg.group(horizontal=True):
+                    # Checkbox d'activation unitaire en tête de ligne
+                    dpg.add_checkbox(
+                        label="",
+                        tag=f"chk_role_{role_id}",
+                        default_value=role.enabled,
+                        user_data=role_id,
+                        callback=self._cb_toggle_role,
+                    )
+                    with dpg.tooltip(f"chk_role_{role_id}"):
+                        dpg.add_text(f"Activer / Désactiver le rôle {role.name}")
+
+                    dpg.add_spacer(width=2)
+
                     # Bouton UP
                     dpg.add_button(
                         label="▲",
@@ -147,37 +166,40 @@ class RaceEngineerTab:
                         enabled=(idx < len(roles) - 1),
                     )
 
+                    dpg.add_spacer(width=4)
+
                     # Priorité
                     prio_color = [255, 200, 0, 255] if role.priority >= 100 else [180, 180, 180, 255]
                     dpg.add_text(f"[{role.priority:3d}]", tag=f"lbl_prio_{role_id}", color=prio_color)
 
-                    # Checkbox activation
-                    dpg.add_checkbox(
-                        label="",
-                        tag=f"chk_role_{role_id}",
-                        default_value=role.enabled,
-                        user_data=role_id,
-                        callback=self._cb_toggle_role,
-                    )
+                    dpg.add_spacer(width=4)
 
                     # Nom du rôle
                     name_color = [0, 210, 255, 255] if role.enabled else [120, 120, 120, 255]
                     dpg.add_text(f"{role.name}", tag=f"lbl_name_{role_id}", color=name_color)
 
                     dpg.add_spacer(width=10)
-                    # Badge d'état IDLE / BUSY
-                    status_str = "BUSY" if role.is_busy() else "IDLE"
-                    status_col = [243, 156, 18, 255] if role.is_busy() else [46, 204, 113, 255]
+                    # Badge d'état IDLE / BUSY / OFF
+                    if not role.enabled:
+                        status_str = "OFF"
+                        status_col = [120, 120, 120, 255]
+                    elif role.is_busy():
+                        status_str = "BUSY"
+                        status_col = [243, 156, 18, 255]
+                    else:
+                        status_str = "IDLE"
+                        status_col = [46, 204, 113, 255]
                     dpg.add_text(f"[ {status_str} ]", tag=f"lbl_status_badge_{role_id}", color=status_col)
 
                 # Ligne 2 : Description
-                dpg.add_text(f"{role.description}", color=[140, 140, 140, 255], wrap=640)
+                dpg.add_text(f"{role.description}", color=[140, 140, 140, 255], wrap=680)
 
                 dpg.add_spacer(height=2)
                 # Ligne 3 : Détails en direct & Test sonore
                 with dpg.group(horizontal=True):
                     dpg.add_text("Live: ", color=[180, 180, 180, 255])
-                    dpg.add_text("Ready", tag=f"lbl_live_detail_{role_id}", color=[220, 220, 220, 255])
+                    live_text = "Ready" if role.enabled else "Disabled"
+                    dpg.add_text(live_text, tag=f"lbl_live_detail_{role_id}", color=[220, 220, 220, 255])
 
                     dpg.add_spacer(width=20)
                     dpg.add_button(
@@ -187,11 +209,81 @@ class RaceEngineerTab:
                         callback=self._cb_test_role_audio,
                     )
 
+                # Ligne 4 : Formulaire dynamique des paramètres du rôle
+                params = role.get_parameters()
+                if params:
+                    dpg.add_spacer(height=2)
+                    dpg.add_separator()
+                    dpg.add_text("Role Parameters & Settings:", color=[255, 200, 0, 255])
+
+                    # Séparer les booléens (cases à cocher) et les sliders numériques
+                    bool_params = [p for p in params if isinstance(p, BoolParam)]
+                    num_params = [p for p in params if not isinstance(p, BoolParam)]
+
+                    # Affichage des Booléens (Checkboxes) par groupes de 2 par ligne
+                    if bool_params:
+                        for i in range(0, len(bool_params), 2):
+                            with dpg.group(horizontal=True):
+                                for p in bool_params[i:i+2]:
+                                    chk_tag = f"param_{role_id}_{p.name}"
+                                    dpg.add_checkbox(
+                                        label=p.label,
+                                        tag=chk_tag,
+                                        default_value=role.get_param_value(p.name),
+                                        user_data=(role_id, p.name),
+                                        callback=self._cb_param_changed,
+                                    )
+                                    if p.description:
+                                        with dpg.tooltip(chk_tag):
+                                            dpg.add_text(p.description)
+                                    dpg.add_spacer(width=15)
+
+                    # Affichage des Sliders numériques (IntRange / FloatRange)
+                    if num_params:
+                        for p in num_params:
+                            ctrl_tag = f"param_{role_id}_{p.name}"
+                            with dpg.group(horizontal=True):
+                                if isinstance(p, IntRangeParam):
+                                    dpg.add_slider_int(
+                                        label=f"{p.label} ({p.unit})" if p.unit else p.label,
+                                        tag=ctrl_tag,
+                                        min_value=p.min_val,
+                                        max_value=p.max_val,
+                                        default_value=role.get_param_value(p.name),
+                                        width=220,
+                                        user_data=(role_id, p.name),
+                                        callback=self._cb_param_changed,
+                                    )
+                                elif isinstance(p, FloatRangeParam):
+                                    fmt = f"%.1f {p.unit}" if p.unit else "%.1f"
+                                    dpg.add_slider_float(
+                                        label=f"{p.label} ({p.unit})" if p.unit else p.label,
+                                        tag=ctrl_tag,
+                                        min_value=p.min_val,
+                                        max_value=p.max_val,
+                                        default_value=role.get_param_value(p.name),
+                                        format=fmt,
+                                        width=220,
+                                        user_data=(role_id, p.name),
+                                        callback=self._cb_param_changed,
+                                    )
+                                if p.description:
+                                    with dpg.tooltip(ctrl_tag):
+                                        dpg.add_text(p.description)
+
             dpg.add_spacer(parent="group_roles_list", height=4)
 
-    # ── Callbacks Utilisateur ────────────────────────────────────────────────
+    def _cb_param_changed(self, sender, app_data, user_data):
+        """Callback déclenché lors de la modification d'un paramètre dans le formulaire IHM."""
+        role_id, param_name = user_data
+        role = self.engineer.get_role(role_id)
+        if role:
+            role.set_param_value(param_name, app_data)
+            self.engineer.save_to_file()
+            logger.info(f"[RaceEngineer GUI] Parameter updated: {role_id}.{param_name} = {app_data}")
+
     def _cb_toggle_master_enabled(self, sender, app_data):
-        self.engineer.enabled = bool(app_data)
+        self.engineer.set_master_enabled(bool(app_data))
         logger.info(f"[RaceEngineer GUI] Master switch: {self.engineer.enabled}")
 
     def _cb_toggle_mute(self, sender, app_data):
@@ -200,10 +292,22 @@ class RaceEngineerTab:
 
     def _cb_toggle_role(self, sender, app_data, user_data):
         role_id = user_data
-        self.engineer.set_role_enabled(role_id, bool(app_data))
+        enabled = bool(app_data)
+        self.engineer.set_role_enabled(role_id, enabled)
         if dpg.does_item_exist(f"lbl_name_{role_id}"):
-            col = [0, 210, 255, 255] if app_data else [120, 120, 120, 255]
+            col = [0, 210, 255, 255] if enabled else [120, 120, 120, 255]
             dpg.configure_item(f"lbl_name_{role_id}", color=col)
+        badge_tag = f"lbl_status_badge_{role_id}"
+        if dpg.does_item_exist(badge_tag):
+            if not enabled:
+                dpg.set_value(badge_tag, "[ OFF ]")
+                dpg.configure_item(badge_tag, color=[120, 120, 120, 255])
+            else:
+                dpg.set_value(badge_tag, "[ IDLE ]")
+                dpg.configure_item(badge_tag, color=[46, 204, 113, 255])
+        detail_tag = f"lbl_live_detail_{role_id}"
+        if dpg.does_item_exist(detail_tag) and not enabled:
+            dpg.set_value(detail_tag, "Disabled")
 
     def _cb_move_role_up(self, sender, app_data, user_data):
         role_id = user_data
@@ -214,6 +318,10 @@ class RaceEngineerTab:
         role_id = user_data
         if self.engineer.move_role_down(role_id):
             self._render_roles_cards()
+
+    def _cb_save_config(self, sender, app_data):
+        self.engineer.save_to_file()
+        logger.info("[RaceEngineer GUI] Manual configuration saved to file.")
 
     def _cb_test_voice(self, sender, app_data):
         AudioAnnouncer.play_phrase("clean_lap")
@@ -261,16 +369,25 @@ class RaceEngineerTab:
             detail_tag = f"lbl_live_detail_{role_id}"
 
             if dpg.does_item_exist(badge_tag):
-                is_busy = role.is_busy()
-                badge_str = "BUSY" if is_busy else "IDLE"
-                badge_col = [243, 156, 18, 255] if is_busy else [46, 204, 113, 255]
+                if not role.enabled:
+                    badge_str = "OFF"
+                    badge_col = [120, 120, 120, 255]
+                elif role.is_busy():
+                    badge_str = "BUSY"
+                    badge_col = [243, 156, 18, 255]
+                else:
+                    badge_str = "IDLE"
+                    badge_col = [46, 204, 113, 255]
                 dpg.set_value(badge_tag, f"[ {badge_str} ]")
                 dpg.configure_item(badge_tag, color=badge_col)
 
             if dpg.does_item_exist(detail_tag):
-                summary = role.get_state_summary()
-                detail_text = self._format_role_summary(role_id, summary)
-                dpg.set_value(detail_tag, detail_text)
+                if not role.enabled:
+                    dpg.set_value(detail_tag, "Disabled")
+                else:
+                    summary = role.get_state_summary()
+                    detail_text = self._format_role_summary(role_id, summary)
+                    dpg.set_value(detail_tag, detail_text)
 
         # 3. Diagnostic Spotter FSM & Radar
         self._update_radar_ui()

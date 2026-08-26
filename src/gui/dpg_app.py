@@ -27,6 +27,7 @@ from src.gui.node_editor import NodeEditorTab
 from src.gui.dashboards import DashboardManager
 from src.engineer import RaceEngineer
 from src.gui.engineer_tab import RaceEngineerTab
+from src.gui.telemetry_tab import TelemetryTab
 
 HISTORY = 150  # 7.5 seconds at 20 Hz
 
@@ -43,6 +44,9 @@ class SimPadDPGApp:
         from src.utils.audio import AudioAnnouncer
         self._race_engineer = RaceEngineer(audio_engine=AudioAnnouncer)
         self._engineer_tab = RaceEngineerTab(self._race_engineer)
+
+        # Telemetry & Annotation Studio Sub-System
+        self._telemetry_tab = TelemetryTab()
 
         # Backends
         self._haptics: Optional[HapticController] = None
@@ -206,6 +210,10 @@ class SimPadDPGApp:
                 with dpg.tab(label="Race Engineer", tag="tab_race_engineer"):
                     self._engineer_tab.build_tab(self)
 
+                # Quinary Tab: Telemetry Studio (Meter-by-Meter & Annotations)
+                with dpg.tab(label="Telemetry & Annotations", tag="tab_telemetry_studio"):
+                    self._telemetry_tab.build_tab(self)
+
         dpg.set_primary_window("primary_window", True)
         self._dashboard_mgr.build_all_ui()
         self._dashboard_mgr.set_display_mode("desktop")
@@ -319,6 +327,9 @@ class SimPadDPGApp:
 
         if hasattr(self, "_engineer_tab"):
             self._engineer_tab.render_tick()
+
+        if hasattr(self, "_telemetry_tab"):
+            self._telemetry_tab.render_tick()
 
         udp_active = bool(self._udp and self._udp.is_receiving(timeout=2.0) and self._telemetry_enabled)
         if udp_active:
@@ -521,6 +532,8 @@ class SimPadDPGApp:
     # ── Shutdown ───────────────────────────────────────────────────────────────
     def _on_close(self):
         self._dashboard_mgr.set_display_mode("desktop")
+        if hasattr(self, "_race_engineer") and self._race_engineer:
+            self._race_engineer.save_to_file()
         if self._synth:
             self._synth.stop()
         if self._haptics:

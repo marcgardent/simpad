@@ -99,6 +99,8 @@ class TestDeltaEngine(unittest.TestCase):
 
         # Now reference lap should be established!
         self.assertTrue(self.engine.has_reference)
+        saved_file = Path(self.temp_dir) / "ref_testtrack_testcar.json"
+        self.assertTrue(saved_file.exists())
 
         # 2. Drive Lap 2 faster (45 seconds pace -> delta should be negative / gain)
         # At dist 500m (halfway), ref_time was 25.0s. If current t_into is 22.5s, delta should be -2.5s

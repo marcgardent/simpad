@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, List, Tuple
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
+from src.engineer.params import RoleParam, FloatRangeParam
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,12 @@ class TrafficSpotterRole(BaseRole):
             audio_engine=audio_engine,
         )
         self.state = TrafficSpotterState.IDLE
-        self.ttc_trigger_sec = ttc_trigger_sec
-        self.speed_delta_min_mps = speed_delta_min_kmh / 3.6  # 20 km/h = 5.55 m/s
-        self.overlap_dist_threshold_m = overlap_dist_threshold_m
-        self.clear_dist_threshold_m = clear_dist_threshold_m
-        self.abort_ttc_sec = abort_ttc_sec
-        self.max_scan_distance_m = max_scan_distance_m
+        self.ttc_trigger_sec = float(ttc_trigger_sec)
+        self.speed_delta_min_mps = float(speed_delta_min_kmh) / 3.6  # 20 km/h = 5.55 m/s
+        self.overlap_dist_threshold_m = float(overlap_dist_threshold_m)
+        self.clear_dist_threshold_m = float(clear_dist_threshold_m)
+        self.abort_ttc_sec = float(abort_ttc_sec)
+        self.max_scan_distance_m = float(max_scan_distance_m)
         self.phrase_mode = phrase_mode
 
         # Variables dynamiques de suivi
@@ -92,6 +93,70 @@ class TrafficSpotterRole(BaseRole):
         self._live_ttc: float = float("inf")
         self._live_distance: float = 0.0
         self._live_speed_delta_kmh: float = 0.0
+
+    @property
+    def speed_delta_min_kmh(self) -> float:
+        """Delta de vitesse minimum en km/h."""
+        return round(self.speed_delta_min_mps * 3.6, 1)
+
+    @speed_delta_min_kmh.setter
+    def speed_delta_min_kmh(self, value: float) -> None:
+        self.speed_delta_min_mps = float(value) / 3.6
+
+    def get_parameters(self) -> List[RoleParam]:
+        """Déclare la liste des paramètres configurables du Spotter pour l'IHM."""
+        return [
+            FloatRangeParam(
+                name="speed_delta_min_kmh",
+                label="Delta Vitesse Min",
+                min_val=5.0,
+                max_val=80.0,
+                step=1.0,
+                unit="km/h",
+                default=20.0,
+                description="Delta de vitesse positif minimum requis pour déclencher l'alerte d'approche",
+            ),
+            FloatRangeParam(
+                name="ttc_trigger_sec",
+                label="Seuil Déclenchement TTC",
+                min_val=2.0,
+                max_val=10.0,
+                step=0.5,
+                unit="s",
+                default=5.0,
+                description="Temps avant collision (Time-To-Collision) déclenchant le spotter",
+            ),
+            FloatRangeParam(
+                name="overlap_dist_threshold_m",
+                label="Distance Seuil Overlap",
+                min_val=1.0,
+                max_val=15.0,
+                step=0.5,
+                unit="m",
+                default=4.0,
+                description="Distance relative bord-à-bord (Alongside / Overlap)",
+            ),
+            FloatRangeParam(
+                name="clear_dist_threshold_m",
+                label="Distance Seuil Clear",
+                min_val=2.0,
+                max_val=30.0,
+                step=1.0,
+                unit="m",
+                default=10.0,
+                description="Distance de sécurité après dépassement pour annoncer Clear",
+            ),
+            FloatRangeParam(
+                name="max_scan_distance_m",
+                label="Distance Max de Scan",
+                min_val=50.0,
+                max_val=500.0,
+                step=10.0,
+                unit="m",
+                default=250.0,
+                description="Rayon de détection arrière sur la spline de piste",
+            ),
+        ]
 
     def is_busy(self) -> bool:
         """Le rôle est occupé dès qu'il suit activement une voiture (hors IDLE)."""

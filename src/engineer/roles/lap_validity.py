@@ -4,10 +4,10 @@ Surveille les transitions d'état du drapeau de tour LMU (mCountLapFlag).
 """
 
 import time
-from typing import Optional, Dict, Any
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
+from src.engineer.params import RoleParam, FloatRangeParam
 
 
 @RoleRegistry.register(
@@ -44,11 +44,25 @@ class LapValidityRole(BaseRole):
         self._last_lap_flag: Optional[int] = None
         self._last_event_time: float = 0.0
         self._last_event_name: str = "IDLE"
-        self._busy_duration_sec = busy_duration_sec
+        self.busy_duration_sec = float(busy_duration_sec)
+
+    def get_parameters(self) -> List[RoleParam]:
+        return [
+            FloatRangeParam(
+                name="busy_duration_sec",
+                label="Durée Verrou Audio",
+                min_val=0.5,
+                max_val=5.0,
+                step=0.1,
+                unit="s",
+                default=1.8,
+                description="Durée d'état BUSY pendant l'émission des annonces Clean / Dirty Lap",
+            ),
+        ]
 
     def is_busy(self) -> bool:
         """Est occupé brièvement pendant la durée d'énonciation du message audio."""
-        return (time.time() - self._last_event_time) < self._busy_duration_sec
+        return (time.time() - self._last_event_time) < self.busy_duration_sec
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled:

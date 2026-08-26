@@ -146,3 +146,82 @@ def test_race_engineer_save_and_load_config():
     roles2 = engineer2.get_roles()
     assert roles2[0].role_id == "role_b"
     assert engineer2.get_role("role_a").enabled is False
+
+
+def test_race_engineer_file_persistence(tmp_path):
+    """Vérifie la sauvegarde et le chargement via fichier JSON sur disque."""
+    config_file = tmp_path / "test_engineer_cfg.json"
+
+    # Initialisation avec auto-load builtin roles et un fichier custom
+    engineer = RaceEngineer(auto_load_builtin_roles=True, config_path=config_file)
+    assert len(engineer.get_roles()) > 0
+
+    # Désactiver individuellement des rôles
+    engineer.set_role_enabled("lap_validity", False)
+    engineer.set_role_enabled("traffic_jam", False)
+    engineer.move_role_up("traffic_spotter")
+
+    assert config_file.exists()
+
+    # Recharger dans une nouvelle instance
+    engineer2 = RaceEngineer(auto_load_builtin_roles=True, config_path=config_file)
+    assert engineer2.get_role("lap_validity").enabled is False
+    assert engineer2.get_role("traffic_jam").enabled is False
+    assert engineer2.get_role("traffic_spotter").enabled is True
+
+
+def test_individual_roles_disabled_behavior():
+    """Vérifie que les rôles désactivés ne déclenchent aucun son ni alerte."""
+    from src.engineer.roles.lap_validity import LapValidityRole
+    from src.engineer.roles.traffic_spotter import TrafficSpotterRole
+    from src.engineer.roles.traffic_jam import TrafficJamRole
+    from src.engineer.roles.pace_notes import PaceNotesRole
+    from src.telemetry.lmu_parser import TelemetryData
+
+    played = []
+    def mock_audio(phrase_key, interrupt=False):
+        played.append(phrase_key)
+
+    # 1. Lap Validity désactivé
+    lap_role = LapValidityRole(audio_engine=mock_audio, enabled=False)
+    assert lap_role.status == RoleStatus.IDLE
+    ctx_clean = EngineerContext(telemetry=TelemetryData(lap_flag=2))
+    assert lap_role.update(ctx_clean) is None
+    assert len(played) == 0
+
+    # 2. Traffic Spotter désactivé
+    spotter_role = TrafficSpotterRole(audio_engine=mock_audio, enabled=False)
+    assert spotter_role.status == RoleStatus.IDLE
+    scoring_threat = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {"mID": 1, "mIsPlayer": True, "mLapDist": 500.0, "mLocalVel": [0, 0, 50]},
+            {"mID": 2, "mIsPlayer": False, "mLapDist": 460.0, "mLocalVel": [0, 0, 60]},
+        ]
+    }
+    assert spotter_role.update(EngineerContext(scoring=scoring_threat)) is None
+    assert spotter_role.status == RoleStatus.IDLE
+    assert len(played) == 0
+
+    # 3. Traffic Jam désactivé
+    jam_role = TrafficJamRole(audio_engine=mock_audio, enabled=False)
+    assert jam_role.status == RoleStatus.IDLE
+    scoring_slow = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {"mID": 1, "mIsPlayer": True, "mLapDist": 500.0, "mLocalVel": [0, 0, 50]},
+            {"mID": 2, "mIsPlayer": False, "mLapDist": 540.0, "mLocalVel": [0, 0, 5]},
+        ]
+    }
+    assert jam_role.update(EngineerContext(scoring=scoring_slow)) is None
+    assert jam_role.status == RoleStatus.IDLE
+    assert len(played) == 0
+
+    # 4. Pace Notes désactivé
+    pace_role = PaceNotesRole(audio_engine=mock_audio, enabled=False)
+    assert pace_role.status == RoleStatus.IDLE
+    assert pace_role.update(EngineerContext(scoring=scoring_threat)) is None
+    assert len(played) == 0
+

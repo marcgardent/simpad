@@ -56,6 +56,8 @@ class BaseRole(ABC):
     @property
     def status(self) -> RoleStatus:
         """Retourne l'état d'activité courant du rôle (IDLE ou BUSY)."""
+        if not self.enabled:
+            return RoleStatus.IDLE
         return RoleStatus.BUSY if self.is_busy() else RoleStatus.IDLE
 
     @abstractmethod
@@ -75,22 +77,53 @@ class BaseRole(ABC):
         """Réinitialise l'état interne du rôle."""
         pass
 
+    def get_parameters(self) -> List[Any]:
+        """
+        Retourne la liste déclarative des descripteurs de paramètres (RoleParam)
+        propres à ce rôle (ex: BoolParam, IntRangeParam, FloatRangeParam).
+        """
+        return []
+
+    def get_param_value(self, name: str) -> Any:
+        """Retourne la valeur actuelle d'un paramètre nommé."""
+        if hasattr(self, name):
+            return getattr(self, name)
+        for p in self.get_parameters():
+            if p.name == name:
+                return p.default
+        return None
+
+    def set_param_value(self, name: str, value: Any) -> None:
+        """Définit la valeur d'un paramètre avec validation et typage."""
+        for p in self.get_parameters():
+            if p.name == name:
+                valid_val = p.cast_and_validate(value)
+                setattr(self, name, valid_val)
+                return
+        setattr(self, name, value)
+
     def get_state_summary(self) -> Dict[str, Any]:
         """Retourne un résumé d'état sérialisable pour l'interface graphique (IHM) et le debug."""
-        return {
+        summary = {
             "role_id": self.role_id,
             "name": self.name,
             "status": self.status.value,
             "enabled": self.enabled,
             "priority": self.priority,
         }
+        for p in self.get_parameters():
+            summary[p.name] = self.get_param_value(p.name)
+        return summary
 
     def get_config(self) -> Dict[str, Any]:
         """Retourne les paramètres configurables du rôle pour sauvegarde."""
-        return {
+        cfg = {
             "enabled": self.enabled,
             "priority": self.priority,
         }
+        for p in self.get_parameters():
+            cfg[p.name] = self.get_param_value(p.name)
+        return cfg
 
     def set_config(self, config: Dict[str, Any]) -> None:
         """Applique une configuration externe."""
@@ -98,6 +131,9 @@ class BaseRole(ABC):
             self.enabled = bool(config["enabled"])
         if "priority" in config:
             self.priority = int(config["priority"])
+        for p in self.get_parameters():
+            if p.name in config:
+                self.set_param_value(p.name, config[p.name])
 
     def emit_sound(self, phrase_key: str, interrupt: bool = False) -> None:
         """Joue un son via l'audio engine injecté s'il est configuré."""

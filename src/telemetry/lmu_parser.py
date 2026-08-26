@@ -57,6 +57,7 @@ class TelemetryData:
     suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
+    unfiltered_steering: float = 0.0
     in_realtime: bool = True
     gear: int = 0
     # Additional telemetry & scoring fields bound to HUD
@@ -145,6 +146,7 @@ class LMUParser:
     _last_engine_max_rpm: float = 7500.0
     _last_unfiltered_throttle: float = 0.0
     _last_unfiltered_brake: float = 0.0
+    _last_unfiltered_steering: float = 0.0
     _last_lpv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lgv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lat_pv: tuple = (0.0, 0.0, 0.0, 0.0)
@@ -413,7 +415,21 @@ class LMUParser:
             else:
                 veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
 
-            cls._delta_engine.update_physics(veh_speed)
+            if any(k in js for k in ("mUnfilteredThrottle", "mThrottle", "unfilteredThrottle", "throttle")):
+                cls._last_unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
+
+            if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
+                cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
+
+            if any(k in js for k in ("mUnfilteredSteering", "mSteering", "unfilteredSteering", "steering")):
+                cls._last_unfiltered_steering = float(js.get("mUnfilteredSteering", js.get("mSteering", js.get("unfilteredSteering", js.get("steering", 0.0)))))
+
+            cls._delta_engine.update_physics(
+                veh_speed,
+                throttle=cls._last_unfiltered_throttle,
+                brake=cls._last_unfiltered_brake,
+                steering=cls._last_unfiltered_steering,
+            )
             cls._last_delta_time = cls._delta_engine.live_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
             cls._last_sector2_delta = cls._delta_engine.sector2_delta
@@ -443,6 +459,9 @@ class LMUParser:
         if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
             cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
 
+        if any(k in js for k in ("mUnfilteredSteering", "mSteering", "unfilteredSteering", "steering")):
+            cls._last_unfiltered_steering = float(js.get("mUnfilteredSteering", js.get("mSteering", js.get("unfilteredSteering", js.get("steering", 0.0)))))
+
         return cls._build_telemetry_snapshot()
 
     @classmethod
@@ -459,6 +478,7 @@ class LMUParser:
             suspension_velocities=cls._last_susp_vels,
             unfiltered_throttle=cls._last_unfiltered_throttle,
             unfiltered_brake=cls._last_unfiltered_brake,
+            unfiltered_steering=cls._last_unfiltered_steering,
             in_realtime=cls._last_in_realtime,
             gear=cls._last_gear,
             fuel=cls._last_fuel,
