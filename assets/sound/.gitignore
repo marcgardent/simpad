@@ -1,0 +1,5 @@
+# Generated voice audio files
+*.wav
+*.mp3
+!.gitkeep
+!.gitignore

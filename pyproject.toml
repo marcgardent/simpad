@@ -9,5 +9,17 @@ dependencies = [
     "pyside6>=6.11.2",
     "imgui-bundle>=1.92.900",
     "numpy>=2.5.2",
+    "piper-tts>=1.2.0",
+    "tqdm>=4.66.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
 ]
 

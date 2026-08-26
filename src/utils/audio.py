@@ -1,13 +1,16 @@
 """
-SimPad Audio Announcer — Non-blocking audio playback engine for lap status voice announcements.
-Utilizes native SDL3 / SDL3_mixer Python package to trigger clean_lap.mp3 and dirty_lap.mp3.
+SimPad Audio Announcer — Chargeur et lecteur audio WAV ultra-rapide et non-bloquant
+pour les annonces vocales et spotter (Clean/Dirty Lap, alertes trafic, décomptes).
+Prise en charge native WAV : Linux (pw-play, paplay, aplay), Windows (winsound), macOS (afplay).
 """
 
 import os
 import sys
 import time
+import shutil
 import logging
 import threading
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -16,158 +19,142 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SOUND_DIR = _PROJECT_ROOT / "assets" / "sound"
 
-try:
-    import sdl3
-    _HAS_SDL3 = True
-except ImportError:
-    _HAS_SDL3 = False
-
 
 class AudioAnnouncer:
     """
-    Gestionnaire d'annonces vocales (Clean Lap / Dirty Lap) multiplateforme (Linux, Windows, macOS).
-    Utilise SDL3 / SDL3_mixer comme moteur principal à faible latence, avec fallback automatique
-    sur les utilitaires système (pw-play, paplay, ffplay, mpv, WinMM, afplay).
+    Chargeur et lecteur dédié exclusivement aux fichiers audio WAV.
+    Synthèse automatique à la demande via AudioBaker si un son est absent.
     """
 
     _last_lap_flag: Optional[int] = None
     _lock = threading.Lock()
-    _mixer = None
-    _initialized = False
-    _audio_cache = {}
 
     @classmethod
-    def _init_sdl_audio(cls) -> bool:
-        if cls._initialized:
-            return cls._mixer is not None
-        if not _HAS_SDL3:
-            cls._initialized = True
-            return False
+    def _resolve_wav_file(cls, phrase_key_or_filename: str) -> Optional[Path]:
+        """
+        Résout le fichier .wav dans assets/sound/.
+        Si le fichier est absent du disque, déclenche la synthèse à la demande.
+        """
+        stem = Path(phrase_key_or_filename).stem
+        wav_path = _SOUND_DIR / f"{stem}.wav"
 
-        with cls._lock:
-            if cls._initialized:
-                return cls._mixer is not None
-            try:
-                sdl3.SDL_Init(sdl3.SDL_INIT_AUDIO)
-                sdl3.MIX_Init()
-                device_id = getattr(sdl3, 'SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK', 0xFFFFFFFF)
-                cls._mixer = sdl3.MIX_CreateMixerDevice(device_id, None)
-                if cls._mixer:
-                    logger.info("[AudioAnnouncer] Native SDL3 audio mixer initialized with default playback device.")
-                else:
-                    err = sdl3.SDL_GetError() if hasattr(sdl3, 'SDL_GetError') else b''
-                    logger.warning(f"[AudioAnnouncer] SDL3 MIX_CreateMixerDevice returned NULL: {err}")
-            except Exception as e:
-                logger.warning(f"[AudioAnnouncer] Failed to initialize SDL3 audio mixer: {e}")
-                cls._mixer = None
-            finally:
-                cls._initialized = True
-        return cls._mixer is not None
+        if wav_path.exists():
+            return wav_path
+
+        # Synthèse à la demande
+        try:
+            from src.utils.audio_baker import AudioBaker, DEFAULT_MODEL_PATH
+            if DEFAULT_MODEL_PATH.exists():
+                return AudioBaker.bake_on_demand(stem, output_dir=_SOUND_DIR)
+        except Exception as e:
+            logger.debug(f"[AudioAnnouncer] On-demand WAV bake failed for '{stem}': {e}")
+
+        return None
 
     @classmethod
-    def _play_fallback(cls, audio_path: Path) -> None:
-        """Fallback multiplateforme si SDL3 n'est pas disponible."""
-        file_str = str(audio_path)
+    def _play_wav_sync(cls, wav_path: Path) -> bool:
+        """
+        Joue directement un fichier WAV via le lecteur système le plus performant.
+        """
+        file_str = str(wav_path.resolve())
 
-        # 1. Linux fallbacks (PipeWire / PulseAudio / CLI players)
+        # Linux : PipeWire -> PulseAudio -> ALSA
         if sys.platform.startswith("linux"):
-            import shutil
-            import subprocess
             for cmd, args in [
                 ("pw-play", [file_str]),
                 ("paplay", [file_str]),
-                ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", file_str]),
-                ("mpv", ["--no-video", "--really-quiet", file_str]),
+                ("aplay", ["-q", file_str]),
             ]:
                 if shutil.which(cmd):
                     try:
-                        subprocess.run([cmd] + args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        return
+                        res = subprocess.run([cmd] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        if res.returncode == 0:
+                            return True
                     except Exception as e:
-                        logger.debug(f"[AudioAnnouncer] Fallback {cmd} failed: {e}")
+                        logger.debug(f"[AudioAnnouncer] {cmd} failed: {e}")
 
-        # 2. Windows fallback (WinMM)
+        # Windows : winsound natif C ultra-rapide pour WAV
         elif sys.platform == "win32":
             try:
-                import ctypes
-                winmm = ctypes.windll.winmm
-                alias = f"simpad_audio_{os.getpid()}_{int(time.time() * 1000) % 10000}"
-                winmm.mciSendStringW(f'open "{file_str}" alias {alias}', None, 0, 0)
-                winmm.mciSendStringW(f'play {alias} wait', None, 0, 0)
-                winmm.mciSendStringW(f'close {alias}', None, 0, 0)
-                return
+                import winsound
+                winsound.PlaySound(file_str, winsound.SND_FILENAME | winsound.SND_NODEFAULT)
+                return True
             except Exception as e:
-                logger.debug(f"[AudioAnnouncer] WinMM fallback failed: {e}")
+                logger.debug(f"[AudioAnnouncer] winsound failed: {e}")
 
-        # 3. macOS fallback (afplay)
+        # macOS : afplay natif
         elif sys.platform == "darwin":
-            import shutil
-            import subprocess
             if shutil.which("afplay"):
                 try:
-                    subprocess.run(["afplay", file_str], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    return
+                    res = subprocess.run(["afplay", file_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if res.returncode == 0:
+                        return True
                 except Exception as e:
-                    logger.debug(f"[AudioAnnouncer] afplay fallback failed: {e}")
+                    logger.debug(f"[AudioAnnouncer] afplay failed: {e}")
+
+        return False
 
     @classmethod
-    def _play_file(cls, filename: str) -> None:
-        """Joue un fichier audio de manière asynchrone non-bloquante."""
+    def _play_file(cls, phrase_key: str) -> None:
+        """Joue un fichier WAV de façon asynchrone non-bloquante."""
         def _worker():
-            audio_path = _SOUND_DIR / filename
-            if not audio_path.exists():
-                logger.warning(f"[AudioAnnouncer] Sound file not found: {audio_path}")
+            wav_path = cls._resolve_wav_file(phrase_key)
+            if not wav_path or not wav_path.exists():
+                logger.warning(f"[AudioAnnouncer] WAV file not found or could not be generated: {phrase_key}")
                 return
 
-            # Essai 1: SDL3
-            if not cls._initialized:
-                cls._init_sdl_audio()
-
-            if cls._mixer:
-                try:
-                    # Chargement / mise en cache du son
-                    if filename not in cls._audio_cache:
-                        path_bytes = str(audio_path.resolve()).encode("utf-8")
-                        audio = sdl3.MIX_LoadAudio(cls._mixer, path_bytes, True)
-                        if audio:
-                            cls._audio_cache[filename] = audio
-
-                    audio_obj = cls._audio_cache.get(filename)
-                    if audio_obj:
-                        res = sdl3.MIX_PlayAudio(cls._mixer, audio_obj)
-                        if res:
-                            return
-                        else:
-                            err = sdl3.SDL_GetError() if hasattr(sdl3, 'SDL_GetError') else b''
-                            logger.warning(f"[AudioAnnouncer] MIX_PlayAudio failed: {err}")
-                except Exception as e:
-                    logger.warning(f"[AudioAnnouncer] SDL3 playback error: {e}")
-
-            # Essai 2: Fallback système
-            cls._play_fallback(audio_path)
+            cls._play_wav_sync(wav_path)
 
         threading.Thread(target=_worker, daemon=True).start()
 
     @classmethod
+    def play_phrase(cls, phrase_key: str) -> None:
+        """Joue une phrase audio WAV (ex: 'clean_lap', 'car', 'one')."""
+        cls._play_file(phrase_key)
+
+    @classmethod
     def play_clean_lap(cls) -> None:
-        """Déclenche le son de validation : Clean Lap."""
+        """Déclenche le son de validation : Clean Lap (clean_lap.wav)."""
         logger.info("[AudioAnnouncer] Announcement: CLEAN LAP")
         print("[AUDIO] Playing announcement: CLEAN LAP", flush=True)
-        cls._play_file("clean_lap.mp3")
+        cls._play_file("clean_lap")
 
     @classmethod
     def play_dirty_lap(cls) -> None:
-        """Déclenche le son d'invalidation : Dirty Lap."""
+        """Déclenche le son d'invalidation : Dirty Lap (dirty_lap.wav)."""
         logger.info("[AudioAnnouncer] Announcement: DIRTY LAP")
         print("[AUDIO] Playing announcement: DIRTY LAP", flush=True)
-        cls._play_file("dirty_lap.mp3")
+        cls._play_file("dirty_lap")
+
+    @classmethod
+    def play_lap(cls) -> None:
+        """Déclenche le son : Lap (lap.wav)."""
+        cls._play_file("lap")
+
+    @classmethod
+    def play_car(cls) -> None:
+        """Déclenche le spotter : Car (car.wav)."""
+        cls._play_file("car")
+
+    @classmethod
+    def play_car_clear(cls) -> None:
+        """Déclenche le spotter : Car clear (car_clear.wav)."""
+        cls._play_file("car_clear")
+
+    @classmethod
+    def play_number(cls, number: int) -> None:
+        """Déclenche le décompte numérique (1.wav à 5.wav)."""
+        num_map = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+        key = num_map.get(number)
+        if key:
+            cls._play_file(key)
 
     @classmethod
     def update_lap_flag(cls, new_flag: int) -> None:
         """
         Détecte les transitions d'état du drapeau de tour :
-        - Passages Orange/Rouge (0 ou 1) -> Vert (2) : Déclenche 'clean_lap.mp3'
-        - Passages Vert (2) -> Orange/Rouge (0 ou 1) : Déclenche 'dirty_lap.mp3'
+        - Passages Orange/Rouge (0 ou 1) -> Vert (2) : Déclenche 'clean_lap.wav'
+        - Passages Vert (2) -> Orange/Rouge (0 ou 1) : Déclenche 'dirty_lap.wav'
         """
         with cls._lock:
             if cls._last_lap_flag is not None and cls._last_lap_flag != new_flag:

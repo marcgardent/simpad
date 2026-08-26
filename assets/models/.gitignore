@@ -1,0 +1,5 @@
+# Heavy voice models
+*.onnx
+*.onnx.json
+!.gitkeep
+!.gitignore
