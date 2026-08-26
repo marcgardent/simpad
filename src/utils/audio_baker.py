@@ -36,6 +36,11 @@ DEFAULT_PHRASES: Dict[str, str] = {
     "four": "Four",
     "five": "Five",
     "car_clear": "Car clear",
+    "incoming": "Incoming",
+    "traffic_5": "Traffic five",
+    "alongside": "Alongside",
+    "overlap": "Overlap",
+    "clear": "Clear",
 }
 
 

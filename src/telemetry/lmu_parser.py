@@ -76,6 +76,7 @@ class TelemetryData:
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
+    raw_scoring: Optional[dict] = None
 
     def to_sensors(self) -> VehicleSensors:
         remaining = max(0, self.total_laps - self.laps_completed) if (self.total_laps > 0 and self.total_laps < 1000) else 0
@@ -158,6 +159,12 @@ class LMUParser:
     _s1_checkpoint_delta: float = 0.0
     _s2_checkpoint_delta: float = 0.0
     _last_lap_flag: int = 2
+    _last_scoring_json: Optional[dict] = None
+
+    @classmethod
+    def get_latest_scoring(cls) -> Optional[dict]:
+        """Retourne le dernier paquet ScoringInfoV01 reçu."""
+        return cls._last_scoring_json
 
 
     # Live lap reference spline recorder
@@ -292,6 +299,7 @@ class LMUParser:
     def _parse_json_scoring(cls, js: dict) -> TelemetryData:
         """Parses ScoringInfoV01 packets (SLAP/KISS/SRP helper, CCN < 8)."""
         cls._dump_scoring_to_file(js)
+        cls._last_scoring_json = js
 
         in_rt_top = js.get("mInRealtime", js.get("inRealtime", False))
         is_in_realtime = bool(in_rt_top != 0 and in_rt_top is not False)
@@ -319,10 +327,6 @@ class LMUParser:
                 cls._last_lap_flag = int(player_veh["mCountLapFlag"])
             elif "countLapFlag" in player_veh:
                 cls._last_lap_flag = int(player_veh["countLapFlag"])
-
-            # Déclenchement des annonces vocales SDL3 (Clean Lap / Dirty Lap) sur changement d'état
-            from src.utils.audio import AudioAnnouncer
-            AudioAnnouncer.update_lap_flag(cls._last_lap_flag)
 
             cls._update_player_sector_times(player_veh, session_bests)
 
@@ -473,6 +477,7 @@ class LMUParser:
             sector2_delta=cls._last_sector2_delta,
             sector3_delta=cls._last_sector3_delta,
             lap_flag=cls._last_lap_flag,
+            raw_scoring=cls._last_scoring_json,
         )
 
     @classmethod

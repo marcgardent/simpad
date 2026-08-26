@@ -24,10 +24,32 @@ class AudioAnnouncer:
     """
     Chargeur et lecteur dédié exclusivement aux fichiers audio WAV.
     Synthèse automatique à la demande via AudioBaker si un son est absent.
+    Prend en charge l'interruption immédiate pour les alertes prioritaires (Spotter Overlap/Clear).
     """
 
     _last_lap_flag: Optional[int] = None
     _lock = threading.Lock()
+    _current_process: Optional[subprocess.Popen] = None
+    _is_muted: bool = False
+
+    @classmethod
+    def set_muted(cls, muted: bool) -> None:
+        cls._is_muted = muted
+
+    @classmethod
+    def is_muted(cls) -> bool:
+        return cls._is_muted
+
+    @classmethod
+    def stop_current(cls) -> None:
+        """Interrompt immédiatement la lecture du son en cours."""
+        with cls._lock:
+            if cls._current_process is not None:
+                try:
+                    cls._current_process.terminate()
+                except Exception:
+                    pass
+                cls._current_process = None
 
     @classmethod
     def _resolve_wav_file(cls, phrase_key_or_filename: str) -> Optional[Path]:
@@ -56,6 +78,9 @@ class AudioAnnouncer:
         """
         Joue directement un fichier WAV via le lecteur système le plus performant.
         """
+        if cls._is_muted:
+            return False
+
         file_str = str(wav_path.resolve())
 
         # Linux : PipeWire -> PulseAudio -> ALSA
@@ -67,9 +92,14 @@ class AudioAnnouncer:
             ]:
                 if shutil.which(cmd):
                     try:
-                        res = subprocess.run([cmd] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        if res.returncode == 0:
-                            return True
+                        proc = subprocess.Popen([cmd] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        with cls._lock:
+                            cls._current_process = proc
+                        proc.wait()
+                        with cls._lock:
+                            if cls._current_process == proc:
+                                cls._current_process = None
+                        return proc.returncode == 0
                     except Exception as e:
                         logger.debug(f"[AudioAnnouncer] {cmd} failed: {e}")
 
@@ -86,17 +116,28 @@ class AudioAnnouncer:
         elif sys.platform == "darwin":
             if shutil.which("afplay"):
                 try:
-                    res = subprocess.run(["afplay", file_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    if res.returncode == 0:
-                        return True
+                    proc = subprocess.Popen(["afplay", file_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    with cls._lock:
+                        cls._current_process = proc
+                    proc.wait()
+                    with cls._lock:
+                        if cls._current_process == proc:
+                            cls._current_process = None
+                    return proc.returncode == 0
                 except Exception as e:
                     logger.debug(f"[AudioAnnouncer] afplay failed: {e}")
 
         return False
 
     @classmethod
-    def _play_file(cls, phrase_key: str) -> None:
+    def _play_file(cls, phrase_key: str, interrupt: bool = False) -> None:
         """Joue un fichier WAV de façon asynchrone non-bloquante."""
+        if cls._is_muted:
+            return
+
+        if interrupt:
+            cls.stop_current()
+
         def _worker():
             wav_path = cls._resolve_wav_file(phrase_key)
             if not wav_path or not wav_path.exists():
@@ -108,9 +149,9 @@ class AudioAnnouncer:
         threading.Thread(target=_worker, daemon=True).start()
 
     @classmethod
-    def play_phrase(cls, phrase_key: str) -> None:
-        """Joue une phrase audio WAV (ex: 'clean_lap', 'car', 'one')."""
-        cls._play_file(phrase_key)
+    def play_phrase(cls, phrase_key: str, interrupt: bool = False) -> None:
+        """Joue une phrase audio WAV (ex: 'clean_lap', 'car', 'one', 'incoming', 'alongside', 'clear')."""
+        cls._play_file(phrase_key, interrupt=interrupt)
 
     @classmethod
     def play_clean_lap(cls) -> None:
@@ -137,9 +178,44 @@ class AudioAnnouncer:
         cls._play_file("car")
 
     @classmethod
-    def play_car_clear(cls) -> None:
+    def play_incoming(cls) -> None:
+        """Déclenche le spotter : Incoming (incoming.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: INCOMING")
+        print("[AUDIO] Playing announcement: INCOMING", flush=True)
+        cls._play_file("incoming")
+
+    @classmethod
+    def play_traffic_5(cls) -> None:
+        """Déclenche le spotter : Traffic 5 (traffic_5.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: TRAFFIC 5")
+        print("[AUDIO] Playing announcement: TRAFFIC 5", flush=True)
+        cls._play_file("traffic_5")
+
+    @classmethod
+    def play_alongside(cls, interrupt: bool = True) -> None:
+        """Déclenche le spotter : Alongside (alongside.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: ALONGSIDE")
+        print("[AUDIO] Playing announcement: ALONGSIDE", flush=True)
+        cls._play_file("alongside", interrupt=interrupt)
+
+    @classmethod
+    def play_overlap(cls, interrupt: bool = True) -> None:
+        """Déclenche le spotter : Overlap (overlap.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: OVERLAP")
+        print("[AUDIO] Playing announcement: OVERLAP", flush=True)
+        cls._play_file("overlap", interrupt=interrupt)
+
+    @classmethod
+    def play_clear(cls, interrupt: bool = True) -> None:
+        """Déclenche le spotter : Clear (clear.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: CLEAR")
+        print("[AUDIO] Playing announcement: CLEAR", flush=True)
+        cls._play_file("clear", interrupt=interrupt)
+
+    @classmethod
+    def play_car_clear(cls, interrupt: bool = True) -> None:
         """Déclenche le spotter : Car clear (car_clear.wav)."""
-        cls._play_file("car_clear")
+        cls._play_file("car_clear", interrupt=interrupt)
 
     @classmethod
     def play_number(cls, number: int) -> None:
@@ -152,7 +228,7 @@ class AudioAnnouncer:
     @classmethod
     def update_lap_flag(cls, new_flag: int) -> None:
         """
-        Détecte les transitions d'état du drapeau de tour :
+        Détecte les transitions d'état du drapeau de tour (compatibilité rétroactive).
         - Passages Orange/Rouge (0 ou 1) -> Vert (2) : Déclenche 'clean_lap.wav'
         - Passages Vert (2) -> Orange/Rouge (0 ou 1) : Déclenche 'dirty_lap.wav'
         """

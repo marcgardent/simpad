@@ -25,6 +25,8 @@ from src.physics.effects import PhysicsToHaptic
 from src.haptics import HapticController, HapticBackendFactory
 from src.gui.node_editor import NodeEditorTab
 from src.gui.dashboards import DashboardManager
+from src.engineer import RaceEngineer
+from src.gui.engineer_tab import RaceEngineerTab
 
 HISTORY = 150  # 7.5 seconds at 20 Hz
 
@@ -36,6 +38,11 @@ class SimPadDPGApp:
 
         # Dashboard Manager Sub-System
         self._dashboard_mgr = DashboardManager()
+
+        # Race Engineer Sub-System
+        from src.utils.audio import AudioAnnouncer
+        self._race_engineer = RaceEngineer(audio_engine=AudioAnnouncer)
+        self._engineer_tab = RaceEngineerTab(self._race_engineer)
 
         # Backends
         self._haptics: Optional[HapticController] = None
@@ -195,6 +202,10 @@ class SimPadDPGApp:
                 with dpg.tab(label="Telemetry Monitor", tag="tab_monitor"):
                     self._build_monitor_tab()
 
+                # Quaternary Tab: Race Engineer (Roles, Traffic Spotter, Audio)
+                with dpg.tab(label="Race Engineer", tag="tab_race_engineer"):
+                    self._engineer_tab.build_tab(self)
+
         dpg.set_primary_window("primary_window", True)
         self._dashboard_mgr.build_all_ui()
         self._dashboard_mgr.set_display_mode("desktop")
@@ -306,6 +317,9 @@ class SimPadDPGApp:
         self._update_status_indicators()
         self._check_lmu_auto_overlay()
 
+        if hasattr(self, "_engineer_tab"):
+            self._engineer_tab.render_tick()
+
         udp_active = bool(self._udp and self._udp.is_receiving(timeout=2.0) and self._telemetry_enabled)
         if udp_active:
             self._was_udp_receiving = True
@@ -324,6 +338,8 @@ class SimPadDPGApp:
     def _clear_telemetry_frame(self, clear_synth: bool = True):
         if clear_synth and self._synth:
             self._synth.update_telemetry(in_realtime=False)
+        if clear_synth and hasattr(self, "_race_engineer"):
+            self._race_engineer.reset_all()
         if hasattr(self, "_node_editor"):
             self._node_editor.evaluate_graph()
 
@@ -410,6 +426,12 @@ class SimPadDPGApp:
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()
         self._dashboard_mgr.update_telemetry(sensors)
+
+        if hasattr(self, "_race_engineer") and self._race_engineer:
+            from src.telemetry.lmu_parser import LMUParser
+            scoring_data = getattr(data, "raw_scoring", None) or LMUParser.get_latest_scoring()
+            self._race_engineer.update(data, scoring=scoring_data)
+
         if self._synth:
             self._synth.update_telemetry(
                 abs_val=sensors.lock_intensity,
