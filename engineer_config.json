@@ -1,0 +1,41 @@
+{
+  "enabled": true,
+  "roles": {
+    "traffic_spotter": {
+      "enabled": true,
+      "priority": 100,
+      "ttc_trigger_sec": 5.0,
+      "speed_delta_min_kmh": 20.0,
+      "overlap_dist_threshold_m": 4.0,
+      "clear_dist_threshold_m": 10.0,
+      "abort_ttc_sec": 6.0,
+      "max_scan_distance_m": 250.0,
+      "phrase_mode": "alongside"
+    },
+    "pace_notes": {
+      "enabled": true,
+      "priority": 90,
+      "anticipation_time_sec": 0.8,
+      "min_lead_distance_m": 15.0,
+      "max_lead_distance_m": 75.0
+    },
+    "traffic_jam": {
+      "enabled": true,
+      "priority": 80,
+      "slow_speed_threshold_kmh": 50.0,
+      "warning_distance_m": 180.0,
+      "cooldown_sec": 8.0
+    },
+    "lap_validity": {
+      "enabled": true,
+      "priority": 70,
+      "busy_duration_sec": 1.8
+    }
+  },
+  "order": [
+    "traffic_spotter",
+    "pace_notes",
+    "traffic_jam",
+    "lap_validity"
+  ]
+}

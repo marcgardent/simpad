@@ -1,0 +1,116 @@
+{
+  "track_name": "Algarve International Circuit",
+  "vehicle_class": "GTE",
+  "annotations": [
+    {
+      "id": "120c59de",
+      "type": "turn",
+      "distance": 146
+    },
+    {
+      "id": "6c3821f5",
+      "type": "gear",
+      "distance": 286.3,
+      "gear": 3
+    },
+    {
+      "id": "daee6706",
+      "type": "turn",
+      "distance": 468
+    },
+    {
+      "id": "c10fd9a7",
+      "type": "turn",
+      "distance": 548
+    },
+    {
+      "id": "fb15fd40",
+      "type": "gear",
+      "distance": 649.79,
+      "gear": 1
+    },
+    {
+      "id": "1f1b65df",
+      "type": "turn",
+      "distance": 799
+    },
+    {
+      "id": "64c85dd5",
+      "type": "turn",
+      "distance": 1170
+    },
+    {
+      "id": "4559bf9f",
+      "type": "gear",
+      "distance": 1325.86,
+      "gear": 1
+    },
+    {
+      "id": "1832ac60",
+      "type": "turn",
+      "distance": 1704
+    },
+    {
+      "id": "5cec57d2",
+      "type": "turn",
+      "distance": 1749
+    },
+    {
+      "id": "08e02593",
+      "type": "gear",
+      "distance": 1831.8,
+       "gear": 4
+    },
+    {
+      "id": "e65da2c1",
+      "type": "turn",
+      "distance": 1981.44
+    },
+    {
+      "id": "5c400635",
+      "type": "turn",
+      "distance": 2330.94
+    },
+    {
+      "id": "ae77344a",
+      "type": "turn",
+      "distance": 2493.22
+    },
+    {
+      "id": "9846e714",
+      "type": "turn",
+      "distance": 2526.3
+    },
+    {
+      "id": "fa2b8ebd",
+      "type": "gear",
+      "distance": 2606.71,
+      "gear": 2
+    },
+    {
+      "id": "fb3faded",
+      "type": "turn",
+      "distance": 2925.99
+    },
+    {
+      "id": "a76ce880",
+      "type": "turn",
+      "distance": 2925.99
+    },
+    {
+      "id": "6e1e1b17",
+      "type": "brake",
+      "distance": 3072.08
+    },
+    {
+      "id": "e87aaeca",
+      "type": "turn",
+      "distance": 3288.47
+    },
+    {
+      "id": "44e41ad2",
+      "type": "turn",
+      "distance": 3712.96
+    }
+  ]
+}
