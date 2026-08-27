@@ -125,6 +125,8 @@ class LmuHudBoard(BaseDashboard):
         """SLAP Helper: Merges live sensor telemetry properties into widget context dictionary."""
         context = {
             "expectedTime": sensors.delta_time_str,
+            "delta": sensors.delta_time_str,
+            "estimatedLapTime": sensors.estimated_lap_time_str,
             "sectors": sensors.sectors_list,
             "energyLaps": sensors.fuel_level,
             "remainingLaps": sensors.remaining_laps,

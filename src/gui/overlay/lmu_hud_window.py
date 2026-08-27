@@ -140,6 +140,8 @@ class LmuHudQtWindow(QWidget):
                 "speed": sensors.vehicle_speed * 3.6,
                 "gear": "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear)),
                 "expectedTime": sensors.delta_time_str,
+                "delta": sensors.delta_time_str,
+                "estimatedLapTime": sensors.estimated_lap_time_str,
                 "sectors": sensors.sectors_list,
                 "energyLaps": sensors.fuel_level,
                 "remainingLaps": sensors.remaining_laps,

@@ -60,6 +60,8 @@ class VehicleSensors:
     fuel_level: float = 0.0
     remaining_laps: int = 0
     delta_time: float = 0.0
+    estimated_lap_time: float = 0.0
+    estimated_lap_time_str: str = "--:--.---"
     sector1_time: str = "--"
     sector1_status: str = "default"
     sector2_time: str = "--"
@@ -95,6 +97,8 @@ class VehicleSensors:
         fuel_level: float = 0.0,
         remaining_laps: int = 0,
         delta_time: float = 0.0,
+        estimated_lap_time: float = 0.0,
+        estimated_lap_time_str: str = "--:--.---",
         sector1_time: str = "--",
         sector1_status: str = "default",
         sector2_time: str = "--",
@@ -116,6 +120,8 @@ class VehicleSensors:
                 fuel_level=fuel_level,
                 remaining_laps=remaining_laps,
                 delta_time=delta_time,
+                estimated_lap_time=estimated_lap_time,
+                estimated_lap_time_str=estimated_lap_time_str,
                 sector1_time=sector1_time,
                 sector1_status=sector1_status,
                 sector2_time=sector2_time,
@@ -197,6 +203,8 @@ class VehicleSensors:
             fuel_level=fuel_level,
             remaining_laps=remaining_laps,
             delta_time=delta_time,
+            estimated_lap_time=estimated_lap_time,
+            estimated_lap_time_str=estimated_lap_time_str,
             sector1_time=sector1_time,
             sector1_status=sector1_status,
             sector2_time=sector2_time,

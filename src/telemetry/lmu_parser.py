@@ -65,6 +65,8 @@ class TelemetryData:
     total_laps: int = 0
     laps_completed: int = 0
     delta_time: float = 0.0
+    estimated_lap_time: float = 0.0
+    estimated_lap_time_str: str = "--:--.---"
     sector1_time: str = "--"
     sector1_status: str = "default"
     sector2_time: str = "--"
@@ -97,6 +99,8 @@ class TelemetryData:
             fuel_level=self.fuel,
             remaining_laps=remaining,
             delta_time=self.delta_time,
+            estimated_lap_time=self.estimated_lap_time,
+            estimated_lap_time_str=self.estimated_lap_time_str,
             sector1_time=self.sector1_time,
             sector1_status=self.sector1_status,
             sector2_time=self.sector2_time,
@@ -333,7 +337,7 @@ class LMUParser:
             cls._update_player_sector_times(player_veh, session_bests)
 
             cls._delta_engine.update_scoring(js)
-            cls._last_delta_time = cls._delta_engine.live_delta
+            cls._last_delta_time = cls._delta_engine.display_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
             cls._last_sector2_delta = cls._delta_engine.sector2_delta
             cls._last_sector3_delta = cls._delta_engine.sector3_delta
@@ -430,7 +434,7 @@ class LMUParser:
                 brake=cls._last_unfiltered_brake,
                 steering=cls._last_unfiltered_steering,
             )
-            cls._last_delta_time = cls._delta_engine.live_delta
+            cls._last_delta_time = cls._delta_engine.display_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
             cls._last_sector2_delta = cls._delta_engine.sector2_delta
             cls._last_sector3_delta = cls._delta_engine.sector3_delta
@@ -485,6 +489,8 @@ class LMUParser:
             total_laps=cls._last_total_laps,
             laps_completed=cls._last_laps_completed,
             delta_time=cls._last_delta_time,
+            estimated_lap_time=cls._delta_engine.estimated_lap_time,
+            estimated_lap_time_str=cls._delta_engine.estimated_lap_time_str,
             sector1_time=cls._last_sector1_time,
             sector1_status=cls._last_sector1_status,
             sector2_time=cls._last_sector2_time,

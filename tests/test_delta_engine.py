@@ -228,5 +228,127 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertTrue(saved_file.exists())
 
 
+
+    def test_multi_reference_modes(self):
+        """Verify hierarchy and switching between All-Time Best, Session Best, Stint Best, and Last Lap."""
+        from src.telemetry.delta_engine import DeltaReferenceMode
+        track_len = 1000.0
+
+        # Helper to simulate completing a lap with given lap_time
+        def complete_lap(lap_idx, lap_time):
+            scoring_js = {
+                "mTrackName": "TestTrack",
+                "mLapDist": track_len,
+                "mVehicles": [{
+                    "mIsPlayer": True,
+                    "mVehicleName": "TestCar",
+                    "mTotalLaps": lap_idx - 1,
+                    "mTimeIntoLap": 0.1,
+                    "mLapDist": 1.0,
+                    "mSector": 1,
+                    "mCountLapFlag": 2,
+                    "mLastLapTime": -1.0,
+                }],
+            }
+            self.engine.update_scoring(scoring_js)
+            for i in range(1, 11):
+                dist = i * 100.0
+                t_into = (dist / track_len) * lap_time
+                scoring_js["mVehicles"][0]["mLapDist"] = dist
+                scoring_js["mVehicles"][0]["mTimeIntoLap"] = t_into
+                self.engine.update_scoring(scoring_js)
+            # Complete
+            scoring_js["mVehicles"][0]["mTotalLaps"] = lap_idx
+            scoring_js["mVehicles"][0]["mLastLapTime"] = lap_time
+            scoring_js["mVehicles"][0]["mLapDist"] = 1.0
+            scoring_js["mVehicles"][0]["mTimeIntoLap"] = 0.05
+            self.engine.update_scoring(scoring_js)
+
+        # Lap 1: 50.0s (Best, Session, Stint, Last)
+        complete_lap(1, 50.0)
+        self.assertEqual(self.engine._all_time_best_lap_time, 50.0)
+        self.assertEqual(self.engine._session_best_lap_time, 50.0)
+        self.assertEqual(self.engine._stint_best_lap_time, 50.0)
+        self.assertEqual(self.engine._last_lap_time, 50.0)
+
+        # Lap 2: 48.0s (New All-time / Session / Stint Best, Last = 48s)
+        complete_lap(2, 48.0)
+        self.assertEqual(self.engine._all_time_best_lap_time, 48.0)
+        self.assertEqual(self.engine._last_lap_time, 48.0)
+
+        # Lap 3: 52.0s (Slower lap. All-time Best remains 48s, Last Lap becomes 52s)
+        complete_lap(3, 52.0)
+        self.assertEqual(self.engine._all_time_best_lap_time, 48.0)
+        self.assertEqual(self.engine._last_lap_time, 52.0)
+
+        # Check switching reference mode
+        self.engine.reference_mode = DeltaReferenceMode.LAST_LAP
+        self.assertEqual(self.engine.current_profile.lap_time, 52.0)
+
+        self.engine.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
+        self.assertEqual(self.engine.current_profile.lap_time, 48.0)
+
+    def test_estimated_lap_time(self):
+        """Verify estimated lap time projection and formatting."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._ref_lap_time = 60.0
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 60.0 for d in range(1001)]
+        self.engine._ref_num_points = 1001
+
+        # Car at 500m (ref_time = 30.0s), current time_into = 28.5s (delta = -1.5s)
+        self.engine._calculate_delta(500.0, 28.5)
+        self.assertAlmostEqual(self.engine.live_delta, -1.5)
+        self.assertAlmostEqual(self.engine.estimated_lap_time, 58.5)
+        self.assertEqual(self.engine.estimated_lap_time_str, "0:58.500")
+
+    def test_finish_line_delta_freeze(self):
+        """Verify delta is frozen upon crossing the finish line for driver HUD visibility."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._ref_lap_time = 50.0
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
+        self.engine._ref_num_points = 1001
+        self.engine.freeze_duration = 2.0  # 2 seconds freeze
+
+        # End of flying lap: dist = 999m, time_into = 48.0s -> Delta = -1.95s
+        self.engine._calculate_delta(999.0, 48.0)
+        self.assertLess(self.engine.live_delta, 0.0)
+
+        # Cross finish line
+        self.engine._handle_lap_transition(
+            laps_comp=1,
+            last_lap_time=48.0,
+            lap_flag=2,
+            in_garage=False,
+            in_pits=False,
+        )
+
+        # New lap starts: time_into is 0.1s, dist is 5m -> live_delta is near 0.0
+        self.engine._calculate_delta(5.0, 0.25)
+
+        # display_delta must be frozen at the final delta of lap 1!
+        self.assertAlmostEqual(self.engine.display_delta, self.engine._frozen_final_delta, delta=0.01)
+
+    def test_ema_smoothing_filter(self):
+        """Verify exponential moving average smoothing filter on live delta."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._ref_lap_time = 50.0
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
+        self.engine._ref_num_points = 1001
+        self.engine.ema_samples = 5  # Enable EMA with 5 samples
+
+        # Feed a sudden jump at dist 500m (ref_time = 25.0s) from time_into = 25.0s to 27.0s (raw delta = +2.0s)
+        self.engine._calculate_delta(500.0, 25.0)  # delta = 0.0
+        self.assertEqual(self.engine.live_delta, 0.0)
+
+        self.engine._calculate_delta(500.0, 27.0)  # raw delta = +2.0s
+        # EMA factor = 2 / (5 + 1) = 0.333 -> EMA delta should be 0 + 0.333 * (2 - 0) = ~0.667
+        self.assertAlmostEqual(self.engine.live_delta, 2.0 * (2.0 / 6.0), delta=0.01)
+
 if __name__ == "__main__":
     unittest.main()
