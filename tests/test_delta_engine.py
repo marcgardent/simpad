@@ -350,5 +350,84 @@ class TestDeltaEngine(unittest.TestCase):
         # EMA factor = 2 / (5 + 1) = 0.333 -> EMA delta should be 0 + 0.333 * (2 - 0) = ~0.667
         self.assertAlmostEqual(self.engine.live_delta, 2.0 * (2.0 / 6.0), delta=0.01)
 
+    def test_standstill_delta_freeze(self):
+        """Verify delta is strictly frozen when stationary because no new checkpoint is crossed."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._ref_lap_time = 50.0
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
+        self.engine._ref_num_points = 1001
+
+        # Car reached checkpoint at 200m in 10.0s (ref_time = 10.0s, delta = 0.0)
+        self.engine._est_dist = 200.0
+        self.engine._est_time_into = 10.0
+        self.engine._last_checkpoint_idx = 200
+        self.engine._calculate_delta(200.0, 10.0)
+        self.assertEqual(self.engine.live_delta, 0.0)
+
+        # Vehicle stops (speed = 0.0 m/s) -> no new checkpoint crossed
+        self.engine._last_scoring_timestamp = 1000.0
+        self.engine._last_physics_timestamp = 1000.0
+        self.engine.update_physics(veh_speed_ms=0.0)
+
+        # Delta must remain frozen at checkpoint value (0.0)
+        self.assertEqual(self.engine.live_delta, 0.0)
+        self.assertEqual(self.engine._est_dist, 200.0)
+        self.assertEqual(self.engine._est_time_into, 10.0)
+
+    def test_dirty_lap_not_recorded(self):
+        """Verify dirty laps (lap_flag == 0) are strictly rejected from becoming reference laps."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._last_laps_completed = 1
+
+        # Fake samples
+        self.engine._current_lap_samples = [(i * 100.0, i * 4.0, 25.0, 1.0, 0.0, 0.0) for i in range(11)]
+
+        # Finalize lap with lap_flag = 0 (Dirty / Cut track)
+        self.engine._finalize_completed_lap(
+            lap_time=40.0,
+            lap_flag=0,
+            in_garage=False,
+            in_pits=False,
+        )
+
+        # Must not be saved as reference
+        self.assertFalse(self.engine.has_reference)
+        self.assertEqual(self.engine._all_time_best_lap_time, 999999.0)
+
+    def test_session_ref_no_lap_initially(self):
+        """Verify that when in SESSION_BEST mode with no session lap completed, has_reference is False."""
+        from src.telemetry.delta_engine import DeltaReferenceMode
+        # Simulate having an All-Time Best on disk
+        self.engine._all_time_best_lap_time = 45.0
+        self.engine._all_time_best_profile = "fake"  # Mock
+
+        # Switch to SESSION_BEST mode
+        self.engine.reference_mode = DeltaReferenceMode.SESSION_BEST
+        # Since _session_best_profile is None, current_profile must be None and has_reference False!
+        self.assertIsNone(self.engine.current_profile)
+        self.assertFalse(self.engine.has_reference)
+        self.assertEqual(self.engine.live_delta, 0.0)
+
+    def test_slow_driving_delta_explodes_positive(self):
+        """Verify that driving slowly causes delta to explode positive (massive lap time loss in RED)."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine._ref_lap_time = 50.0  # 50s lap
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]  # At 200m -> 10.0s
+        self.engine._ref_num_points = 1001
+
+        # Car reached 200m (ref_time = 10.0s) but took 45.0s because driving at crawl speed!
+        self.engine._calculate_delta(200.0, 45.0)
+        # Delta must be +35.0s!
+        self.assertAlmostEqual(self.engine.live_delta, 35.0)
+        self.assertAlmostEqual(self.engine.estimated_lap_time, 85.0)
+        self.assertEqual(self.engine.estimated_lap_time_str, "1:25.000")
+
+
 if __name__ == "__main__":
     unittest.main()
+

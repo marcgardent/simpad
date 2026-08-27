@@ -26,12 +26,18 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         extra_data: Dict[str, Any],
     ) -> None:
         expected_str = str(extra_data.get("expectedTime", sensors.delta_time_str))
+        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
 
-        if expected_str.startswith("-"):
+        if lap_flag == 0:
+            # Tour Dirty / Invalide -> Gris
+            text_color = QColor(156, 163, 175, 255)
+        elif expected_str.startswith("-"):
+            # En avance -> Vert
             text_color = QColor(34, 197, 94, 255)  # Green
-        elif expected_str in ("--", "0.000", "0", ""):
+        elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
             text_color = QColor(255, 255, 255, 255)  # White
         else:
+            # En retard -> Rouge
             text_color = QColor(239, 68, 68, 255)  # Red
 
         scale_x = canvas_w / 800.0

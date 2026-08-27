@@ -4,5 +4,8 @@
     "lateral_slide_threshold": 0.1,
     "udp_host": "127.0.0.1",
     "udp_port": 5606,
-    "update_rate_hz": 100
+    "update_rate_hz": 100,
+    "delta_reference_mode": "session_best",
+    "delta_freeze_duration": 5.0,
+    "delta_ema_samples": 5
 }

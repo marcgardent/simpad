@@ -152,6 +152,8 @@ class LmuHudQtWindow(QWidget):
                 "wheelspin": sensors.spin_intensity > 0.05,
                 "underrev": sensors.underrev_intensity > 0.1,
                 "overrev": sensors.overrev_intensity > 0.1,
+                "lap_flag": sensors.lap_flag,
+                "is_pit_lap": sensors.is_pit_lap,
             }
         self.update()
 

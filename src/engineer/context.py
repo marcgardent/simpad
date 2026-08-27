@@ -88,15 +88,16 @@ class EngineerContext:
         try:
             from src.telemetry.lmu_parser import LMUParser
             delta_eng = getattr(LMUParser, "_delta_engine", None)
-            if delta_eng and delta_eng.current_profile:
-                prof = delta_eng.current_profile
-                ref_track = getattr(prof, "track_name", "")
-                if scoring_track and ref_track:
-                    t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
-                    t2 = "".join(c for c in ref_track if c.isalnum()).lower()
-                    if t1 and t2 and t1 != t2:
-                        return None
-                return prof
+            if delta_eng:
+                prof = delta_eng.current_profile or delta_eng.all_time_best_profile
+                if prof:
+                    ref_track = getattr(prof, "track_name", "")
+                    if scoring_track and ref_track:
+                        t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
+                        t2 = "".join(c for c in ref_track if c.isalnum()).lower()
+                        if t1 and t2 and t1 != t2:
+                            return None
+                    return prof
         except Exception:
             pass
         return None

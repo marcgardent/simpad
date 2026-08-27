@@ -79,6 +79,8 @@ class TelemetryData:
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
+    has_delta_reference: bool = False
+    is_pit_lap: bool = False
     raw_scoring: Optional[dict] = None
 
     def to_sensors(self) -> VehicleSensors:
@@ -113,6 +115,8 @@ class TelemetryData:
             sector2_delta=self.sector2_delta,
             sector3_delta=self.sector3_delta,
             lap_flag=self.lap_flag,
+            has_delta_reference=self.has_delta_reference,
+            is_pit_lap=self.is_pit_lap,
         )
 
 
@@ -425,14 +429,16 @@ class LMUParser:
             if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
                 cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
 
-            if any(k in js for k in ("mUnfilteredSteering", "mSteering", "unfilteredSteering", "steering")):
-                cls._last_unfiltered_steering = float(js.get("mUnfilteredSteering", js.get("mSteering", js.get("unfilteredSteering", js.get("steering", 0.0)))))
+            phys_dt = float(js.get("mDeltaTime", js.get("deltaTime", 0.0)))
+            elapsed_time = float(js.get("mElapsedTime", js.get("elapsedTime", 0.0)))
 
             cls._delta_engine.update_physics(
                 veh_speed,
                 throttle=cls._last_unfiltered_throttle,
                 brake=cls._last_unfiltered_brake,
                 steering=cls._last_unfiltered_steering,
+                dt=phys_dt,
+                elapsed_time=elapsed_time,
             )
             cls._last_delta_time = cls._delta_engine.display_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
@@ -503,6 +509,8 @@ class LMUParser:
             sector2_delta=cls._last_sector2_delta,
             sector3_delta=cls._last_sector3_delta,
             lap_flag=cls._last_lap_flag,
+            has_delta_reference=cls._delta_engine.has_reference,
+            is_pit_lap=cls._delta_engine.is_pit_lap,
             raw_scoring=cls._last_scoring_json,
         )
 

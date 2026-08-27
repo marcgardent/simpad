@@ -18,8 +18,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 import dearpygui.dearpygui as dpg
 
 from src.core.synthesizer import HapticSynthesizerEngine
+from src.core.config import load_config, save_config
 from src.telemetry.plugin_installer import LMUPluginManager
-from src.telemetry.lmu_parser import TelemetryData
+from src.telemetry.lmu_parser import TelemetryData, LMUParser
+from src.telemetry.delta_engine import DeltaReferenceMode
 from src.telemetry.udp_server import UDPServer
 from src.physics.effects import PhysicsToHaptic
 from src.haptics import HapticController, HapticBackendFactory
@@ -34,8 +36,20 @@ HISTORY = 150  # 7.5 seconds at 20 Hz
 
 class SimPadDPGApp:
     def __init__(self):
+        self._app_config = load_config()
         self._lmu_installer = LMUPluginManager()
         self._telemetry_enabled = True
+
+        # Initialisation du moteur de delta depuis la configuration persistée
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        if delta_eng:
+            ref_mode_str = self._app_config.get("delta_reference_mode", "all_time_best")
+            try:
+                delta_eng.reference_mode = DeltaReferenceMode(ref_mode_str)
+            except ValueError:
+                delta_eng.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
+            delta_eng.freeze_duration = float(self._app_config.get("delta_freeze_duration", 3.5))
+            delta_eng.ema_samples = int(self._app_config.get("delta_ema_samples", 0))
 
         # Dashboard Manager Sub-System
         self._dashboard_mgr = DashboardManager()
@@ -267,6 +281,111 @@ class SimPadDPGApp:
             dpg.add_spacer(height=10)
             dpg.add_button(label="Toggle Display Mode (Desktop <-> InGame Overlay)", width=320, callback=self._toggle_monitoring_board)
 
+        dpg.add_spacer(height=6)
+
+        mode_to_label = {
+            DeltaReferenceMode.ALL_TIME_BEST: "All-Time Best (Disque)",
+            DeltaReferenceMode.SESSION_BEST: "Session Best",
+            DeltaReferenceMode.STINT_BEST: "Stint Best",
+            DeltaReferenceMode.LAST_LAP: "Last Lap",
+        }
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        active_mode = delta_eng.reference_mode if delta_eng else DeltaReferenceMode.ALL_TIME_BEST
+        init_mode_label = mode_to_label.get(active_mode, "All-Time Best (Disque)")
+        init_freeze = delta_eng.freeze_duration if delta_eng else 3.5
+        init_ema = delta_eng.ema_samples if delta_eng else 0
+
+        with dpg.child_window(height=190, border=True):
+            dpg.add_text("Moteur de Delta Live & Référence Chrono :", color=[0, 210, 255, 255])
+            dpg.add_text("Sélectionnez la référence active pour le calcul du delta en direct sur le HUD.", color=[180, 180, 180, 255])
+            dpg.add_separator()
+            dpg.add_spacer(height=6)
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("Cible Chrono :", color=[255, 200, 0, 255])
+                dpg.add_combo(
+                    items=["All-Time Best (Disque)", "Session Best", "Stint Best", "Last Lap"],
+                    default_value=init_mode_label,
+                    tag="combo_delta_ref_mode",
+                    width=220,
+                    callback=self._cb_change_delta_ref_mode,
+                )
+
+                dpg.add_spacer(width=20)
+                dpg.add_text("Gel Ligne (s) :", color=[255, 200, 0, 255])
+                dpg.add_slider_float(
+                    tag="slider_delta_freeze_dur",
+                    default_value=init_freeze,
+                    min_value=0.0,
+                    max_value=10.0,
+                    format="%.1fs",
+                    width=130,
+                    callback=self._cb_change_delta_freeze_dur,
+                )
+
+                dpg.add_spacer(width=20)
+                dpg.add_text("Lissage EMA :", color=[255, 200, 0, 255])
+                dpg.add_slider_int(
+                    tag="slider_delta_ema_samples",
+                    default_value=init_ema,
+                    min_value=0,
+                    max_value=10,
+                    format="%d pts",
+                    width=110,
+                    callback=self._cb_change_delta_ema_samples,
+                )
+
+            dpg.add_spacer(height=10)
+            dpg.add_text("Temps de Référence Disponibles :", color=[255, 200, 0, 255])
+            with dpg.group(horizontal=True):
+                dpg.add_text("All-Time Best:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_ref_all_time", color=[46, 204, 113, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("Session Best:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_ref_session", color=[0, 210, 255, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("Stint Best:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_ref_stint", color=[255, 200, 0, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("Last Lap:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_ref_last_lap", color=[200, 200, 200, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("Chrono Estimé:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_ref_estimated", color=[255, 105, 180, 255])
+
+    def _cb_change_delta_ref_mode(self, sender, app_data):
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        if not delta_eng:
+            return
+        mapping = {
+            "All-Time Best (Disque)": DeltaReferenceMode.ALL_TIME_BEST,
+            "Session Best": DeltaReferenceMode.SESSION_BEST,
+            "Stint Best": DeltaReferenceMode.STINT_BEST,
+            "Last Lap": DeltaReferenceMode.LAST_LAP,
+        }
+        mode = mapping.get(app_data, DeltaReferenceMode.ALL_TIME_BEST)
+        delta_eng.reference_mode = mode
+        self._app_config["delta_reference_mode"] = mode.value
+        save_config(self._app_config)
+
+    def _cb_change_delta_freeze_dur(self, sender, app_data):
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        if delta_eng:
+            delta_eng.freeze_duration = float(app_data)
+            self._app_config["delta_freeze_duration"] = float(app_data)
+            save_config(self._app_config)
+
+    def _cb_change_delta_ema_samples(self, sender, app_data):
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        if delta_eng:
+            delta_eng.ema_samples = int(app_data)
+            self._app_config["delta_ema_samples"] = int(app_data)
+            save_config(self._app_config)
+
     def _cb_toggle_overlay_lmuHudBoard(self, sender, app_data):
         self._dashboard_mgr.set_dashboard_enabled("lmuHudBoard", app_data)
 
@@ -434,6 +553,16 @@ class SimPadDPGApp:
             dpg.set_value("lbl_pad_status", status_str)
             dpg.configure_item("lbl_pad_status", color=status_col)
 
+        # Refresh Delta Engine Reference Times Readouts
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        if delta_eng and dpg.does_item_exist("lbl_ref_all_time"):
+            fmt = lambda t: f"{int(t//60)}:{t%60:06.3f}" if (0.0 < t < 99999.0) else "--:--.---"
+            dpg.set_value("lbl_ref_all_time", fmt(delta_eng._all_time_best_lap_time))
+            dpg.set_value("lbl_ref_session", fmt(delta_eng._session_best_lap_time))
+            dpg.set_value("lbl_ref_stint", fmt(delta_eng._stint_best_lap_time))
+            dpg.set_value("lbl_ref_last_lap", fmt(delta_eng._last_lap_time))
+            dpg.set_value("lbl_ref_estimated", delta_eng.estimated_lap_time_str)
+
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()
         self._dashboard_mgr.update_telemetry(sensors)
@@ -532,6 +661,8 @@ class SimPadDPGApp:
     # ── Shutdown ───────────────────────────────────────────────────────────────
     def _on_close(self):
         self._dashboard_mgr.set_display_mode("desktop")
+        if hasattr(self, "_app_config"):
+            save_config(self._app_config)
         if hasattr(self, "_race_engineer") and self._race_engineer:
             self._race_engineer.save_to_file()
         if self._synth:

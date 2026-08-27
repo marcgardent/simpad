@@ -83,12 +83,13 @@ class QtAeroBarWidget(BaseQtHudWidget):
 
         # ── Indicateur 'cleanlap' (Pastille ronde sous la jauge aéro) ──
         lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
+
         if lap_flag == 0:
-            dot_color = QColor(239, 68, 68, 255)     # ROUGE (Invalid Lap)
+            dot_color = QColor(239, 68, 68, 255)     # ROUGE (Dirty / Hors-piste / Coupé)
         elif lap_flag == 1:
-            dot_color = QColor(249, 115, 22, 255)    # ORANGE (Out-lap)
+            dot_color = QColor(59, 130, 246, 255)    # BLEU (Out-lap / Stands / Garage)
         else:
-            dot_color = QColor(34, 197, 94, 255)     # VERT (Clean Lap)
+            dot_color = QColor(34, 197, 94, 255)     # VERT (Tour lancé propre / Départ Course / Clean)
 
         dot_center_x = center_x
         dot_center_y = aero_y + aero_height + (16.0 * scale_y)

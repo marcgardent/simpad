@@ -74,6 +74,8 @@ class VehicleSensors:
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
+    has_delta_reference: bool = False
+    is_pit_lap: bool = False
 
     # État en piste et rapport engagé
     in_realtime: bool = True
@@ -111,6 +113,8 @@ class VehicleSensors:
         sector2_delta: float = 0.0,
         sector3_delta: float = 0.0,
         lap_flag: int = 2,
+        has_delta_reference: bool = False,
+        is_pit_lap: bool = False,
     ) -> "VehicleSensors":
 
         if not in_realtime:
@@ -134,6 +138,8 @@ class VehicleSensors:
                 sector2_delta=sector2_delta,
                 sector3_delta=sector3_delta,
                 lap_flag=lap_flag,
+                has_delta_reference=has_delta_reference,
+                is_pit_lap=is_pit_lap,
             )
 
         locks = []
@@ -217,6 +223,8 @@ class VehicleSensors:
             sector2_delta=sector2_delta,
             sector3_delta=sector3_delta,
             lap_flag=lap_flag,
+            has_delta_reference=has_delta_reference,
+            is_pit_lap=is_pit_lap,
             in_realtime=True,
             gear=gear,
         )
@@ -226,11 +234,13 @@ class VehicleSensors:
     @property
     def delta_time_str(self) -> str:
         """Chrono Delta formaté (ex: '-0.150' ou '+0.240')."""
-        if self.delta_time < 0.0:
+        if not self.has_delta_reference or self.lap_flag != 2 or self.is_pit_lap or not self.in_realtime:
+            return "--"
+        if self.delta_time < -0.0001:
             return f"-{abs(self.delta_time):.3f}"
-        elif self.delta_time > 0.0:
+        elif self.delta_time > 0.0001:
             return f"+{self.delta_time:.3f}"
-        return "--"
+        return "+0.000"
 
     def sector_delta_str(self, sector_num: int) -> str:
         """Delta Live formaté d'un secteur actif (ex: '-0.150' ou '+0.240')."""

@@ -10,7 +10,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "lateral_slide_threshold": 0.10,
     "udp_host": "127.0.0.1",
     "udp_port": 5606,
-    "update_rate_hz": 100
+    "update_rate_hz": 100,
+    "delta_reference_mode": "all_time_best",
+    "delta_freeze_duration": 3.5,
+    "delta_ema_samples": 0,
 }
 
 

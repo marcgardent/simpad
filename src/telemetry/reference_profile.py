@@ -104,6 +104,62 @@ def find_marks_filepath_for_track(
     return None
 
 
+def find_telemetry_filepath_for_track(
+    track_name: str,
+    vehicle_class: str = "",
+    vehicle_name: str = "",
+    base_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """
+    Résolution stricte et déterministe du fichier .json de télémétrie pour un circuit donné.
+    Ordre de priorité :
+    1. ref_<track>_<car_class>.json
+    2. ref_<track>_<car_name>.json
+    3. ref_<track>_default.json
+    4. ref_<track>.json
+    5. Tout fichier ref_<track>_*.json (non .marks.json) appartenant strictement à ce circuit.
+    """
+    if not track_name:
+        return None
+    t_clean = clean_name_identifier(track_name)
+    if not t_clean or t_clean == "unknown":
+        return None
+
+    search_dir = Path(base_dir) if base_dir else DEFAULT_REF_LAPS_DIR
+    if not search_dir.exists():
+        return None
+
+    # 1. Classe exacte
+    if vehicle_class:
+        v_class_clean = clean_name_identifier(vehicle_class)
+        exact_class_path = search_dir / f"ref_{t_clean}_{v_class_clean}.json"
+        if exact_class_path.exists():
+            return exact_class_path
+
+    # 2. Nom de voiture exact
+    if vehicle_name:
+        v_name_clean = clean_name_identifier(vehicle_name)
+        exact_veh_path = search_dir / f"ref_{t_clean}_{v_name_clean}.json"
+        if exact_veh_path.exists():
+            return exact_veh_path
+
+    # 3. Profil par défaut du circuit
+    track_default = search_dir / f"ref_{t_clean}_default.json"
+    if track_default.exists():
+        return track_default
+
+    track_generic = search_dir / f"ref_{t_clean}.json"
+    if track_generic.exists():
+        return track_generic
+
+    # 4. Premier fichier de télémétrie existant pour ce circuit (non .marks.json)
+    candidates = sorted([f for f in search_dir.glob(f"ref_{t_clean}_*.json") if not f.name.endswith(".marks.json")])
+    if candidates:
+        return candidates[0]
+
+    return None
+
+
 class AnnotationType(str, Enum):
     """Types d'annotations de repères de pilotage."""
     BRAKE = "brake"        # Marqueur frein (Touche 'B') -> Audio: "Brake"

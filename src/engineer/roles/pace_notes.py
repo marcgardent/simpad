@@ -156,16 +156,24 @@ class PaceNotesRole(BaseRole):
 
         if context:
             ctx_prof = context.get_reference_profile()
-            if ctx_prof:
+            if ctx_prof and ctx_prof.annotations:
                 return ctx_prof
 
         delta_eng = getattr(LMUParser, "_delta_engine", None)
-        if delta_eng and delta_eng.current_profile:
-            prof = delta_eng.current_profile
-            ref_track = getattr(prof, "track_name", "")
-            if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
-                return None
-            return prof
+        if delta_eng:
+            # 1. Profil courant s'il contient des annotations
+            if delta_eng.current_profile and delta_eng.current_profile.annotations:
+                prof = delta_eng.current_profile
+                ref_track = getattr(prof, "track_name", "")
+                if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
+                    return prof
+
+            # 2. Repli direct sur le profil de repères/disque du circuit (indépendant du mode delta)
+            prof = delta_eng.all_time_best_profile or delta_eng.current_profile
+            if prof and prof.annotations:
+                ref_track = getattr(prof, "track_name", "")
+                if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
+                    return prof
 
         return None
 

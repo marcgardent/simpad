@@ -22,13 +22,18 @@ class DeltaTimerWidget(BaseHudWidget):
         extra_data: Dict[str, Any],
     ) -> None:
         expected_str = str(extra_data.get("expectedTime", "--"))
+        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
 
-
-        if expected_str.startswith("-"):
+        if lap_flag == 0:
+            # Tour Dirty / Invalide -> Gris
+            text_color = [156, 163, 175, 255]  # Gray
+        elif expected_str.startswith("-"):
+            # En avance -> Vert
             text_color = [34, 197, 94, 255]  # Green
-        elif expected_str in ("--", "0.000", "0", ""):
+        elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
             text_color = [255, 255, 255, 255]  # White
         else:
+            # En retard -> Rouge
             text_color = [239, 68, 68, 255]  # Red
 
         scale_x = canvas_w / 800.0
