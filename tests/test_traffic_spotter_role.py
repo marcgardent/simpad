@@ -275,3 +275,118 @@ def test_traffic_spotter_multi_car_chaining():
     assert msg is None or msg.phrase_key != "clear"
     assert role.target_vehicle_id == 3
     assert role.state == TrafficSpotterState.APPROACHING
+
+
+def test_traffic_spotter_ignores_pit_lane_opponents():
+    """Vérifie que les adversaires dans la pitlane (mInPits=True) sont ignorés par le spotter en piste."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficSpotterRole(audio_engine=mock_audio)
+
+    # Adversaire rapide juste derrière le joueur, mais dans la pitlane (mInPits=True)
+    scoring_pit_opp = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {
+                "mID": 1,
+                "mIsPlayer": True,
+                "mControl": 0,
+                "mLapDist": 1000.0,
+                "mLocalVel": [0.0, 0.0, 50.0],
+                "mInPits": False,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            },
+            {
+                "mID": 2,
+                "mDriverName": "Pit Lane Car",
+                "mIsPlayer": False,
+                "mControl": 1,
+                "mLapDist": 970.0,
+                "mLocalVel": [0.0, 0.0, 60.0],  # Vitesse plus rapide mais en pitlane
+                "mInPits": True,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            }
+        ]
+    }
+
+    msg = role.update(EngineerContext(scoring=scoring_pit_opp))
+    assert msg is None
+    assert role.state == TrafficSpotterState.IDLE
+    assert not role.is_busy()
+    assert len(played) == 0
+
+
+def test_traffic_spotter_deactivated_when_player_in_pits():
+    """Vérifie que le spotter est inactif lorsque le joueur est dans la pitlane ou au garage."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficSpotterRole(audio_engine=mock_audio)
+
+    # Joueur dans les stands (mInPits=True), une voiture arrive très vite sur la ligne droite des stands
+    scoring_player_in_pits = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {
+                "mID": 1,
+                "mIsPlayer": True,
+                "mControl": 0,
+                "mLapDist": 1000.0,
+                "mLocalVel": [0.0, 0.0, 16.0],  # 60 km/h en pitlane
+                "mInPits": True,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            },
+            {
+                "mID": 2,
+                "mDriverName": "Track Car",
+                "mIsPlayer": False,
+                "mControl": 1,
+                "mLapDist": 960.0,
+                "mLocalVel": [0.0, 0.0, 70.0],  # 250 km/h sur piste
+                "mInPits": False,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            }
+        ]
+    }
+
+    msg = role.update(EngineerContext(scoring=scoring_player_in_pits))
+    assert msg is None
+    assert role.state == TrafficSpotterState.IDLE
+    assert not role.is_busy()
+    assert len(played) == 0
+
+
+def test_traffic_spotter_tracked_car_enters_pits_aborts():
+    """Vérifie que si la voiture suivie rentre aux stands (mInPits devient True), le spotter lâche la cible proprement."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficSpotterRole(audio_engine=mock_audio)
+
+    # 1. Approche en piste
+    sc1 = make_scoring_packet(player_dist=500.0, player_speed_mps=50.0, opp_dist=460.0, opp_speed_mps=60.0)
+    role.update(EngineerContext(scoring=sc1))
+    assert role.state == TrafficSpotterState.APPROACHING
+    assert role.target_vehicle_id == 2
+
+    # 2. La voiture suivie prend la voie des stands (mInPits=True)
+    sc2 = make_scoring_packet(player_dist=550.0, player_speed_mps=50.0, opp_dist=530.0, opp_speed_mps=30.0)
+    sc2["mVehicles"][1]["mInPits"] = True
+
+    msg = role.update(EngineerContext(scoring=sc2))
+    assert msg is None
+    assert role.state == TrafficSpotterState.IDLE
+    assert role.target_vehicle_id is None

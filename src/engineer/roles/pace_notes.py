@@ -15,6 +15,7 @@ from src.telemetry.reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
     AnnotationType,
+    clean_name_identifier,
 )
 from src.telemetry.lmu_parser import LMUParser
 
@@ -138,13 +139,35 @@ class PaceNotesRole(BaseRole):
         self._custom_profile = profile
         self.reset()
 
-    def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
-        """Récupère le profil de référence actif depuis DeltaEngine ou l'instance injectée."""
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+        """Récupère le profil de référence actif avec isolation stricte par circuit."""
+        scoring_track = ""
+        if context and context.scoring:
+            scoring_track = str(context.scoring.get("mTrackName", context.scoring.get("trackName", "")))
+
         if self._custom_profile is not None:
-            return self._custom_profile
-        # Récupérer depuis le DeltaEngine unique de LMUParser
+            ref_track = getattr(self._custom_profile, "track_name", "")
+            # Si le paquet de scoring indique explicitement un autre circuit, invalider le profil obsolète
+            if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
+                logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")
+                self._custom_profile = None
+            else:
+                return self._custom_profile
+
+        if context:
+            ctx_prof = context.get_reference_profile()
+            if ctx_prof:
+                return ctx_prof
+
         delta_eng = getattr(LMUParser, "_delta_engine", None)
-        return delta_eng.current_profile if delta_eng else None
+        if delta_eng and delta_eng.current_profile:
+            prof = delta_eng.current_profile
+            ref_track = getattr(prof, "track_name", "")
+            if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
+                return None
+            return prof
+
+        return None
 
     def reset(self) -> None:
         """Réinitialise les marqueurs déclenchés et l'état du rôle."""
@@ -176,9 +199,7 @@ class PaceNotesRole(BaseRole):
         if not player_veh:
             return None
 
-        in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
-        in_pits = bool(player_veh.get("mInPits", player_veh.get("inPits", False)))
-        if in_garage or in_pits:
+        if context.is_player_in_garage() or context.is_player_in_pits():
             return None
 
         # Gérer la réinitialisation des marqueurs lors du passage au tour suivant
@@ -187,7 +208,7 @@ class PaceNotesRole(BaseRole):
             self._triggered_ann_ids.clear()
         self._last_laps_completed = laps_comp
 
-        profile = self.get_reference_profile()
+        profile = self.get_reference_profile(context)
         if not profile or not profile.annotations:
             return None
 

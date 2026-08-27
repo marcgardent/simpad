@@ -6,11 +6,12 @@ voitures en perdition ou embouteillages.
 
 import time
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
-from src.engineer.params import RoleParam, FloatRangeParam
+from src.engineer.params import RoleParam, FloatRangeParam, BoolParam
+from src.telemetry.reference_profile import ReferenceLapProfile
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ class TrafficJamRole(BaseRole):
         slow_speed_threshold_kmh: float = 50.0,
         warning_distance_m: float = 180.0,
         cooldown_sec: float = 8.0,
+        enable_ref_lap_filter: bool = True,
+        domain_speed_tolerance_kmh: float = 30.0,
     ):
         super().__init__(
             role_id=role_id,
@@ -49,10 +52,33 @@ class TrafficJamRole(BaseRole):
         self.slow_speed_threshold_mps = float(slow_speed_threshold_kmh) / 3.6
         self.warning_distance_m = float(warning_distance_m)
         self.cooldown_sec = float(cooldown_sec)
+        self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
+        self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
+        self._custom_profile: Optional[ReferenceLapProfile] = None
 
         self._last_alert_time: float = 0.0
         self._is_active_alert: bool = False
         self._target_slow_car_info: str = ""
+
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+        """Injecte manuellement un profil de tour de référence."""
+        self._custom_profile = profile
+        self.reset()
+
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+        """Récupère le profil de référence actif (injecté ou via le contexte/DeltaEngine)."""
+        if self._custom_profile is not None:
+            return self._custom_profile
+        if context:
+            return context.get_reference_profile()
+        try:
+            from src.telemetry.lmu_parser import LMUParser
+            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            if delta_eng:
+                return delta_eng.current_profile
+        except Exception:
+            pass
+        return None
 
     @property
     def slow_speed_threshold_kmh(self) -> float:
@@ -64,6 +90,22 @@ class TrafficJamRole(BaseRole):
 
     def get_parameters(self) -> List[RoleParam]:
         return [
+            BoolParam(
+                name="enable_ref_lap_filter",
+                label="Filtre Tour Référence",
+                default=True,
+                description="Exige qu'au moins un des véhicules (joueur ou adversaire) soit hors domaine de vitesse normal",
+            ),
+            FloatRangeParam(
+                name="domain_speed_tolerance_kmh",
+                label="Tolérance Vitesse Domaine",
+                min_val=5.0,
+                max_val=80.0,
+                step=5.0,
+                unit="km/h",
+                default=30.0,
+                description="Écart de vitesse max avec le tour de référence pour être considéré dans le domaine normal",
+            ),
             FloatRangeParam(
                 name="slow_speed_threshold_kmh",
                 label="Vitesse Seuil Ralenti",
@@ -101,8 +143,9 @@ class TrafficJamRole(BaseRole):
         return self._is_active_alert
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled or not context.scoring:
+        if not self.enabled or not context.scoring or context.is_private_qualifying():
             self._is_active_alert = False
+            self._target_slow_car_info = ""
             return None
 
         player_veh = context.get_player_vehicle()
@@ -110,9 +153,17 @@ class TrafficJamRole(BaseRole):
             self._is_active_alert = False
             return None
 
+        # Si le joueur est dans la pitlane ou au garage, désactiver l'alerte bouchon sur piste
+        if context.is_player_in_pits() or context.is_player_in_garage():
+            self._is_active_alert = False
+            self._target_slow_car_info = ""
+            return None
+
         now = time.time()
         track_length = context.get_track_length()
-        opponents = context.get_opponent_vehicles(include_pits=False)
+        opponents = context.get_track_opponents()
+        ref_prof = self.get_reference_profile(context)
+        has_valid_ref = bool(ref_prof and getattr(ref_prof, "num_points", 0) >= 2)
 
         slow_cars_ahead = []
         for opp in opponents:
@@ -121,6 +172,16 @@ class TrafficJamRole(BaseRole):
             if -self.warning_distance_m <= dist_behind < -5.0:
                 opp_speed = context.extract_vehicle_speed_mps(opp)
                 if opp_speed < self.slow_speed_threshold_mps:
+                    # Filtre du tour de référence : il faut au moins soit moi, soit l'autre hors domaine
+                    if self.enable_ref_lap_filter and has_valid_ref:
+                        if not context.has_traffic_domain_anomaly(
+                            player_veh,
+                            opp,
+                            profile=ref_prof,
+                            tolerance_kmh=self.domain_speed_tolerance_kmh,
+                        ):
+                            continue
+
                     dist_ahead = abs(dist_behind)
                     slow_cars_ahead.append((dist_ahead, opp_speed, opp))
 
@@ -157,6 +218,8 @@ class TrafficJamRole(BaseRole):
             "slow_speed_threshold_kmh": self.slow_speed_threshold_mps * 3.6,
             "warning_distance_m": self.warning_distance_m,
             "cooldown_sec": self.cooldown_sec,
+            "enable_ref_lap_filter": self.enable_ref_lap_filter,
+            "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
         })
         return cfg
 
@@ -168,12 +231,18 @@ class TrafficJamRole(BaseRole):
             self.warning_distance_m = float(config["warning_distance_m"])
         if "cooldown_sec" in config:
             self.cooldown_sec = float(config["cooldown_sec"])
+        if "enable_ref_lap_filter" in config:
+            self.enable_ref_lap_filter = bool(config["enable_ref_lap_filter"])
+        if "domain_speed_tolerance_kmh" in config:
+            self.domain_speed_tolerance_kmh = float(config["domain_speed_tolerance_kmh"])
 
     def get_state_summary(self) -> Dict[str, Any]:
         summary = super().get_state_summary()
         summary.update({
             "is_alert_active": self._is_active_alert,
             "slow_car_info": self._target_slow_car_info or "Clear ahead",
+            "enable_ref_lap_filter": self.enable_ref_lap_filter,
+            "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
             "is_busy": self.is_busy(),
         })
         return summary

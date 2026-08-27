@@ -335,6 +335,8 @@ class RaceEngineerTab:
             AudioAnnouncer.play_clean_lap()
         elif role_id == "traffic_spotter":
             AudioAnnouncer.play_alongside()
+        elif role_id == "pitlane_spotter":
+            AudioAnnouncer.play_phrase("car")
         elif role_id == "traffic_jam":
             AudioAnnouncer.play_car()
         else:
@@ -403,6 +405,11 @@ class RaceEngineerTab:
                 delta = summary.get("live_speed_delta_str", "--")
                 return f"[{state}] Target: {target} | TTC: {ttc} | Dist: {dist} | Delta: {delta}"
             return "IDLE — Track clear behind"
+
+        elif role_id == "pitlane_spotter":
+            pit_st = summary.get("fsm_state", "IDLE")
+            info = summary.get("pit_info", "Clear")
+            return f"[{pit_st}] {info}"
 
         elif role_id == "lap_validity":
             flag_text = summary.get("lap_status_text", "Ready")

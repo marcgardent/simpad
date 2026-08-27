@@ -1,0 +1,218 @@
+"""
+Tests unitaires pour PitlaneSpotterRole (Machine à états Unsafe Release & Pitlane Spotter).
+"""
+
+import pytest
+from src.engineer.context import EngineerContext
+from src.engineer.roles.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
+from src.engineer.manager import RaceEngineer
+
+
+def make_pitlane_packet(
+    player_speed_mps: float = 0.0,
+    player_in_pits: bool = True,
+    player_pit_state: int = 3,  # 3=stopped in box
+    player_lap_dist: float = 1000.0,
+    opp_speed_mps: float = 16.0,  # ~58 km/h under limiter
+    opp_in_pits: bool = True,
+    opp_pit_state: int = 2,  # 2=entering/in-lap/fast lane
+    opp_lap_dist: float = 980.0,  # 20m behind player in pitlane
+    track_len: float = 5000.0,
+):
+    """Construit un paquet de scoring LMU réaliste en voie des stands."""
+    return {
+        "Type": "ScoringInfoV01",
+        "mLapDist": track_len,
+        "mVehicles": [
+            {
+                "mID": 1,
+                "mDriverName": "Player Driver",
+                "mVehicleName": "Ferrari 499P #50",
+                "mIsPlayer": True,
+                "mControl": 0,
+                "mLapDist": player_lap_dist,
+                "mLocalVel": [0.0, 0.0, player_speed_mps],
+                "mInGarageStall": False,
+                "mInPits": player_in_pits,
+                "mPitState": player_pit_state,
+                "mPos": [10.0, 0.0, player_lap_dist],
+                "mFinishStatus": 0,
+            },
+            {
+                "mID": 2,
+                "mDriverName": "Ian James",
+                "mVehicleName": "Aston Martin #27",
+                "mIsPlayer": False,
+                "mControl": 1,
+                "mLapDist": opp_lap_dist,
+                "mLocalVel": [0.0, 0.0, opp_speed_mps],
+                "mInGarageStall": False,
+                "mInPits": opp_in_pits,
+                "mPitState": opp_pit_state,
+                "mPos": [10.0, 0.0, opp_lap_dist],
+                "mFinishStatus": 0,
+            }
+        ]
+    }
+
+
+def test_pitlane_spotter_inactive_when_player_on_track():
+    """Vérifie que le spotter de pitlane est totalement inactif (IDLE) quand le joueur est en piste."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = PitlaneSpotterRole(audio_engine=mock_audio)
+
+    # Joueur en piste (mInPits=False), adversaire dans les stands
+    sc = make_pitlane_packet(player_speed_mps=70.0, player_in_pits=False, player_pit_state=0)
+    msg = role.update(EngineerContext(scoring=sc))
+
+    assert msg is None
+    assert role.state == PitlaneSpotterState.IDLE
+    assert not role.is_busy()
+    assert len(played) == 0
+
+
+def test_unsafe_release_hazard_and_clear_lifecycle():
+    """
+    Vérifie le cycle complet de protection Unsafe Release :
+    1. Joueur au box -> Surveillance active.
+    2. Voiture déboule dans la Fast Lane derrière le box -> Alerte "car" avec interrupt=True (UNSAFE_HAZARD).
+    3. Voiture passe devant / Fast Lane libérée -> Annonce "clear" (RELEASE_CLEAR).
+    """
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = PitlaneSpotterRole(
+        audio_engine=mock_audio,
+        unsafe_release_distance_m=28.0,
+        unsafe_release_ttc_sec=2.5,
+    )
+
+    # 1. Joueur arrêté au box (mPitState=3), aucune voiture proche (adversaire 100m derrière)
+    sc_clear = make_pitlane_packet(
+        player_speed_mps=0.0,
+        player_in_pits=True,
+        player_pit_state=3,
+        player_lap_dist=1000.0,
+        opp_speed_mps=16.0,
+        opp_lap_dist=900.0,  # 100m derrière
+    )
+    msg1 = role.update(EngineerContext(scoring=sc_clear))
+    assert msg1 is None
+    assert role.state == PitlaneSpotterState.BOX_MONITORING
+    assert not role.is_busy()
+
+    # 2. Une voiture arrive à 16 m/s (~58 km/h) à 20m derrière le box (TTC = 20 / 16 = 1.25s <= 2.5s)
+    # -> Déclenchement de l'alerte UNSAFE_HAZARD ("car", interrupt=True)
+    sc_hazard = make_pitlane_packet(
+        player_speed_mps=0.0,
+        player_in_pits=True,
+        player_pit_state=3,
+        player_lap_dist=1000.0,
+        opp_speed_mps=16.0,
+        opp_lap_dist=980.0,  # 20m derrière
+    )
+    msg2 = role.update(EngineerContext(scoring=sc_hazard))
+
+    assert msg2 is not None
+    assert msg2.phrase_key == "car"
+    assert msg2.interrupt is True
+    assert role.state == PitlaneSpotterState.UNSAFE_HAZARD
+    assert role.is_busy()
+    assert ("car", True) in played
+
+    # 3. La voiture est passée devant le box (10m devant) -> Fast Lane libre -> Annonce "clear"
+    sc_passed = make_pitlane_packet(
+        player_speed_mps=0.0,
+        player_in_pits=True,
+        player_pit_state=3,
+        player_lap_dist=1000.0,
+        opp_speed_mps=16.0,
+        opp_lap_dist=1015.0,  # 15m devant
+    )
+    msg3 = role.update(EngineerContext(scoring=sc_passed))
+
+    assert msg3 is not None
+    assert msg3.phrase_key == "clear"
+    assert msg3.interrupt is True
+    assert role.state == PitlaneSpotterState.RELEASE_CLEAR
+    assert ("clear", True) in played
+
+
+def test_pitlane_driving_traffic_slow_car_ahead():
+    """Vérifie l'alerte sur un véhicule arrêté ou au ralenti devant dans la pitlane lors du roulage."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = PitlaneSpotterRole(
+        audio_engine=mock_audio,
+        pit_slow_ahead_distance_m=35.0,
+        pit_slow_speed_threshold_kmh=20.0,
+    )
+
+    # Joueur roulant à 16 m/s (58 km/h) dans la pitlane (mPitState=2)
+    # Voiture devant à 20m au ralenti (3 m/s = 10.8 km/h < 20 km/h)
+    sc_slow_ahead = make_pitlane_packet(
+        player_speed_mps=16.0,
+        player_in_pits=True,
+        player_pit_state=2,
+        player_lap_dist=1000.0,
+        opp_speed_mps=3.0,
+        opp_lap_dist=1020.0,  # 20m devant
+    )
+
+    msg = role.update(EngineerContext(scoring=sc_slow_ahead))
+    assert msg is not None
+    assert msg.phrase_key == "car"
+    assert role.state == PitlaneSpotterState.PIT_TRAFFIC_AHEAD
+    assert role.is_busy()
+    assert ("car", False) in played
+
+
+def test_pitlane_overlap_alongside():
+    """Vérifie l'alerte de véhicule bord à bord (Alongside) dans la voie des stands."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = PitlaneSpotterRole(audio_engine=mock_audio)
+
+    # Joueur roulant dans la pitlane, une voiture sort d'un box juste à côté (distance 2m)
+    sc_overlap = make_pitlane_packet(
+        player_speed_mps=15.0,
+        player_in_pits=True,
+        player_pit_state=2,
+        player_lap_dist=1000.0,
+        opp_speed_mps=12.0,
+        opp_lap_dist=1001.0,  # 1m de différence (côte à côte)
+    )
+
+    msg = role.update(EngineerContext(scoring=sc_overlap))
+    assert msg is not None
+    assert msg.phrase_key == "alongside"
+    assert msg.interrupt is True
+    assert role.state == PitlaneSpotterState.PIT_OVERLAP
+    assert ("alongside", True) in played
+
+
+def test_race_engineer_loads_pitlane_spotter_by_default():
+    """Vérifie que RaceEngineer instancie et gère PitlaneSpotterRole par défaut."""
+    engineer_no_cfg = RaceEngineer(auto_load_builtin_roles=True, auto_load_config=False)
+    pit_role_default = engineer_no_cfg.get_role("pitlane_spotter")
+    assert pit_role_default is not None
+    assert isinstance(pit_role_default, PitlaneSpotterRole)
+    assert pit_role_default.priority == 95
+
+    engineer = RaceEngineer(auto_load_builtin_roles=True)
+    pit_role = engineer.get_role("pitlane_spotter")
+    assert pit_role is not None
+    assert isinstance(pit_role, PitlaneSpotterRole)
+    assert pit_role.enabled is True

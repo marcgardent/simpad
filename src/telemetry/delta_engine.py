@@ -27,6 +27,8 @@ from src.telemetry.reference_profile import (
     AnnotationType,
     DEFAULT_REF_LAPS_DIR,
     get_marks_filepath,
+    find_marks_filepath_for_track,
+    clean_name_identifier,
 )
 
 logger = logging.getLogger(__name__)
@@ -145,6 +147,23 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """SLAP Helper: Finalizes previous lap and resets state for new lap."""
+        # Cas 1 : Réinitialisation de session / Relance (mTotalLaps repasse à 0 ou diminue)
+        if self._last_laps_completed >= 0 and laps_comp < self._last_laps_completed:
+            logger.info(f"[DeltaEngine] Session reset detected: laps completed went from {self._last_laps_completed} to {laps_comp}")
+            print(f"[DeltaEngine] Session réinitialisée : compteur de tours remis à {laps_comp}", flush=True)
+            self._current_lap_samples = []
+            self._pit_or_garage_during_lap = False
+            self._s1_checkpoint_captured = False
+            self._s2_checkpoint_captured = False
+            self._s1_checkpoint_delta = 0.0
+            self._s2_checkpoint_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+            self._last_laps_completed = laps_comp
+            return
+
+        # Cas 2 : Franchissement de la ligne de départ/arrivée (nouveau tour complété)
         if self._last_laps_completed >= 0 and laps_comp > self._last_laps_completed:
             self._finalize_completed_lap(
                 lap_time=last_lap_time,
@@ -161,6 +180,7 @@ class DeltaEngine:
             self._sector1_delta = 0.0
             self._sector2_delta = 0.0
             self._sector3_delta = 0.0
+
         self._last_laps_completed = laps_comp
 
     def _handle_sector_transition(self, curr_sec: int) -> None:
@@ -207,8 +227,8 @@ class DeltaEngine:
         Traite un paquet ScoringInfoV01 (1-2 Hz).
         """
         now = time.time()
-        track_name = str(scoring_js.get("mTrackName", ""))
-        track_len = float(scoring_js.get("mLapDist", 0.0))
+        track_name = str(scoring_js.get("mTrackName", scoring_js.get("trackName", "")))
+        track_len = float(scoring_js.get("mLapDist", scoring_js.get("lapDist", 0.0)))
 
         player_veh = self._find_player_vehicle(scoring_js.get("mVehicles", []))
         if not player_veh:
@@ -216,18 +236,40 @@ class DeltaEngine:
 
         veh_name = str(player_veh.get("mVehicleName", ""))
         veh_class = str(player_veh.get("mVehicleClass", player_veh.get("vehicleClass", "")))
+        laps_comp = int(player_veh.get("mTotalLaps", 0))
 
-        if (track_name and track_name != self._track_name) or (veh_class and veh_class != self._vehicle_class) or (veh_name and veh_name != self._vehicle_name):
+        track_changed = bool(track_name and track_name != self._track_name)
+        veh_changed = bool((veh_class and veh_class != self._vehicle_class) or (veh_name and veh_name != self._vehicle_name))
+
+        if track_changed or veh_changed:
+            old_track = self._track_name or "None"
+            old_car = self._vehicle_name or "None"
+            logger.info(f"[DeltaEngine] Track/Vehicle change detected: '{old_track}' -> '{track_name}', Car: '{old_car}' -> '{veh_name}' ({veh_class})")
+            print(f"[DeltaEngine] Changement de circuit détecté : '{track_name}' (Longueur: {track_len:.0f}m), Voiture: '{veh_name}' ({veh_class})", flush=True)
             self._track_name = track_name
             self._vehicle_name = veh_name
             self._vehicle_class = veh_class
             self._track_length = track_len
+
+            # Réinitialisation complète de l'état du tour en cours
+            self._current_lap_samples = []
+            self._last_laps_completed = laps_comp
+            self._pit_or_garage_during_lap = False
+            self._s1_checkpoint_captured = False
+            self._s2_checkpoint_captured = False
+            self._s1_checkpoint_delta = 0.0
+            self._s2_checkpoint_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+            self._last_scoring_timestamp = 0.0
+
+            # Charger le profil de référence pour ce circuit/voiture depuis le disque
             self._load_reference_profile()
 
         if track_len > 0.0:
             self._track_length = track_len
 
-        laps_comp = int(player_veh.get("mTotalLaps", 0))
         time_into = float(player_veh.get("mTimeIntoLap", -1.0))
         player_dist = float(player_veh.get("mLapDist", 0.0))
         raw_sec = int(player_veh.get("mSector", 1))
@@ -416,20 +458,32 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """Valide et enregistre le tour complété (SLAP: Orchestration haut niveau)."""
+        # Repli : si lap_time n'est pas transmis par le jeu (<= 0), utiliser le temps du dernier échantillon
+        if lap_time <= 0.0 and len(self._current_lap_samples) >= 5:
+            lap_time = float(self._current_lap_samples[-1][1])
+
+        sample_count = len(self._current_lap_samples)
+        logger.info(f"[DeltaEngine] Lap completed: lap_time={lap_time:.3f}s, flag={lap_flag}, in_pits={in_pits}, in_garage={in_garage}, pit_during_lap={self._pit_or_garage_during_lap}, samples={sample_count}")
+        print(f"[DeltaEngine] Tour complété : {lap_time:.3f}s (drapeau={lap_flag}, échantillons={sample_count})", flush=True)
+
         if lap_flag == 0:
-            logger.debug(f"[DeltaEngine] Lap rejected: Invalidated by game (lap_flag={lap_flag})")
+            logger.info(f"[DeltaEngine] Lap rejected: Invalidated by game (lap_flag={lap_flag})")
+            print(f"[DeltaEngine] Tour non enregistré : Invalidé par le jeu (lap_flag={lap_flag}, coupe/hors-piste)", flush=True)
             return
 
         if self._pit_or_garage_during_lap or in_garage or in_pits:
-            logger.debug("[DeltaEngine] Lap rejected: Pit or Garage stop detected during lap")
+            logger.info(f"[DeltaEngine] Lap rejected: Pit/Garage stop detected (pit_during={self._pit_or_garage_during_lap}, in_pits={in_pits}, in_garage={in_garage})")
+            print("[DeltaEngine] Tour non enregistré : Sortie/passage par les stands ou garage (out-lap)", flush=True)
             return
 
-        if lap_time <= 0.0 or len(self._current_lap_samples) < 5:
-            logger.debug("[DeltaEngine] Lap rejected: Insufficient lap samples or lap_time <= 0")
+        if lap_time <= 0.0 or sample_count < 5:
+            logger.info(f"[DeltaEngine] Lap rejected: Insufficient samples ({sample_count}) or invalid time ({lap_time:.3f}s)")
+            print(f"[DeltaEngine] Tour non enregistré : Échantillons de télémétrie insuffisants ({sample_count} pts) ou temps invalide ({lap_time:.3f}s)", flush=True)
             return
 
         if lap_time >= self._ref_lap_time and self._ref_t_grid is not None:
-            logger.debug(f"[DeltaEngine] Lap clean but slower than reference ({lap_time:.3f}s vs {self._ref_lap_time:.3f}s)")
+            logger.info(f"[DeltaEngine] Lap clean but slower than reference ({lap_time:.3f}s vs {self._ref_lap_time:.3f}s)")
+            print(f"[DeltaEngine] Tour propre ({lap_time:.3f}s) mais plus lent que la référence ({self._ref_lap_time:.3f}s) -> Référence conservée", flush=True)
             return
 
         # Filtrer la liste pour garantir une monotonie stricte des distances
@@ -441,7 +495,8 @@ class DeltaEngine:
                 clean_samples.append(sample)
                 last_d = d
 
-        if not clean_samples:
+        if len(clean_samples) < 2 or clean_samples[-1][0] <= 0.0:
+            print(f"[DeltaEngine] Tour non enregistré : Échantillons filtrés invalides ({len(clean_samples)} pts)", flush=True)
             return
 
         # Extrapolation automatique du point de départ (0.0m, 0.0s) si absent
@@ -468,9 +523,6 @@ class DeltaEngine:
                 last_s[5] if len(last_s) > 5 else 0.0,
             ))
 
-        if len(clean_samples) < 2 or clean_samples[-1][0] <= 0.0:
-            return
-
         spatial_step = 1.0
         t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, num_points = self._resample_spatial_grid(
             clean_samples,
@@ -481,10 +533,25 @@ class DeltaEngine:
         filepath = self._get_profile_filepath()
         marks_path = get_marks_filepath(filepath) if filepath else None
 
-        # Conserver les annotations existantes depuis la mémoire ou le disque
+        # Conserver les annotations existantes UNIQUEMENT si elles appartiennent à CE circuit
         existing_annotations: List[TrackAnnotation] = []
         if self._current_profile and self._current_profile.annotations:
-            existing_annotations = list(self._current_profile.annotations)
+            prof_track = getattr(self._current_profile, "track_name", "")
+            if not prof_track or clean_name_identifier(prof_track) == clean_name_identifier(self._track_name):
+                existing_annotations = list(self._current_profile.annotations)
+
+        # Si aucune annotation en mémoire, chercher rigoureusement sur le disque pour CE circuit
+        if not existing_annotations:
+            disk_marks_path = find_marks_filepath_for_track(
+                self._track_name,
+                self._vehicle_class,
+                self._vehicle_name,
+                base_dir=_REF_LAPS_DIR,
+            )
+            if disk_marks_path and disk_marks_path.exists():
+                temp_prof = ReferenceLapProfile(track_name=self._track_name)
+                temp_prof.load_marks_from_file(disk_marks_path)
+                existing_annotations = temp_prof.annotations
 
         # Construction du profil complet
         effective_len = self._track_length if self._track_length > 0.0 else clean_samples[-1][0]
@@ -506,8 +573,6 @@ class DeltaEngine:
 
         if marks_path:
             profile.set_marks_filepath(marks_path)
-            if marks_path.exists() and not existing_annotations:
-                profile.load_marks_from_file(marks_path)
 
         self._current_profile = profile
         self._ref_lap_time = lap_time
@@ -515,8 +580,8 @@ class DeltaEngine:
         self._ref_spatial_step = spatial_step
         self._ref_num_points = num_points
 
-        logger.info(f"[DeltaEngine] New Best Reference Lap Recorded! Time: {lap_time:.3f}s ({num_points} grid points)")
-        print(f"[DeltaEngine] New Reference Lap Set: {lap_time:.3f}s for track '{self._track_name}'", flush=True)
+        logger.info(f"[DeltaEngine] New Best Reference Lap Recorded! Time: {lap_time:.3f}s ({num_points} grid points, {len(existing_annotations)} marks)")
+        print(f"[DeltaEngine] ★ NOUVEAU TOUR DE RÉFÉRENCE ENREGISTRÉ : {lap_time:.3f}s sur '{self._track_name}' ({len(existing_annotations)} annotations)", flush=True)
 
         self._save_reference_profile()
 
@@ -526,6 +591,8 @@ class DeltaEngine:
             return None
         t_clean = _clean_name(self._track_name)
         v_identifier = _clean_name(self._vehicle_class) if self._vehicle_class else _clean_name(self._vehicle_name)
+        if not v_identifier:
+            v_identifier = "default"
         filename = f"ref_{t_clean}_{v_identifier}.json"
         return _REF_LAPS_DIR / filename
 
@@ -534,32 +601,59 @@ class DeltaEngine:
         filepath = self._get_profile_filepath()
         if not filepath or self._current_profile is None:
             return
-        self._current_profile.save_telemetry_to_file(filepath)
+        ok = self._current_profile.save_telemetry_to_file(filepath)
+        if ok:
+            print(f"[DeltaEngine] Fichier sauvegardé sur le disque : {filepath}", flush=True)
+        else:
+            print(f"[DeltaEngine] ERREUR : Impossible d'écrire le fichier de référence : {filepath}", flush=True)
 
     def _load_reference_profile(self) -> None:
-        """Tente de charger un profil de référence enregistré sur disque pour le circuit/voiture."""
+        """Tente de charger un profil de référence et les repères enregistrés sur disque pour le circuit/voiture."""
         filepath = self._get_profile_filepath()
-        if not filepath or not filepath.exists():
-            self._current_profile = None
+        marks_filepath = find_marks_filepath_for_track(
+            self._track_name,
+            self._vehicle_class,
+            self._vehicle_name,
+            base_dir=_REF_LAPS_DIR,
+        )
+
+        # 1. Cas idéal : Télémétrie complète existante pour ce circuit
+        if filepath and filepath.exists():
+            loaded = ReferenceLapProfile.load_from_file(filepath)
+            if loaded:
+                self._current_profile = loaded
+                self._ref_lap_time = loaded.lap_time
+                self._ref_spatial_step = loaded.spatial_step
+                self._ref_t_grid = loaded.t_grid
+                self._ref_num_points = loaded.num_points
+                logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)")
+                print(f"[DeltaEngine] Tour de référence et repères chargés : {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)", flush=True)
+                return
+
+        # 2. Cas sans tour chrono enregistré mais avec fichier de repères (.marks.json) existant pour ce circuit
+        if marks_filepath and marks_filepath.exists():
+            placeholder = ReferenceLapProfile(
+                track_name=self._track_name,
+                vehicle_name=self._vehicle_name,
+                vehicle_class=self._vehicle_class,
+                track_length=self._track_length,
+            )
+            placeholder.set_marks_filepath(marks_filepath)
+            placeholder.load_marks_from_file(marks_filepath)
+            self._current_profile = placeholder
             self._ref_lap_time = 999999.0
             self._ref_t_grid = None
             self._ref_num_points = 0
+            print(f"[DeltaEngine] Repères de piste chargés pour '{self._track_name}' : {marks_filepath.name} ({len(placeholder.annotations)} annotations). En attente du 1er tour chrono.", flush=True)
             return
 
-        loaded = ReferenceLapProfile.load_from_file(filepath)
-        if loaded:
-            self._current_profile = loaded
-            self._ref_lap_time = loaded.lap_time
-            self._ref_spatial_step = loaded.spatial_step
-            self._ref_t_grid = loaded.t_grid
-            self._ref_num_points = loaded.num_points
-            logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)")
-            print(f"[DeltaEngine] Loaded saved reference lap: {self._ref_lap_time:.3f}s ({len(loaded.annotations)} annotations)", flush=True)
-        else:
-            self._current_profile = None
-            self._ref_lap_time = 999999.0
-            self._ref_t_grid = None
-            self._ref_num_points = 0
+        # 3. Aucun fichier trouvé pour ce circuit : état vierge (0 annotations, aucune fuite d'un autre circuit)
+        self._current_profile = None
+        self._ref_lap_time = 999999.0
+        self._ref_t_grid = None
+        self._ref_num_points = 0
+        fname = filepath.name if filepath else "aucun"
+        print(f"[DeltaEngine] Aucun tour de référence ni repères pour '{self._track_name}' ({fname}). 0 annotation active.", flush=True)
 
     @property
     def live_delta(self) -> float:
@@ -602,3 +696,4 @@ class DeltaEngine:
                 extrapol = extrapol % self._track_length
             return extrapol
         return self._last_scoring_dist
+

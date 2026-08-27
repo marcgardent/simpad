@@ -20,6 +20,194 @@ class EngineerContext:
     scoring: Optional[Dict[str, Any]] = None
     timestamp: float = field(default_factory=time.time)
     audio_engine: Optional[Any] = None
+    reference_profile: Optional[Any] = None
+
+    def get_session_type(self) -> int:
+        """
+        Retourne le code mSession reçu dans le paquet de scoring (LMU / rF2) :
+        0 = TestDay
+        1..4 = Practice (FP1 à FP4)
+        5..8 = Qualifying (Q1 à Q4 / Hyperpole / Private Qual)
+        9 = Warmup
+        10..13 = Race (Course 1 à 4)
+        Retourne -1 si non disponible.
+        """
+        if self.scoring:
+            try:
+                return int(self.scoring.get("mSession", self.scoring.get("session", -1)))
+            except (ValueError, TypeError):
+                pass
+        return -1
+
+    def is_qualifying_session(self) -> bool:
+        """Indique si la session active est une qualification (mSession entre 5 et 8 inclus)."""
+        return self.get_session_type() in (5, 6, 7, 8)
+
+    def is_private_qualifying(self) -> bool:
+        """
+        Indique si la session active est en qualification privée (Private Qualifying).
+        Dans Le Mans Ultimate, les sessions de qualification (mSession 5-8) sont isolées
+        (voitures fantômes/invisibles, aucun contact physique possible).
+        """
+        return self.is_qualifying_session()
+
+    def get_track_name(self) -> str:
+        """Retourne le nom du circuit actif depuis le paquet de scoring ou le profil de référence."""
+        if self.scoring:
+            name = str(self.scoring.get("mTrackName", self.scoring.get("trackName", "")))
+            if name:
+                return name
+        if self.reference_profile is not None:
+            ref_name = getattr(self.reference_profile, "track_name", "")
+            if ref_name:
+                return ref_name
+        try:
+            from src.telemetry.lmu_parser import LMUParser
+            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            if delta_eng and delta_eng.track_name:
+                return delta_eng.track_name
+        except Exception:
+            pass
+        return ""
+
+    def get_reference_profile(self) -> Optional[Any]:
+        """Retourne le profil du tour de référence actif s'il correspond au circuit en cours."""
+        scoring_track = ""
+        if self.scoring:
+            scoring_track = str(self.scoring.get("mTrackName", self.scoring.get("trackName", "")))
+
+        if self.reference_profile is not None:
+            ref_track = getattr(self.reference_profile, "track_name", "")
+            if scoring_track and ref_track:
+                t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
+                t2 = "".join(c for c in ref_track if c.isalnum()).lower()
+                if t1 and t2 and t1 != t2:
+                    return None
+            return self.reference_profile
+
+        try:
+            from src.telemetry.lmu_parser import LMUParser
+            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            if delta_eng and delta_eng.current_profile:
+                prof = delta_eng.current_profile
+                ref_track = getattr(prof, "track_name", "")
+                if scoring_track and ref_track:
+                    t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
+                    t2 = "".join(c for c in ref_track if c.isalnum()).lower()
+                    if t1 and t2 and t1 != t2:
+                        return None
+                return prof
+        except Exception:
+            pass
+        return None
+
+    def get_reference_speed_mps(
+        self,
+        track_dist: float,
+        profile: Optional[Any] = None,
+    ) -> Optional[float]:
+        """Retourne la vitesse du tour de référence à une position de piste donnée (m/s)."""
+        ref_prof = profile or self.get_reference_profile()
+        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+            return None
+        val = ref_prof.get_value_at_dist(track_dist)
+        return float(val.get("speed_ms", 0.0))
+
+    def is_speed_in_normal_domain(
+        self,
+        speed_mps: float,
+        track_dist: float,
+        profile: Optional[Any] = None,
+        tolerance_kmh: float = 30.0,
+    ) -> bool:
+        """
+        Vérifie si une vitesse donnée est dans le 'domaine normal'
+        par rapport au tour de référence à une position précise du circuit.
+        
+        Si aucun tour de référence n'est chargé, retourne True (repli tolérant).
+        Si |Vitesse - VitesseRef| <= tolerance_kmh -> True (dans le domaine normal).
+        Sinon -> False (hors domaine / anomalie).
+        """
+        ref_prof = profile or self.get_reference_profile()
+        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+            return True
+
+        val = ref_prof.get_value_at_dist(track_dist)
+        ref_speed_mps = float(val.get("speed_ms", 0.0))
+        ref_speed_kmh = ref_speed_mps * 3.6
+        actual_speed_kmh = speed_mps * 3.6
+
+        # Si le tour de référence n'a pas de vitesse valide à cet endroit
+        if ref_speed_kmh <= 1.0:
+            return True
+
+        delta_kmh = abs(actual_speed_kmh - ref_speed_kmh)
+        return delta_kmh <= float(tolerance_kmh)
+
+    def is_vehicle_in_normal_domain(
+        self,
+        veh: Dict[str, Any],
+        profile: Optional[Any] = None,
+        tolerance_kmh: float = 30.0,
+    ) -> bool:
+        """
+        Détermine si un véhicule roule dans son domaine de vitesse 'normal'
+        selon sa position sur la piste.
+        """
+        if not isinstance(veh, dict):
+            return True
+        track_len = self.get_track_length()
+        lap_dist = float(veh.get("mLapDist", veh.get("lapDist", 0.0))) % track_len
+        speed_mps = self.extract_vehicle_speed_mps(veh)
+        return self.is_speed_in_normal_domain(
+            speed_mps=speed_mps,
+            track_dist=lap_dist,
+            profile=profile,
+            tolerance_kmh=tolerance_kmh,
+        )
+
+    def is_player_in_normal_domain(
+        self,
+        profile: Optional[Any] = None,
+        tolerance_kmh: float = 30.0,
+    ) -> bool:
+        """Détermine si le véhicule du joueur roule dans son domaine de vitesse normal."""
+        player_veh = self.get_player_vehicle()
+        if not player_veh:
+            return True
+        track_len = self.get_track_length()
+        lap_dist = float(player_veh.get("mLapDist", player_veh.get("lapDist", 0.0))) % track_len
+        player_speed = self.get_player_speed_mps()
+        return self.is_speed_in_normal_domain(
+            speed_mps=player_speed,
+            track_dist=lap_dist,
+            profile=profile,
+            tolerance_kmh=tolerance_kmh,
+        )
+
+    def has_traffic_domain_anomaly(
+        self,
+        player_veh: Dict[str, Any],
+        opp_veh: Dict[str, Any],
+        profile: Optional[Any] = None,
+        tolerance_kmh: float = 30.0,
+    ) -> bool:
+        """
+        Vérifie la condition de filtrage pour les rôles trafic :
+        Il faut qu'au moins l'un des deux (moi OU l'autre) soit hors domaine.
+        
+        - Si aucun tour de référence n'est disponible -> True (pas de filtrage).
+        - Si le joueur OU l'adversaire est hors domaine -> True (alerte autorisée).
+        - Si les DEUX sont dans le domaine normal -> False (alerte filtrée / ignorée).
+        """
+        ref_prof = profile or self.get_reference_profile()
+        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+            return True
+
+        player_in = self.is_vehicle_in_normal_domain(player_veh, profile=ref_prof, tolerance_kmh=tolerance_kmh)
+        opp_in = self.is_vehicle_in_normal_domain(opp_veh, profile=ref_prof, tolerance_kmh=tolerance_kmh)
+
+        return (not player_in) or (not opp_in)
 
     def get_track_length(self) -> float:
         """Retourne la longueur totale du circuit en mètres."""
@@ -49,10 +237,87 @@ class EngineerContext:
 
         return None
 
-    def get_opponent_vehicles(self, include_pits: bool = False) -> List[Dict[str, Any]]:
+    def is_player_in_pits(self) -> bool:
+        """Indique si le véhicule joueur est actuellement dans la pitlane (entre entrée et sortie)."""
+        player = self.get_player_vehicle()
+        if not player:
+            return False
+        return self.is_vehicle_in_pits(player)
+
+    def is_player_in_garage(self) -> bool:
+        """Indique si le joueur est dans son box / garage."""
+        player = self.get_player_vehicle()
+        if not player:
+            return False
+        return self.is_vehicle_in_garage(player)
+
+    @classmethod
+    def is_vehicle_in_pits(cls, veh: Dict[str, Any]) -> bool:
         """
-        Retourne la liste des véhicules adverses actifs en piste.
-        Exclut le joueur, les véhicules au garage, et optionnellement les voitures aux stands.
+        Indique si un véhicule donné est dans la pitlane.
+        Vérifie les drapeaux mInPits et l'état mPitState (2=entering, 3=stopped, 4=exiting).
+        """
+        if not isinstance(veh, dict):
+            return False
+        if veh.get("mInPits") or veh.get("inPits"):
+            return True
+        pit_state = veh.get("mPitState", veh.get("pitState", 0))
+        try:
+            if int(pit_state) in (2, 3, 4):
+                return True
+        except (ValueError, TypeError):
+            pass
+        return False
+
+    @classmethod
+    def is_vehicle_in_garage(cls, veh: Dict[str, Any]) -> bool:
+        """Indique si un véhicule donné est dans son garage / box."""
+        if not isinstance(veh, dict):
+            return False
+        return bool(veh.get("mInGarageStall") or veh.get("inGarageStall"))
+
+    def get_track_opponents(self) -> List[Dict[str, Any]]:
+        """
+        Retourne uniquement la liste des véhicules adverses actifs SUR LA PISTE (hors stands et garage).
+        Garantit qu'aucun véhicule en pitlane ne perturbe les calculs de spotter ou de trafic en piste.
+        """
+        return self.get_opponent_vehicles(include_pits=False, include_garage=False)
+
+    def get_pit_opponents(self) -> List[Dict[str, Any]]:
+        """
+        Retourne la liste des véhicules adverses présents DANS LA PITLANE (hors garage).
+        Permet un traitement distinct du trafic en voie des stands.
+        """
+        if not self.scoring:
+            return []
+        vehicles = self.scoring.get("mVehicles", [])
+        if not isinstance(vehicles, list):
+            return []
+
+        pit_opponents = []
+        for v in vehicles:
+            if not isinstance(v, dict):
+                continue
+            if v.get("mIsPlayer") or v.get("isPlayer") or v.get("mControl") == 0:
+                continue
+            if self.is_vehicle_in_garage(v):
+                continue
+            if not self.is_vehicle_in_pits(v):
+                continue
+            if v.get("mFinishStatus", 0) not in (0, "0"):
+                continue
+            pit_opponents.append(v)
+        return pit_opponents
+
+    def get_opponent_vehicles(
+        self,
+        include_pits: bool = False,
+        include_garage: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retourne la liste des véhicules adverses actifs.
+        Exclut le joueur, les véhicules au garage (sauf si include_garage=True),
+        et les voitures aux stands (sauf si include_pits=True).
         """
         if not self.scoring:
             return []
@@ -66,9 +331,9 @@ class EngineerContext:
                 continue
             if v.get("mIsPlayer") or v.get("isPlayer") or v.get("mControl") == 0:
                 continue
-            if v.get("mInGarageStall") or v.get("inGarageStall"):
+            if not include_garage and self.is_vehicle_in_garage(v):
                 continue
-            if not include_pits and (v.get("mInPits") or v.get("inPits")):
+            if not include_pits and self.is_vehicle_in_pits(v):
                 continue
             # Exclure les voitures ayant abandonné (finishStatus != 0)
             if v.get("mFinishStatus", 0) not in (0, "0"):

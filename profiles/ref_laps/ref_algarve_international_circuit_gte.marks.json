@@ -5,7 +5,7 @@
     {
       "id": "120c59de",
       "type": "turn",
-      "distance": 146
+      "distance": 146.0
     },
     {
       "id": "6c3821f5",
@@ -16,12 +16,12 @@
     {
       "id": "daee6706",
       "type": "turn",
-      "distance": 468
+      "distance": 468.0
     },
     {
       "id": "c10fd9a7",
       "type": "turn",
-      "distance": 548
+      "distance": 548.0
     },
     {
       "id": "fb15fd40",
@@ -32,12 +32,12 @@
     {
       "id": "1f1b65df",
       "type": "turn",
-      "distance": 799
+      "distance": 799.0
     },
     {
       "id": "64c85dd5",
       "type": "turn",
-      "distance": 1170
+      "distance": 1170.0
     },
     {
       "id": "4559bf9f",
@@ -48,23 +48,34 @@
     {
       "id": "1832ac60",
       "type": "turn",
-      "distance": 1704
+      "distance": 1704.0
     },
     {
       "id": "5cec57d2",
       "type": "turn",
-      "distance": 1749
+      "distance": 1749.0
     },
     {
       "id": "08e02593",
       "type": "gear",
-      "distance": 1831.8,
-       "gear": 4
+      "distance": 1845.45,
+      "gear": 4
+    },
+    {
+      "id": "4ef2a091",
+      "type": "turn",
+      "distance": 1908.85
     },
     {
       "id": "e65da2c1",
       "type": "turn",
       "distance": 1981.44
+    },
+    {
+      "id": "cf648347",
+      "type": "gear",
+      "distance": 1982.15,
+      "gear": 2
     },
     {
       "id": "5c400635",
@@ -77,11 +88,6 @@
       "distance": 2493.22
     },
     {
-      "id": "9846e714",
-      "type": "turn",
-      "distance": 2526.3
-    },
-    {
       "id": "fa2b8ebd",
       "type": "gear",
       "distance": 2606.71,
@@ -90,7 +96,7 @@
     {
       "id": "fb3faded",
       "type": "turn",
-      "distance": 2925.99
+      "distance": 2827.06
     },
     {
       "id": "a76ce880",
@@ -98,14 +104,21 @@
       "distance": 2925.99
     },
     {
-      "id": "6e1e1b17",
-      "type": "brake",
-      "distance": 3072.08
+      "id": "95947384",
+      "type": "gear",
+      "distance": 3096.96,
+      "gear": 1
     },
     {
       "id": "e87aaeca",
       "type": "turn",
-      "distance": 3288.47
+      "distance": 3264.65
+    },
+    {
+      "id": "0b4859b7",
+      "type": "gear",
+      "distance": 3333.41,
+      "gear": 2
     },
     {
       "id": "44e41ad2",

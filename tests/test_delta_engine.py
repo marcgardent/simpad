@@ -158,6 +158,7 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._track_name = "Spa"
         self.engine._ref_t_grid = [0.0, 1.0, 2.0]
         self.engine._ref_num_points = 3
+        self.engine._last_laps_completed = 5
 
         scoring_js = {
             "mTrackName": "LeMans",
@@ -166,7 +167,7 @@ class TestDeltaEngine(unittest.TestCase):
                 {
                     "mIsPlayer": True,
                     "mVehicleName": "TestCar",
-                    "mTotalLaps": 1,
+                    "mTotalLaps": 0,
                     "mTimeIntoLap": 5.0,
                     "mLapDist": 100.0,
                 }
@@ -174,7 +175,57 @@ class TestDeltaEngine(unittest.TestCase):
         }
         self.engine.update_scoring(scoring_js)
         self.assertEqual(self.engine._track_name, "LeMans")
+        self.assertEqual(self.engine._last_laps_completed, 0)
         self.assertFalse(self.engine.has_reference)
+
+    def test_track_change_records_new_lap_properly(self):
+        """Verify that after doing 5 laps on Track A, switching to Track B allows recording lap 1."""
+        # 1. Simulate track A with 5 laps completed
+        self.engine._track_name = "TrackA"
+        self.engine._last_laps_completed = 5
+
+        # 2. Switch to Track B at lap 0 (Outlap / Start)
+        track_len = 1000.0
+        lap_time = 45.0
+        scoring_js = {
+            "mTrackName": "TrackB",
+            "mLapDist": track_len,
+            "mVehicles": [
+                {
+                    "mIsPlayer": True,
+                    "mVehicleName": "TestCar",
+                    "mTotalLaps": 0,
+                    "mTimeIntoLap": 0.1,
+                    "mLapDist": 5.0,
+                    "mSector": 1,
+                    "mCountLapFlag": 2,
+                    "mLastLapTime": -1.0,
+                }
+            ],
+        }
+        self.engine.update_scoring(scoring_js)
+        self.assertEqual(self.engine._last_laps_completed, 0)
+
+        # Drive flying lap 0 -> 1 on Track B
+        for i in range(1, 20):
+            dist = i * 50.0
+            t_into = (dist / track_len) * lap_time
+            scoring_js["mVehicles"][0]["mLapDist"] = dist
+            scoring_js["mVehicles"][0]["mTimeIntoLap"] = t_into
+            scoring_js["mVehicles"][0]["mSector"] = 1 if dist < 333 else (2 if dist < 666 else 3)
+            self.engine.update_scoring(scoring_js)
+
+        # Cross finish line -> mTotalLaps becomes 1
+        scoring_js["mVehicles"][0]["mTotalLaps"] = 1
+        scoring_js["mVehicles"][0]["mLastLapTime"] = lap_time
+        scoring_js["mVehicles"][0]["mLapDist"] = 2.0
+        scoring_js["mVehicles"][0]["mTimeIntoLap"] = 0.1
+        self.engine.update_scoring(scoring_js)
+
+        # Must have recorded the reference lap on Track B!
+        self.assertTrue(self.engine.has_reference)
+        saved_file = Path(self.temp_dir) / "ref_trackb_testcar.json"
+        self.assertTrue(saved_file.exists())
 
 
 if __name__ == "__main__":

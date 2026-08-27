@@ -46,6 +46,64 @@ def clean_name_identifier(name: str) -> str:
     return "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in name).strip("_").lower()
 
 
+def find_marks_filepath_for_track(
+    track_name: str,
+    vehicle_class: str = "",
+    vehicle_name: str = "",
+    base_dir: Optional[Path] = None,
+) -> Optional[Path]:
+    """
+    Résolution stricte et déterministe du fichier .marks.json pour un circuit donné.
+    Garantit l'isolation absolue par circuit (aucune fuite d'un autre circuit).
+
+    Ordre de priorité :
+    1. ref_<track>_<car_class>.marks.json
+    2. ref_<track>_<car_name>.marks.json
+    3. ref_<track>_default.marks.json
+    4. ref_<track>.marks.json
+    5. Tout fichier ref_<track>_*.marks.json appartenant strictement à ce circuit.
+    """
+    if not track_name:
+        return None
+    t_clean = clean_name_identifier(track_name)
+    if not t_clean or t_clean == "unknown":
+        return None
+
+    search_dir = Path(base_dir) if base_dir else DEFAULT_REF_LAPS_DIR
+    if not search_dir.exists():
+        return None
+
+    # 1. Classe exacte
+    if vehicle_class:
+        v_class_clean = clean_name_identifier(vehicle_class)
+        exact_class_path = search_dir / f"ref_{t_clean}_{v_class_clean}.marks.json"
+        if exact_class_path.exists():
+            return exact_class_path
+
+    # 2. Nom de voiture exact
+    if vehicle_name:
+        v_name_clean = clean_name_identifier(vehicle_name)
+        exact_veh_path = search_dir / f"ref_{t_clean}_{v_name_clean}.marks.json"
+        if exact_veh_path.exists():
+            return exact_veh_path
+
+    # 3. Marqueurs par défaut du circuit
+    track_default = search_dir / f"ref_{t_clean}_default.marks.json"
+    if track_default.exists():
+        return track_default
+
+    track_generic = search_dir / f"ref_{t_clean}.marks.json"
+    if track_generic.exists():
+        return track_generic
+
+    # 4. Premier fichier de marqueurs existant pour ce circuit
+    candidates = sorted(list(search_dir.glob(f"ref_{t_clean}_*.marks.json")))
+    if candidates:
+        return candidates[0]
+
+    return None
+
+
 class AnnotationType(str, Enum):
     """Types d'annotations de repères de pilotage."""
     BRAKE = "brake"        # Marqueur frein (Touche 'B') -> Audio: "Brake"

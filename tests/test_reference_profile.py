@@ -12,6 +12,7 @@ from src.telemetry.reference_profile import (
     TrackAnnotation,
     AnnotationType,
     get_marks_filepath,
+    find_marks_filepath_for_track,
 )
 
 
@@ -147,6 +148,28 @@ class TestReferenceProfile(unittest.TestCase):
             loaded.remove_annotation(ann1.id, auto_save=True)
             content_after = json.loads(marks_path.read_text(encoding="utf-8"))
             self.assertEqual(len(content_after["annotations"]), 1)
+
+    def test_find_marks_filepath_for_track(self):
+        """Test deterministic resolution and per-track isolation of marks files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            spa_gt3 = tmp / "ref_circuit_de_spa-francorchamps_lmgt3.marks.json"
+            spa_gt3.write_text(json.dumps({"annotations": [{"type": "brake", "distance": 100.0}]}), encoding="utf-8")
+
+            monza_hyp = tmp / "ref_autodromo_nazionale_monza_hypercar.marks.json"
+            monza_hyp.write_text(json.dumps({"annotations": [{"type": "brake", "distance": 200.0}]}), encoding="utf-8")
+
+            # 1. Exact match Spa + LMGT3
+            res_spa = find_marks_filepath_for_track("Circuit de Spa-Francorchamps", vehicle_class="LMGT3", base_dir=tmp)
+            self.assertEqual(res_spa, spa_gt3)
+
+            # 2. Track match Spa with another car class -> fallback to Spa marks on same track
+            res_spa_hyp = find_marks_filepath_for_track("Circuit de Spa-Francorchamps", vehicle_class="Hypercar", base_dir=tmp)
+            self.assertEqual(res_spa_hyp, spa_gt3)
+
+            # 3. Different track (Le Mans) -> MUST NOT return Spa or Monza marks! (Must be None)
+            res_lemans = find_marks_filepath_for_track("Circuit de la Sarthe", vehicle_class="LMGT3", base_dir=tmp)
+            self.assertIsNone(res_lemans)
 
 
 if __name__ == "__main__":

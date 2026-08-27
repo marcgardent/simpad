@@ -4,36 +4,56 @@
     "traffic_spotter": {
       "enabled": true,
       "priority": 100,
-      "ttc_trigger_sec": 5.0,
+      "enable_ref_lap_filter": true,
+      "domain_speed_tolerance_kmh": 30.0,
       "speed_delta_min_kmh": 20.0,
+      "ttc_trigger_sec": 5.0,
       "overlap_dist_threshold_m": 4.0,
       "clear_dist_threshold_m": 10.0,
-      "abort_ttc_sec": 6.0,
       "max_scan_distance_m": 250.0,
+      "abort_ttc_sec": 6.0,
       "phrase_mode": "alongside"
+    },
+    "pitlane_spotter": {
+      "enabled": true,
+      "priority": 90,
+      "enable_unsafe_release": true,
+      "unsafe_release_distance_m": 28.0,
+      "unsafe_release_ttc_sec": 2.5,
+      "enable_pit_traffic_ahead": true,
+      "pit_slow_ahead_distance_m": 35.0,
+      "enable_pit_overlap": true,
+      "pit_slow_speed_threshold_kmh": 20.0
     },
     "pace_notes": {
       "enabled": true,
-      "priority": 90,
+      "priority": 80,
+      "enable_brake": false,
+      "enable_turn_in": false,
+      "enable_turn": false,
+      "enable_gear": true,
       "anticipation_time_sec": 0.8,
       "min_lead_distance_m": 15.0,
       "max_lead_distance_m": 75.0
     },
     "traffic_jam": {
       "enabled": true,
-      "priority": 80,
+      "priority": 70,
+      "enable_ref_lap_filter": true,
+      "domain_speed_tolerance_kmh": 30.0,
       "slow_speed_threshold_kmh": 50.0,
       "warning_distance_m": 180.0,
       "cooldown_sec": 8.0
     },
     "lap_validity": {
       "enabled": true,
-      "priority": 70,
+      "priority": 60,
       "busy_duration_sec": 1.8
     }
   },
   "order": [
     "traffic_spotter",
+    "pitlane_spotter",
     "pace_notes",
     "traffic_jam",
     "lap_validity"

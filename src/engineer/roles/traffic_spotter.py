@@ -12,7 +12,8 @@ from typing import Optional, Dict, Any, List, Tuple
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.registry import RoleRegistry
-from src.engineer.params import RoleParam, FloatRangeParam
+from src.engineer.params import RoleParam, FloatRangeParam, BoolParam
+from src.telemetry.reference_profile import ReferenceLapProfile
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,8 @@ class TrafficSpotterRole(BaseRole):
         abort_ttc_sec: float = 6.0,
         max_scan_distance_m: float = 250.0,
         phrase_mode: str = "alongside",  # "alongside" ou "overlap" ou "car"
+        enable_ref_lap_filter: bool = True,
+        domain_speed_tolerance_kmh: float = 30.0,
     ):
         super().__init__(
             role_id=role_id,
@@ -80,6 +83,9 @@ class TrafficSpotterRole(BaseRole):
         self.abort_ttc_sec = float(abort_ttc_sec)
         self.max_scan_distance_m = float(max_scan_distance_m)
         self.phrase_mode = phrase_mode
+        self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
+        self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
+        self._custom_profile: Optional[ReferenceLapProfile] = None
 
         # Variables dynamiques de suivi
         self.target_vehicle_id: Optional[int] = None
@@ -94,6 +100,26 @@ class TrafficSpotterRole(BaseRole):
         self._live_distance: float = 0.0
         self._live_speed_delta_kmh: float = 0.0
 
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+        """Injecte manuellement un profil de tour de référence."""
+        self._custom_profile = profile
+        self.reset()
+
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+        """Récupère le profil de référence actif (injecté ou via le contexte/DeltaEngine)."""
+        if self._custom_profile is not None:
+            return self._custom_profile
+        if context:
+            return context.get_reference_profile()
+        try:
+            from src.telemetry.lmu_parser import LMUParser
+            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            if delta_eng:
+                return delta_eng.current_profile
+        except Exception:
+            pass
+        return None
+
     @property
     def speed_delta_min_kmh(self) -> float:
         """Delta de vitesse minimum en km/h."""
@@ -106,6 +132,22 @@ class TrafficSpotterRole(BaseRole):
     def get_parameters(self) -> List[RoleParam]:
         """Déclare la liste des paramètres configurables du Spotter pour l'IHM."""
         return [
+            BoolParam(
+                name="enable_ref_lap_filter",
+                label="Filtre Tour Référence",
+                default=True,
+                description="Exige qu'au moins un des véhicules (joueur ou adversaire) soit hors domaine de vitesse normal",
+            ),
+            FloatRangeParam(
+                name="domain_speed_tolerance_kmh",
+                label="Tolérance Vitesse Domaine",
+                min_val=5.0,
+                max_val=80.0,
+                step=5.0,
+                unit="km/h",
+                default=30.0,
+                description="Écart de vitesse max avec le tour de référence pour être considéré dans le domaine normal",
+            ),
             FloatRangeParam(
                 name="speed_delta_min_kmh",
                 label="Delta Vitesse Min",
@@ -163,7 +205,7 @@ class TrafficSpotterRole(BaseRole):
         return self.state != TrafficSpotterState.IDLE
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled or not context.scoring:
+        if not self.enabled or not context.scoring or context.is_private_qualifying():
             if self.state != TrafficSpotterState.IDLE:
                 self.reset()
             return None
@@ -174,9 +216,16 @@ class TrafficSpotterRole(BaseRole):
                 self.reset()
             return None
 
+        # Si le joueur est dans la pitlane ou au garage, désactiver le spotter de piste
+        # pour éviter toute fausse alerte causée par les voitures passant à pleine vitesse sur la piste
+        if context.is_player_in_pits() or context.is_player_in_garage():
+            if self.state != TrafficSpotterState.IDLE:
+                self.reset()
+            return None
+
         player_speed = context.get_player_speed_mps()
         track_length = context.get_track_length()
-        opponents = context.get_opponent_vehicles(include_pits=False)
+        opponents = context.get_track_opponents()
 
         # Calcul des métriques de tous les adversaires
         opponent_metrics = self._calculate_opponent_metrics(context, player_veh, player_speed, opponents, track_length)
@@ -194,6 +243,9 @@ class TrafficSpotterRole(BaseRole):
     ) -> List[Dict[str, Any]]:
         """Calcule TTC, distance relative et delta de vitesse pour chaque adversaire."""
         metrics = []
+        ref_prof = self.get_reference_profile(context)
+        has_valid_ref = bool(ref_prof and getattr(ref_prof, "num_points", 0) >= 2)
+
         for opp in opponents:
             opp_id = opp.get("mID", opp.get("id", -1))
             opp_speed = context.extract_vehicle_speed_mps(opp)
@@ -207,6 +259,16 @@ class TrafficSpotterRole(BaseRole):
             else:
                 ttc = float("inf")
 
+            # Évaluation du domaine de vitesse normal (tour de référence)
+            domain_anomaly = True
+            if self.enable_ref_lap_filter and has_valid_ref:
+                domain_anomaly = context.has_traffic_domain_anomaly(
+                    player_veh,
+                    opp,
+                    profile=ref_prof,
+                    tolerance_kmh=self.domain_speed_tolerance_kmh,
+                )
+
             metrics.append({
                 "vehicle": opp,
                 "id": opp_id,
@@ -217,6 +279,7 @@ class TrafficSpotterRole(BaseRole):
                 "speed_delta_kmh": speed_delta_kmh,
                 "ttc": ttc,
                 "opp_speed": opp_speed,
+                "domain_anomaly": domain_anomaly,
             })
         return metrics
 
@@ -233,11 +296,13 @@ class TrafficSpotterRole(BaseRole):
             self._live_speed_delta_kmh = 0.0
 
             # Trouver le véhicule le plus menaçant (TTC le plus court <= seuil)
+            # avec filtre du tour de référence : au moins l'un des deux (moi ou l'autre) hors domaine
             threats = [
                 m for m in metrics
                 if 0.0 < m["dist_behind"] <= self.max_scan_distance_m
                 and m["speed_delta_mps"] >= self.speed_delta_min_mps
                 and m["ttc"] <= self.ttc_trigger_sec
+                and m.get("domain_anomaly", True)
             ]
 
             if threats:
@@ -414,6 +479,8 @@ class TrafficSpotterRole(BaseRole):
             "abort_ttc_sec": self.abort_ttc_sec,
             "max_scan_distance_m": self.max_scan_distance_m,
             "phrase_mode": self.phrase_mode,
+            "enable_ref_lap_filter": self.enable_ref_lap_filter,
+            "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
         })
         return cfg
 
@@ -433,6 +500,10 @@ class TrafficSpotterRole(BaseRole):
             self.max_scan_distance_m = float(config["max_scan_distance_m"])
         if "phrase_mode" in config:
             self.phrase_mode = str(config["phrase_mode"])
+        if "enable_ref_lap_filter" in config:
+            self.enable_ref_lap_filter = bool(config["enable_ref_lap_filter"])
+        if "domain_speed_tolerance_kmh" in config:
+            self.domain_speed_tolerance_kmh = float(config["domain_speed_tolerance_kmh"])
 
     def get_state_summary(self) -> Dict[str, Any]:
         summary = super().get_state_summary()
@@ -452,6 +523,8 @@ class TrafficSpotterRole(BaseRole):
             "live_speed_delta_kmh": self._live_speed_delta_kmh,
             "live_speed_delta_str": delta_str,
             "last_announced_sec": self.last_announced_sec,
+            "enable_ref_lap_filter": self.enable_ref_lap_filter,
+            "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
             "is_busy": self.is_busy(),
         })
         return summary

@@ -80,3 +80,98 @@ def test_traffic_jam_detection():
     assert msg2.phrase_key == "car"
     assert role.is_busy()
     assert ("car", False) in played
+
+
+def test_traffic_jam_ignores_pit_lane_cars():
+    """Vérifie qu'une voiture lente dans la voie des stands (mInPits=True) ne déclenche pas d'alerte pour le joueur en piste."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficJamRole(
+        audio_engine=mock_audio,
+        slow_speed_threshold_kmh=50.0,
+        warning_distance_m=150.0,
+    )
+
+    scoring_pit_slow = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {
+                "mID": 1,
+                "mIsPlayer": True,
+                "mControl": 0,
+                "mLapDist": 1000.0,
+                "mLocalVel": [0.0, 0.0, 50.0],
+                "mInPits": False,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            },
+            # Voiture à 30 km/h mais dans la pitlane (mInPits=True)
+            {
+                "mID": 2,
+                "mDriverName": "Pit Lane Car",
+                "mIsPlayer": False,
+                "mControl": 1,
+                "mLapDist": 1080.0,
+                "mLocalVel": [0.0, 0.0, 8.0],  # ~29 km/h
+                "mInPits": True,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            }
+        ]
+    }
+
+    msg = role.update(EngineerContext(scoring=scoring_pit_slow))
+    assert msg is None
+    assert not role.is_busy()
+    assert len(played) == 0
+
+
+def test_traffic_jam_deactivated_when_player_in_pits():
+    """Vérifie que l'alerte traffic jam est désactivée quand le joueur est dans la pitlane."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficJamRole(
+        audio_engine=mock_audio,
+        slow_speed_threshold_kmh=50.0,
+        warning_distance_m=150.0,
+    )
+
+    scoring_player_in_pits = {
+        "Type": "ScoringInfoV01",
+        "mLapDist": 5000.0,
+        "mVehicles": [
+            {
+                "mID": 1,
+                "mIsPlayer": True,
+                "mControl": 0,
+                "mLapDist": 1000.0,
+                "mLocalVel": [0.0, 0.0, 16.0],
+                "mInPits": True,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            },
+            {
+                "mID": 2,
+                "mDriverName": "Slow Track Car",
+                "mIsPlayer": False,
+                "mControl": 1,
+                "mLapDist": 1080.0,
+                "mLocalVel": [0.0, 0.0, 5.0],
+                "mInPits": False,
+                "mInGarageStall": False,
+                "mFinishStatus": 0,
+            }
+        ]
+    }
+
+    msg = role.update(EngineerContext(scoring=scoring_player_in_pits))
+    assert msg is None
+    assert not role.is_busy()
+    assert len(played) == 0
