@@ -7,12 +7,13 @@ Prise en charge native WAV : Linux (pw-play, paplay, aplay), Windows (winsound),
 import os
 import sys
 import time
+import queue
 import shutil
 import logging
 import threading
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,9 @@ _SOUND_DIR = _PROJECT_ROOT / "assets" / "sound"
 
 class AudioAnnouncer:
     """
-    Chargeur et lecteur dédié exclusivement aux fichiers audio WAV.
-    Synthèse automatique à la demande via AudioBaker si un son est absent.
+    Chargeur et lecteur dédié exclusivement aux fichiers audio WAV avec File d'Attente FIFO.
+    Garantit que les annonces et alertes se jouent séquentiellement sans collision ni coupure,
+    même si plusieurs événements se déclenchent au même instant.
     Prend en charge l'interruption immédiate pour les alertes prioritaires (Spotter Overlap/Clear).
     """
 
@@ -32,6 +34,12 @@ class AudioAnnouncer:
     _current_process: Optional[subprocess.Popen] = None
     _is_muted: bool = False
 
+    # FIFO Audio Queue Sub-System
+    _audio_queue: "queue.Queue[dict]" = queue.Queue()
+    _queue_thread: Optional[threading.Thread] = None
+    _queue_running: bool = False
+    _is_playing: bool = False
+
     @classmethod
     def set_muted(cls, muted: bool) -> None:
         cls._is_muted = muted
@@ -39,6 +47,66 @@ class AudioAnnouncer:
     @classmethod
     def is_muted(cls) -> bool:
         return cls._is_muted
+
+    @classmethod
+    def _ensure_worker_started(cls) -> None:
+        """Démarre le thread de file d'attente audio FIFO s'il n'est pas déjà actif."""
+        with cls._lock:
+            if cls._queue_thread is None or not cls._queue_thread.is_alive():
+                cls._queue_running = True
+                cls._queue_thread = threading.Thread(
+                    target=cls._queue_consumer_loop,
+                    daemon=True,
+                    name="AudioAnnouncerQueueThread"
+                )
+                cls._queue_thread.start()
+
+    @classmethod
+    def _queue_consumer_loop(cls) -> None:
+        """Boucle d'arrière-plan traitant la file d'attente audio FIFO de façon ordonnée."""
+        while cls._queue_running:
+            try:
+                item = cls._audio_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+
+            phrase_key = item.get("key")
+            text_prompt = item.get("text")
+
+            cls._is_playing = True
+            try:
+                if not cls._is_muted and phrase_key:
+                    wav_path = cls._resolve_wav_file(phrase_key, text=text_prompt)
+                    if wav_path and wav_path.exists():
+                        cls._play_wav_sync(wav_path)
+                        # Pause naturelle entre deux sons consécutifs
+                        time.sleep(0.12)
+            except Exception as e:
+                logger.debug(f"[AudioAnnouncer] Queue playback error: {e}")
+            finally:
+                cls._is_playing = False
+                cls._audio_queue.task_done()
+
+    @classmethod
+    def clear_queue(cls) -> None:
+        """Vide immédiatement tous les sons en attente dans la file."""
+        with cls._lock:
+            while not cls._audio_queue.empty():
+                try:
+                    cls._audio_queue.get_nowait()
+                    cls._audio_queue.task_done()
+                except Exception:
+                    break
+
+    @classmethod
+    def get_queue_size(cls) -> int:
+        """Retourne le nombre d'annonces en attente dans la file."""
+        return cls._audio_queue.qsize()
+
+    @classmethod
+    def is_playing(cls) -> bool:
+        """Indique si un son est en cours de diffusion."""
+        return cls._is_playing or (cls._current_process is not None)
 
     @classmethod
     def stop_current(cls) -> None:
@@ -52,10 +120,10 @@ class AudioAnnouncer:
                 cls._current_process = None
 
     @classmethod
-    def _resolve_wav_file(cls, phrase_key_or_filename: str) -> Optional[Path]:
+    def _resolve_wav_file(cls, phrase_key_or_filename: str, text: Optional[str] = None) -> Optional[Path]:
         """
         Résout le fichier .wav dans assets/sound/.
-        Si le fichier est absent du disque, déclenche la synthèse à la demande.
+        Si le fichier est absent du disque, déclenche la synthèse à la demande via Piper.
         """
         stem = Path(phrase_key_or_filename).stem
         wav_path = _SOUND_DIR / f"{stem}.wav"
@@ -67,7 +135,7 @@ class AudioAnnouncer:
         try:
             from src.utils.audio_baker import AudioBaker, DEFAULT_MODEL_PATH
             if DEFAULT_MODEL_PATH.exists():
-                return AudioBaker.bake_on_demand(stem, output_dir=_SOUND_DIR)
+                return AudioBaker.bake_on_demand(stem, text=text, output_dir=_SOUND_DIR)
         except Exception as e:
             logger.debug(f"[AudioAnnouncer] On-demand WAV bake failed for '{stem}': {e}")
 
@@ -130,28 +198,32 @@ class AudioAnnouncer:
         return False
 
     @classmethod
-    def _play_file(cls, phrase_key: str, interrupt: bool = False) -> None:
-        """Joue un fichier WAV de façon asynchrone non-bloquante."""
-        if cls._is_muted:
-            return
+    def _play_file(cls, phrase_key: str, interrupt: bool = False, text: Optional[str] = None) -> None:
+        """Ajoute une phrase audio à la file d'attente FIFO."""
+        cls.play_phrase(phrase_key, interrupt=interrupt, text=text)
+
+    @classmethod
+    def play_phrase(cls, phrase_key: str, interrupt: bool = False, text: Optional[str] = None) -> None:
+        """Joue une phrase audio WAV via la file d'attente FIFO."""
+        cls._ensure_worker_started()
 
         if interrupt:
             cls.stop_current()
+            cls.clear_queue()
 
-        def _worker():
-            wav_path = cls._resolve_wav_file(phrase_key)
-            if not wav_path or not wav_path.exists():
-                logger.warning(f"[AudioAnnouncer] WAV file not found or could not be generated: {phrase_key}")
-                return
-
-            cls._play_wav_sync(wav_path)
-
-        threading.Thread(target=_worker, daemon=True).start()
+        cls._audio_queue.put({"key": phrase_key, "text": text})
 
     @classmethod
-    def play_phrase(cls, phrase_key: str, interrupt: bool = False) -> None:
-        """Joue une phrase audio WAV (ex: 'clean_lap', 'car', 'one', 'incoming', 'alongside', 'clear')."""
-        cls._play_file(phrase_key, interrupt=interrupt)
+    def play_sequence(cls, phrase_keys: List[str], interrupt: bool = False) -> None:
+        """Ajoute une séquence ordonnée de phrases audio à jouer l'une après l'autre."""
+        cls._ensure_worker_started()
+
+        if interrupt:
+            cls.stop_current()
+            cls.clear_queue()
+
+        for key in phrase_keys:
+            cls._audio_queue.put({"key": key, "text": None})
 
     @classmethod
     def play_clean_lap(cls) -> None:
@@ -255,6 +327,57 @@ class AudioAnnouncer:
             cls._play_file(key)
 
     @classmethod
+    def play_series(cls, series_key_or_name: str, interrupt: bool = False) -> None:
+        """Déclenche l'annonce audio du nom de la série officielle (ex: 'lmgt3_fixed', 'wec_weekly')."""
+        key = series_key_or_name.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "").strip("_")
+        logger.info(f"[AudioAnnouncer] Announcement: SERIES {key.upper()}")
+        print(f"[AUDIO] Playing announcement: SERIES {key.upper()}", flush=True)
+        cls._play_file(key, interrupt=interrupt)
+
+    @classmethod
+    def play_registration_open(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce ouverture des inscriptions (registration_open.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: REGISTRATION OPEN")
+        print("[AUDIO] Playing announcement: REGISTRATION OPEN", flush=True)
+        cls._play_file("registration_open", interrupt=interrupt)
+
+    @classmethod
+    def play_race_starting(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce départ de course (race_starting.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: RACE STARTING")
+        print("[AUDIO] Playing announcement: RACE STARTING", flush=True)
+        cls._play_file("race_starting", interrupt=interrupt)
+
+    @classmethod
+    def play_fifteen_minutes(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce 15 minutes restantes (fifteen_minutes.wav)."""
+        cls._play_file("fifteen_minutes", interrupt=interrupt)
+
+    @classmethod
+    def play_ten_minutes(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce 10 minutes restantes (ten_minutes.wav)."""
+        cls._play_file("ten_minutes", interrupt=interrupt)
+
+    @classmethod
+    def play_five_minutes(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce 5 minutes restantes (five_minutes.wav)."""
+        cls._play_file("five_minutes", interrupt=interrupt)
+
+    @classmethod
+    def play_one_minute(cls, interrupt: bool = False) -> None:
+        """Déclenche l'annonce 1 minute restante (one_minute.wav)."""
+        cls._play_file("one_minute", interrupt=interrupt)
+
+    @classmethod
+    def play_race_alert(cls, race_id: str, minutes: int, interrupt: bool = False) -> None:
+        """
+        Déclenche une annonce d'alerte programmée pour une série en enchaînant son nom et le décompte.
+        """
+        min_key_map = {15: "fifteen_minutes", 10: "ten_minutes", 5: "five_minutes", 1: "one_minute"}
+        count_key = min_key_map.get(minutes, "five_minutes")
+        cls.play_sequence([race_id, count_key], interrupt=interrupt)
+
+    @classmethod
     def update_lap_flag(cls, new_flag: int) -> None:
         """
         Détecte les transitions d'état du drapeau de tour (compatibilité rétroactive).
@@ -271,3 +394,4 @@ class AudioAnnouncer:
                     cls.play_dirty_lap()
 
             cls._last_lap_flag = new_flag
+

@@ -51,6 +51,26 @@ DEFAULT_PHRASES: Dict[str, str] = {
     "brake": "Brake",
     "turn": "Turn",
 
+    # Official LMU Timings & Status Announcements
+    "registration_open": "Registration is open",
+    "race_starting": "Race is starting",
+    "fifteen_minutes": "Fifteen minutes remaining",
+    "ten_minutes": "Ten minutes remaining",
+    "five_minutes": "Five minutes remaining",
+    "one_minute": "One minute remaining",
+
+    # LMU Official Series Names (Setups)
+    "lmgt3_fixed": "LMGT3 Fixed",
+    "lmp3_fixed": "LMP3 Fixed",
+    "lmgte_fixed": "LMGTE Fixed",
+    "elms_sprint_trophy": "ELMS Sprint Trophy",
+    "lmgt3_sprint_cup": "LMGT3 Sprint Cup",
+    "prototype_classic": "Prototype Classic",
+    "one_stint_sprint": "One Stint Sprint",
+    "elms_super_60": "ELMS Super Sixty",
+    "wec_xperience": "WEC Experience",
+    "wec_weekly": "WEC Weekly",
+
     # Gear Announcements G1 to G8 (ségrégé du décompte spotter)
     **{f"gear_{i}": f"Gear {i}" for i in range(1, 9)},
 

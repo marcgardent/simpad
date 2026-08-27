@@ -30,6 +30,8 @@ from src.gui.dashboards import DashboardManager
 from src.engineer import RaceEngineer
 from src.gui.engineer_tab import RaceEngineerTab
 from src.gui.telemetry_tab import TelemetryTab
+from src.schedule import LMUScheduleManager
+from src.gui.schedule_tab import LMUScheduleTab
 
 HISTORY = 150  # 7.5 seconds at 20 Hz
 
@@ -61,6 +63,10 @@ class SimPadDPGApp:
 
         # Telemetry & Annotation Studio Sub-System
         self._telemetry_tab = TelemetryTab()
+
+        # LMU Schedule & Race Announcer Sub-System
+        self._schedule_mgr = LMUScheduleManager()
+        self._schedule_tab = LMUScheduleTab(self._schedule_mgr)
 
         # Backends
         self._haptics: Optional[HapticController] = None
@@ -227,6 +233,10 @@ class SimPadDPGApp:
                 # Quinary Tab: Telemetry Studio (Meter-by-Meter & Annotations)
                 with dpg.tab(label="Telemetry & Annotations", tag="tab_telemetry_studio"):
                     self._telemetry_tab.build_tab(self)
+
+                # Senary Tab: LMU Schedule & Notifications (Courses A, B, C)
+                with dpg.tab(label="LMU Schedule", tag="tab_lmu_schedule"):
+                    self._schedule_tab.build_tab(self)
 
         dpg.set_primary_window("primary_window", True)
         self._dashboard_mgr.build_all_ui()
@@ -450,6 +460,9 @@ class SimPadDPGApp:
         if hasattr(self, "_telemetry_tab"):
             self._telemetry_tab.render_tick()
 
+        if hasattr(self, "_schedule_tab"):
+            self._schedule_tab.render_tick()
+
         udp_active = bool(self._udp and self._udp.is_receiving(timeout=2.0) and self._telemetry_enabled)
         if udp_active:
             self._was_udp_receiving = True
@@ -665,6 +678,8 @@ class SimPadDPGApp:
             save_config(self._app_config)
         if hasattr(self, "_race_engineer") and self._race_engineer:
             self._race_engineer.save_to_file()
+        if hasattr(self, "_schedule_mgr") and self._schedule_mgr:
+            self._schedule_mgr.save_config()
         if self._synth:
             self._synth.stop()
         if self._haptics:
