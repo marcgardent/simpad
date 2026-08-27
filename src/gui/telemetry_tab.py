@@ -693,7 +693,7 @@ class TelemetryTab:
     def _load_active_profile(self) -> None:
         """Charge le profil de référence en mémoire depuis le DeltaEngine."""
         delta_eng = getattr(LMUParser, "_delta_engine", None)
-        active_prof = (delta_eng.current_profile or delta_eng.all_time_best_profile) if delta_eng else None
+        active_prof = (delta_eng.all_time_best_profile or delta_eng.current_profile) if delta_eng else None
         if active_prof:
             self._profile = active_prof
         elif delta_eng and delta_eng._ref_t_grid:
@@ -800,7 +800,7 @@ class TelemetryTab:
         if (now - self._last_ui_tick) >= 1.0:
             self._last_ui_tick = now
             delta_eng = getattr(LMUParser, "_delta_engine", None)
-            active_prof = (delta_eng.current_profile or delta_eng.all_time_best_profile) if delta_eng else None
+            active_prof = (delta_eng.all_time_best_profile or delta_eng.current_profile) if delta_eng else None
             if active_prof:
                 if self._profile is None or active_prof.lap_time != self._profile.lap_time:
                     self._profile = active_prof

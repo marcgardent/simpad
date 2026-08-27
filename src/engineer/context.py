@@ -89,7 +89,8 @@ class EngineerContext:
             from src.telemetry.lmu_parser import LMUParser
             delta_eng = getattr(LMUParser, "_delta_engine", None)
             if delta_eng:
-                prof = delta_eng.current_profile or delta_eng.all_time_best_profile
+                # L'ingénieur de piste (trafic, repères) utilise systématiquement le tour de référence absolu
+                prof = delta_eng.all_time_best_profile or delta_eng.current_profile
                 if prof:
                     ref_track = getattr(prof, "track_name", "")
                     if scoring_track and ref_track:

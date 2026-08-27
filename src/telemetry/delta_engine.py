@@ -41,6 +41,17 @@ logger = logging.getLogger(__name__)
 # Project root for saving reference lap profiles
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _REF_LAPS_DIR = DEFAULT_REF_LAPS_DIR
+_DEBUG_LOG_PATH = _PROJECT_ROOT / "delta_debug.log"
+
+
+def log_delta_debug(msg: str) -> None:
+    """Écrit une ligne de log dans delta_debug.log pour diagnostic en direct."""
+    try:
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
 
 
 class DeltaReferenceMode(str, Enum):
@@ -111,23 +122,20 @@ class DeltaEngine:
         self._last_brake: float = 0.0
         self._last_steering: float = 0.0
 
-        # Estimateur de position et temps continu (Intégration trapézoïdale 50Hz)
-        self._est_dist: float = 0.0
-        self._est_time_into: float = 0.0
-        self._last_physics_timestamp: float = 0.0
-        self._last_physics_elapsed: float = 0.0
-
         # Dernier état de scoring (1-2 Hz)
         self._last_scoring_dist: float = 0.0
         self._last_scoring_time_into: float = 0.0
         self._last_scoring_timestamp: float = 0.0
         self._last_current_sector: int = 1
+        self._last_lap_start_et: float = 0.0
 
-        # Checkpoints spatiaux et secteurs
-        self._s1_checkpoint_delta: float = 0.0
-        self._s2_checkpoint_delta: float = 0.0
-        self._s1_checkpoint_captured: bool = False
-        self._s2_checkpoint_captured: bool = False
+        # Checkpoints de secteurs dynamiques (temps & distance du pilote aux coupures S1/S2)
+        self._s1_captured: bool = False
+        self._s2_captured: bool = False
+        self._player_s1_time: float = 0.0
+        self._player_s1_dist: float = 0.0
+        self._player_s2_time: float = 0.0
+        self._player_s2_dist: float = 0.0
         self._last_checkpoint_idx: int = -1
 
         # Gel du Delta au passage de ligne
@@ -237,6 +245,20 @@ class DeltaEngine:
             self._ref_t_grid = None
             self._ref_num_points = 0
 
+        log_delta_debug(
+            f"[APPLY_MODE] mode={self._ref_mode.value}, target_present={target_prof is not None}, "
+            f"has_ref={self.has_reference}, ref_lap_time={self._ref_lap_time:.3f}s, points={self._ref_num_points}"
+        )
+
+        # Recalcul dynamique immédiat des deltas contre la nouvelle référence
+        if self._last_scoring_dist >= 0.0 and self._last_scoring_time_into > 0.0:
+            self._calculate_delta(self._last_scoring_dist, self._last_scoring_time_into)
+        else:
+            self._live_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+
     def _find_player_vehicle(self, vehicles: list) -> Optional[dict]:
         """SLAP Helper: Finds player vehicle in scoring vehicles list."""
         if not isinstance(vehicles, list):
@@ -262,29 +284,32 @@ class DeltaEngine:
         if self._last_laps_completed < 0:
             self._last_laps_completed = laps_comp
             self._current_lap_samples = []
-            self._pit_or_garage_during_lap = False
             return
 
         # Cas 1 : Réinitialisation de session / Relance (mTotalLaps repasse à 0 ou diminue)
         if laps_comp < self._last_laps_completed:
             logger.info(f"[DeltaEngine] Session reset detected: laps completed went from {self._last_laps_completed} to {laps_comp}")
             print(f"[DeltaEngine] Session réinitialisée : compteur de tours remis à {laps_comp}", flush=True)
+            log_delta_debug(f"[SESSION_RESET] laps_completed went from {self._last_laps_completed} to {laps_comp}")
             self._current_lap_samples = []
-            self._pit_or_garage_during_lap = False
-            self._s1_checkpoint_captured = False
-            self._s2_checkpoint_captured = False
-            self._s1_checkpoint_delta = 0.0
-            self._s2_checkpoint_delta = 0.0
+            self._s1_captured = False
+            self._s2_captured = False
+            self._player_s1_time = 0.0
+            self._player_s1_dist = 0.0
+            self._player_s2_time = 0.0
+            self._player_s2_dist = 0.0
             self._sector1_delta = 0.0
             self._sector2_delta = 0.0
             self._sector3_delta = 0.0
-            self._est_dist = 0.0
-            self._est_time_into = 0.0
             self._last_laps_completed = laps_comp
             return
 
         # Cas 2 : Franchissement de la ligne de départ/arrivée (nouveau tour complété)
         if laps_comp > self._last_laps_completed:
+            log_delta_debug(
+                f"[LAP_LINE_CROSS] lap_completed={laps_comp} (was {self._last_laps_completed}), "
+                f"last_lap_time={last_lap_time:.3f}s, flag={lap_flag}, in_pits={in_pits}, in_garage={in_garage}"
+            )
             # Capture et gel du delta final avant réinitialisation
             self._frozen_final_delta = self._live_delta
             if self._freeze_duration > 0.0:
@@ -297,26 +322,31 @@ class DeltaEngine:
                 in_pits=in_pits,
             )
             self._current_lap_samples = []
-            self._pit_or_garage_during_lap = False
-            self._s1_checkpoint_captured = False
-            self._s2_checkpoint_captured = False
-            self._s1_checkpoint_delta = 0.0
-            self._s2_checkpoint_delta = 0.0
+            self._s1_captured = False
+            self._s2_captured = False
+            self._player_s1_time = 0.0
+            self._player_s1_dist = 0.0
+            self._player_s2_time = 0.0
+            self._player_s2_dist = 0.0
             self._sector1_delta = 0.0
             self._sector2_delta = 0.0
             self._sector3_delta = 0.0
 
         self._last_laps_completed = laps_comp
 
-    def _handle_sector_transition(self, curr_sec: int) -> None:
-        """SLAP Helper: Captures sector checkpoint deltas on boundary change."""
+    def _handle_sector_transition(self, curr_sec: int, time_into: float = 0.0, player_dist: float = 0.0) -> None:
+        """SLAP Helper: Mémorise le temps et la distance exacts de passage aux coupures S1/S2."""
         if curr_sec != self._last_current_sector:
-            if curr_sec == 2 and not self._s1_checkpoint_captured:
-                self._s1_checkpoint_delta = self._live_delta
-                self._s1_checkpoint_captured = True
-            elif curr_sec == 3 and not self._s2_checkpoint_captured:
-                self._s2_checkpoint_delta = self._live_delta
-                self._s2_checkpoint_captured = True
+            if curr_sec == 2 and not self._s1_captured and time_into > 0.0:
+                self._player_s1_time = time_into
+                self._player_s1_dist = player_dist
+                self._s1_captured = True
+                log_delta_debug(f"[SECTOR_CUT_S1] t_into={time_into:.3f}s, dist={player_dist:.1f}m")
+            elif curr_sec == 3 and not self._s2_captured and time_into > 0.0:
+                self._player_s2_time = time_into
+                self._player_s2_dist = player_dist
+                self._s2_captured = True
+                log_delta_debug(f"[SECTOR_CUT_S2] t_into={time_into:.3f}s, dist={player_dist:.1f}m")
             self._last_current_sector = curr_sec
 
     def _collect_lap_sample(
@@ -364,23 +394,23 @@ class DeltaEngine:
         if track_name and (track_name != self._track_name or (veh_name and veh_name != self._vehicle_name)):
             logger.info(f"[DeltaEngine] Reset session: track='{track_name}', veh='{veh_name}', class='{veh_class}'")
             print(f"[DeltaEngine] Changement de circuit/session détecté : '{track_name}' (Voiture: {veh_name})", flush=True)
+            log_delta_debug(f"[TRACK_CHANGE] track='{track_name}', veh='{veh_name}', class='{veh_class}', laps={laps_comp}")
             self._track_name = track_name
             self._vehicle_name = veh_name
             self._vehicle_class = veh_class
             self._current_lap_samples = []
             self._last_laps_completed = laps_comp
             self._last_checkpoint_idx = -1
-            self._s1_checkpoint_captured = False
-            self._s2_checkpoint_captured = False
-            self._s1_checkpoint_delta = 0.0
-            self._s2_checkpoint_delta = 0.0
+            self._s1_captured = False
+            self._s2_captured = False
+            self._player_s1_time = 0.0
+            self._player_s1_dist = 0.0
+            self._player_s2_time = 0.0
+            self._player_s2_dist = 0.0
             self._sector1_delta = 0.0
             self._sector2_delta = 0.0
             self._sector3_delta = 0.0
             self._last_scoring_timestamp = 0.0
-            self._last_physics_timestamp = 0.0
-            self._est_dist = 0.0
-            self._est_time_into = 0.0
 
             # Réinitialiser session et stint best
             self._session_best_profile = None
@@ -396,7 +426,19 @@ class DeltaEngine:
         if track_len > 0.0:
             self._track_length = track_len
 
-        time_into = float(player_veh.get("mTimeIntoLap", -1.0))
+        current_et = float(scoring_info.get("mCurrentET", scoring_info.get("currentET", 0.0)))
+        lap_start_et = float(player_veh.get("mLapStartET", player_veh.get("lapStartET", 0.0)))
+        time_into_lap = float(player_veh.get("mTimeIntoLap", -1.0))
+
+        # Calcul autoritaire du temps écoulé dans le tour : mCurrentET - mLapStartET
+        # (mTimeIntoLap du SDK rF2/LMU est une simple estimation basée sur la distance,
+        # non continue et insensible aux arrêts ou rythmes lents)
+        if lap_start_et > 0.0 and current_et >= lap_start_et:
+            time_into = current_et - lap_start_et
+            self._last_lap_start_et = lap_start_et
+        else:
+            time_into = time_into_lap if time_into_lap > 0.0 else 0.0
+
         player_dist = float(player_veh.get("mLapDist", 0.0))
         raw_sec = int(player_veh.get("mSector", 1))
         curr_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
@@ -409,7 +451,7 @@ class DeltaEngine:
         self._last_lap_flag = lap_flag
 
         self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits)
-        self._handle_sector_transition(curr_sec)
+        self._handle_sector_transition(curr_sec, time_into=time_into, player_dist=player_dist)
 
         is_flying_lap = (lap_flag == 2 and time_into > 0.0)
 
@@ -437,26 +479,16 @@ class DeltaEngine:
 
         # Si tour lancé en cours, mise à jour de la position et calcul du delta au checkpoint
         if is_flying_lap:
-            # Recalage doux de l'estimateur de position continue
-            if self._est_dist <= 0.0 or abs(self._est_dist - player_dist) > 15.0 or (self._track_length > 0.0 and player_dist < 50.0 and self._est_dist > self._track_length - 100.0):
-                self._est_dist = player_dist
-                self._est_time_into = time_into
-            else:
-                self._est_dist = 0.85 * player_dist + 0.15 * self._est_dist
-                self._est_time_into = time_into
-
-            # Détection du checkpoint spatial
-            step = self._ref_spatial_step if self._ref_spatial_step > 0.0 else 1.0
-            checkpoint_idx = int(self._est_dist / step)
-            if checkpoint_idx != self._last_checkpoint_idx:
-                self._last_checkpoint_idx = checkpoint_idx
-                self._calculate_delta(self._est_dist, self._est_time_into)
+            # Calcul du delta avec les données exactes du jeu (mLapDist, temps écoulé réel)
+            self._calculate_delta(player_dist, time_into)
         else:
             # Out-lap / Stands / Avant le départ : pas de delta de tour lancé
             self._live_delta = 0.0
             self._last_checkpoint_idx = -1
-            self._est_dist = player_dist
-            self._est_time_into = max(0.0, time_into)
+            log_delta_debug(
+                f"[SCORING_NOT_FLYING] dist={player_dist:.1f}m, t_into={time_into:.3f}s, flag={lap_flag}, "
+                f"sec={curr_sec}, laps={laps_comp}, in_pits={in_pits}, in_garage={in_garage}"
+            )
 
     def update_physics(
         self,
@@ -466,92 +498,64 @@ class DeltaEngine:
         steering: float = 0.0,
         dt: float = 0.0,
         elapsed_time: float = 0.0,
+        lap_start_et: float = 0.0,
     ) -> None:
         """
-        Traite un paquet TelemInfoV01 à haute fréquence (50 Hz).
-        Utilise prioritairement le pas de simulation du moteur physique du jeu (mDeltaTime / mElapsedTime).
+        Traite un paquet TelemInfoV01 à haute fréquence (50-100 Hz).
+        Met à jour le delta live en direct à 100 Hz avec le chrono continu (elapsed_time - lap_start_et).
         """
+        self._last_speed_ms = veh_speed_ms
         self._last_throttle = throttle
         self._last_brake = brake
         self._last_steering = steering
 
-        if self._last_scoring_timestamp <= 0.0:
-            self._last_speed_ms = veh_speed_ms
-            return
+        if self._last_lap_flag == 2 and self._last_scoring_dist >= 0.0:
+            effective_start_et = lap_start_et if lap_start_et > 0.0 else self._last_lap_start_et
+            if effective_start_et > 0.0 and elapsed_time >= effective_start_et:
+                phys_time_into = elapsed_time - effective_start_et
+                self._calculate_delta(self._last_scoring_dist, phys_time_into)
 
-        # Priorité absolue au delta de temps fourni directement par le moteur physique de LMU (mDeltaTime)
-        if 0.0 < dt < 0.5:
-            dt_phys = dt
-        elif elapsed_time > 0.0 and self._last_physics_elapsed > 0.0 and 0.0 < (elapsed_time - self._last_physics_elapsed) < 0.5:
-            dt_phys = elapsed_time - self._last_physics_elapsed
-        else:
-            now = time.time()
-            first_phys_tick = (self._last_physics_timestamp <= 0.0)
-            if first_phys_tick:
-                dt_phys = (now - self._last_scoring_timestamp) if (0.0 < now - self._last_scoring_timestamp < 0.5) else 0.02
-            else:
-                dt_phys = now - self._last_physics_timestamp
-            self._last_physics_timestamp = now
-
-        if elapsed_time > 0.0:
-            self._last_physics_elapsed = elapsed_time
-
-        # Intégration spatiale et temporelle continue basée sur la physique du jeu
-        if 0.0 < dt_phys < 0.5 and veh_speed_ms >= 0.0:
-            avg_speed = veh_speed_ms if self._last_speed_ms <= 0.0 else 0.5 * (veh_speed_ms + self._last_speed_ms)
-            self._est_dist += avg_speed * dt_phys
-            self._est_time_into += dt_phys
-
-            # Bouclage en bout de circuit
-            if self._track_length > 0.0 and self._est_dist > self._track_length:
-                self._est_dist = self._est_dist % self._track_length
-
-            # Checkpoint spatial franchi ?
-            step = self._ref_spatial_step if self._ref_spatial_step > 0.0 else 1.0
-            checkpoint_idx = int(self._est_dist / step)
-
-            # Mise à jour du delta UNIQUEMENT au franchissement d'un nouveau checkpoint spatial !
-            if checkpoint_idx != self._last_checkpoint_idx:
-                self._last_checkpoint_idx = checkpoint_idx
-                self._calculate_delta(self._est_dist, self._est_time_into)
-
-                # Collecte haute fréquence pendant un tour valide
-                if self._last_lap_flag == 2 and self._est_time_into > 0.0 and self._est_dist >= 0.0:
-                    if not self._current_lap_samples or (self._est_dist - self._current_lap_samples[-1][0]) >= 0.8:
-                        self._current_lap_samples.append((
-                            self._est_dist,
-                            self._est_time_into,
-                            veh_speed_ms,
-                            throttle,
-                            brake,
-                            steering,
-                        ))
-
-        self._last_speed_ms = veh_speed_ms
-
-    def _calculate_delta(self, player_dist: float, time_into: float) -> None:
-        """Calcul du delta live et des deltas par secteur à partir d'une position et d'un temps."""
-        if not self.has_reference or self._ref_t_grid is None or self._ref_num_points < 2 or time_into <= 0.0 or player_dist < 0.0:
-            self._live_delta = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
-            return
-
-        # Lookup O(1) direct sur la grille spatiale uniforme d_step = 1.0 m
-        step = self._ref_spatial_step
-        idx_float = player_dist / step
+    def _get_ref_time_at_dist(self, dist: float) -> Optional[float]:
+        """Retourne le temps de référence interpolé à une distance donnée sur le profil actif."""
+        if not self.has_reference or self._ref_t_grid is None or self._ref_num_points < 2 or dist < 0.0:
+            return None
+        step = self._ref_spatial_step if self._ref_spatial_step > 0.0 else 1.0
+        idx_float = dist / step
         idx_floor = int(idx_float)
-
         if idx_floor < 0:
-            ref_time = self._ref_t_grid[0]
+            return self._ref_t_grid[0]
         elif idx_floor >= self._ref_num_points - 1:
-            ref_time = self._ref_t_grid[-1]
+            return self._ref_t_grid[-1]
         else:
             frac = idx_float - idx_floor
             t1 = self._ref_t_grid[idx_floor]
             t2 = self._ref_t_grid[idx_floor + 1]
-            ref_time = t1 + frac * (t2 - t1)
+            return t1 + frac * (t2 - t1)
+
+    def _calculate_delta(self, player_dist: float, time_into: float) -> None:
+        """Calcul du delta live et des deltas par secteur à partir d'une position et d'un temps."""
+        if not self.has_reference or time_into <= 0.0 or player_dist < 0.0:
+            self._live_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+            log_delta_debug(
+                f"[DELTA_NO_REF] dist={player_dist:.1f}m, t_into={time_into:.3f}s, has_ref={self.has_reference}, "
+                f"flag={self._last_lap_flag}, mode={self._ref_mode.value}"
+            )
+            return
+
+        ref_time = self._get_ref_time_at_dist(player_dist)
+        if ref_time is None:
+            self._live_delta = 0.0
+            self._sector1_delta = 0.0
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
+            log_delta_debug(
+                f"[DELTA_REF_LOOKUP_FAIL] dist={player_dist:.1f}m, t_into={time_into:.3f}s, "
+                f"ref_num_points={self._ref_num_points}"
+            )
+            return
 
         raw_delta = time_into - ref_time
 
@@ -571,13 +575,32 @@ class DeltaEngine:
         # Sauvegarde du delta pour maintien figé à l'arrêt
         self._frozen_checkpoint_delta = self._live_delta
 
-        # Deltas par secteur actif
+        # Calcul dynamique des deltas de secteurs contre le profil ACTIF
+        ref_s1 = self._get_ref_time_at_dist(self._player_s1_dist) if self._s1_captured else None
+        ref_s2 = self._get_ref_time_at_dist(self._player_s2_dist) if self._s2_captured else None
+
+        delta_s1_end = (self._player_s1_time - ref_s1) if (self._s1_captured and ref_s1 is not None) else 0.0
+        delta_s2_end = (self._player_s2_time - ref_s2) if (self._s2_captured and ref_s2 is not None) else 0.0
+
         if self._last_current_sector == 1:
             self._sector1_delta = self._live_delta
+            self._sector2_delta = 0.0
+            self._sector3_delta = 0.0
         elif self._last_current_sector == 2:
-            self._sector2_delta = self._live_delta - self._s1_checkpoint_delta
+            self._sector1_delta = delta_s1_end
+            self._sector2_delta = self._live_delta - delta_s1_end
+            self._sector3_delta = 0.0
         elif self._last_current_sector == 3:
-            self._sector3_delta = self._live_delta - self._s2_checkpoint_delta
+            self._sector1_delta = delta_s1_end
+            self._sector2_delta = delta_s2_end - delta_s1_end
+            self._sector3_delta = self._live_delta - delta_s2_end
+
+        log_delta_debug(
+            f"[DELTA_CALC] dist={player_dist:.1f}m, t_into={time_into:.3f}s, ref_t={ref_time:.3f}s, "
+            f"raw_delta={raw_delta:+.3f}s, live_delta={self._live_delta:+.3f}s, "
+            f"S1={self._sector1_delta:+.3f}s, S2={self._sector2_delta:+.3f}s, S3={self._sector3_delta:+.3f}s, "
+            f"mode={self._ref_mode.value}, ref_lap_time={self._ref_lap_time:.3f}s"
+        )
 
     def _resample_spatial_grid(
         self,
@@ -652,23 +675,42 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """Valide et enregistre le tour complété (SLAP: Orchestration haut niveau)."""
-        # Seul un tour où le jeu confirme lap_flag == 2 (propre et chronométré) peut être enregistré
+        # 1. Seul un tour où le jeu confirme lap_flag == 2 (propre et chronométré) peut être enregistré
         if lap_flag != 2:
             logger.info(f"[DeltaEngine] Lap rejected: Not a clean timed lap (lap_flag={lap_flag})")
             print(f"[DeltaEngine] Tour non enregistré : Statut jeu invalide / Dirty / Out-lap (lap_flag={lap_flag})", flush=True)
+            log_delta_debug(f"[LAP_REJECTED] Statut jeu invalide (lap_flag={lap_flag})")
             return
 
-        # Repli : si lap_time n'est pas transmis par le jeu (<= 0), utiliser le temps du dernier échantillon
-        if lap_time <= 0.0 and len(self._current_lap_samples) >= 5:
-            lap_time = float(self._current_lap_samples[-1][1])
+        # 2. Le temps au tour officiel transmis par le jeu (mLastLapTime) doit être strictement positif (> 0)
+        # Si mLastLapTime <= 0 (ex: -1.0 sur un Out-lap ou sortie des stands), REJET
+        if lap_time <= 0.0:
+            logger.info(f"[DeltaEngine] Lap rejected: Invalid official lap time ({lap_time:.3f}s)")
+            print(f"[DeltaEngine] Tour non enregistré : Pas de temps officiel chronométré ({lap_time:.3f}s, Out-lap)", flush=True)
+            log_delta_debug(f"[LAP_REJECTED] Pas de temps officiel chronométré (lap_time={lap_time:.3f}s)")
+            return
 
         sample_count = len(self._current_lap_samples)
         logger.info(f"[DeltaEngine] Lap completed: lap_time={lap_time:.3f}s, flag={lap_flag}, samples={sample_count}")
         print(f"[DeltaEngine] Tour complété : {lap_time:.3f}s (drapeau={lap_flag}, échantillons={sample_count})", flush=True)
 
-        if lap_time <= 10.0 or sample_count < 5:
-            logger.info(f"[DeltaEngine] Lap rejected: Insufficient samples ({sample_count}) or invalid time ({lap_time:.3f}s)")
-            print(f"[DeltaEngine] Tour non enregistré : Échantillons insuffisants ({sample_count} pts) ou temps invalide ({lap_time:.3f}s)", flush=True)
+        # 3. Vérification de plausibilité physique (temps minimum selon longueur du circuit, max 400 km/h)
+        if self._track_length > 500.0:
+            min_possible_time = self._track_length / 110.0  # 110 m/s = 396 km/h de vitesse moyenne max
+            if lap_time < min_possible_time:
+                logger.warning(f"[DeltaEngine] Lap rejected: Impossible lap time ({lap_time:.3f}s < min {min_possible_time:.1f}s)")
+                print(f"[DeltaEngine] Tour non enregistré : Temps physiquement impossible ({lap_time:.3f}s pour {self._track_length:.0f}m)", flush=True)
+                log_delta_debug(f"[LAP_REJECTED] Temps impossible ({lap_time:.3f}s < min {min_possible_time:.1f}s)")
+                return
+        elif lap_time <= 15.0:
+            logger.info(f"[DeltaEngine] Lap rejected: Lap time too short ({lap_time:.3f}s)")
+            log_delta_debug(f"[LAP_REJECTED] Lap time too short ({lap_time:.3f}s)")
+            return
+
+        if sample_count < 10:
+            logger.info(f"[DeltaEngine] Lap rejected: Insufficient samples ({sample_count})")
+            print(f"[DeltaEngine] Tour non enregistré : Échantillons insuffisants ({sample_count} pts)", flush=True)
+            log_delta_debug(f"[LAP_REJECTED] Échantillons insuffisants ({sample_count} pts)")
             return
 
         # Filtrer la liste pour garantir une monotonie stricte des distances
@@ -680,9 +722,19 @@ class DeltaEngine:
                 clean_samples.append(sample)
                 last_d = d
 
-        if len(clean_samples) < 2 or clean_samples[-1][0] <= 0.0:
+        if len(clean_samples) < 10 or clean_samples[-1][0] <= 0.0:
             print(f"[DeltaEngine] Tour non enregistré : Échantillons filtrés invalides ({len(clean_samples)} pts)", flush=True)
+            log_delta_debug(f"[LAP_REJECTED] Échantillons filtrés invalides ({len(clean_samples)} pts)")
             return
+
+        # 4. Vérification de la couverture spatiale complète de la piste
+        if self._track_length > 500.0:
+            first_d = clean_samples[0][0]
+            last_d = clean_samples[-1][0]
+            if first_d > 250.0 or last_d < (self._track_length - 350.0):
+                print(f"[DeltaEngine] Tour non enregistré : Couverture de piste incomplète ({first_d:.0f}m -> {last_d:.0f}m / {self._track_length:.0f}m)", flush=True)
+                log_delta_debug(f"[LAP_REJECTED] Couverture incomplète ({first_d:.0f}m -> {last_d:.0f}m / {self._track_length:.0f}m)")
+                return
 
         # Extrapolation automatique du point de départ (0.0m, 0.0s) si absent
         if clean_samples[0][0] > 0.0:
@@ -782,6 +834,13 @@ class DeltaEngine:
             logger.info(f"[DeltaEngine] Lap clean ({lap_time:.3f}s) -> Stored in Last/Session/Stint references.")
             print(f"[DeltaEngine] Tour propre ({lap_time:.3f}s) enregistré dans la session (Best absolu: {self._all_time_best_lap_time:.3f}s)", flush=True)
 
+        log_delta_debug(
+            f"[LAP_FINALIZED] lap_time={lap_time:.3f}s, flag={lap_flag}, samples={len(clean_samples)}, "
+            f"grid_points={num_points}, AllTimeBest={self._all_time_best_lap_time:.3f}s, "
+            f"SessionBest={self._session_best_lap_time:.3f}s, StintBest={self._stint_best_lap_time:.3f}s, "
+            f"LastLap={self._last_lap_time:.3f}s"
+        )
+
         # Appliquer la référence active en fonction du mode configuré
         self._apply_active_profile()
 
@@ -804,8 +863,10 @@ class DeltaEngine:
         ok = self._all_time_best_profile.save_telemetry_to_file(filepath)
         if ok:
             print(f"[DeltaEngine] Fichier sauvegardé sur le disque : {filepath}", flush=True)
+            log_delta_debug(f"[REF_SAVE_OK] file='{filepath.name}'")
         else:
             print(f"[DeltaEngine] ERREUR : Impossible d'écrire le fichier de référence : {filepath}", flush=True)
+            log_delta_debug(f"[REF_SAVE_ERROR] file='{filepath}'")
 
     def _load_reference_profile(self) -> None:
         """Tente de charger un profil de référence et les repères enregistrés sur disque pour le circuit/voiture."""
@@ -834,6 +895,10 @@ class DeltaEngine:
                 self._apply_active_profile()
                 logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)")
                 print(f"[DeltaEngine] Tour de référence et repères chargés : {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)", flush=True)
+                log_delta_debug(
+                    f"[REF_LOAD_FULL] file='{filepath.name}', lap_time={loaded.lap_time:.3f}s, "
+                    f"points={loaded.num_points}, marks={len(loaded.annotations)}"
+                )
                 return
 
         # 2. Cas sans tour chrono enregistré mais avec fichier de repères (.marks.json) existant pour ce circuit
@@ -850,6 +915,7 @@ class DeltaEngine:
             self._all_time_best_lap_time = 999999.0
             self._apply_active_profile()
             print(f"[DeltaEngine] Repères de piste chargés pour '{self._track_name}' : {marks_filepath.name} ({len(placeholder.annotations)} annotations). En attente du 1er tour chrono.", flush=True)
+            log_delta_debug(f"[REF_LOAD_MARKS_ONLY] marks_file='{marks_filepath.name}', marks={len(placeholder.annotations)}")
             return
 
         # 3. Aucun fichier trouvé pour ce circuit : état vierge (0 annotations, aucune fuite d'un autre circuit)
@@ -858,6 +924,7 @@ class DeltaEngine:
         self._apply_active_profile()
         fname = filepath.name if filepath else "aucun"
         print(f"[DeltaEngine] Aucun tour de référence ni repères pour '{self._track_name}' ({fname}). En attente du 1er tour lancé.", flush=True)
+        log_delta_debug(f"[REF_LOAD_NONE] track='{self._track_name}', searched_file='{fname}'")
 
     @property
     def live_delta(self) -> float:
@@ -921,6 +988,4 @@ class DeltaEngine:
 
     def get_live_car_distance(self) -> float:
         """Retourne la distance courante estimée de la voiture."""
-        if self._est_dist > 0.0:
-            return self._est_dist
         return self._last_scoring_dist

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import Tuple, Optional, List
 
 from src.telemetry.sensors import VehicleSensors
-from src.telemetry.delta_engine import DeltaEngine
+from src.telemetry.delta_engine import DeltaEngine, log_delta_debug
 
 logger = logging.getLogger(__name__)
 
@@ -349,7 +349,14 @@ class LMUParser:
             cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
         cls._last_in_realtime = is_in_realtime
-        return cls._build_telemetry_snapshot()
+        snap = cls._build_telemetry_snapshot()
+        sensors = snap.to_sensors()
+        log_delta_debug(
+            f"[HUD_SNAPSHOT] delta_time={sensors.delta_time:+.3f}s, str='{sensors.delta_time_str}', "
+            f"has_ref={sensors.has_delta_reference}, flag={sensors.lap_flag}, in_rt={sensors.in_realtime}, "
+            f"is_pit={sensors.is_pit_lap}"
+        )
+        return snap
 
     @classmethod
     def _extract_wheel_velocities(cls, wheels: list, veh_speed: float):
@@ -431,6 +438,7 @@ class LMUParser:
 
             phys_dt = float(js.get("mDeltaTime", js.get("deltaTime", 0.0)))
             elapsed_time = float(js.get("mElapsedTime", js.get("elapsedTime", 0.0)))
+            lap_start_et = float(js.get("mLapStartET", js.get("lapStartET", 0.0)))
 
             cls._delta_engine.update_physics(
                 veh_speed,
@@ -439,6 +447,7 @@ class LMUParser:
                 steering=cls._last_unfiltered_steering,
                 dt=phys_dt,
                 elapsed_time=elapsed_time,
+                lap_start_et=lap_start_et,
             )
             cls._last_delta_time = cls._delta_engine.display_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta

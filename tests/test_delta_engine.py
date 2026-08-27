@@ -112,7 +112,7 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertAlmostEqual(self.engine.live_delta, -2.5, delta=0.2)
 
     def test_50hz_extrapolation(self):
-        """Verify 50Hz physics extrapolation smooths delta between 1Hz scoring updates."""
+        """Verify delta calculation on scoring updates."""
         # Manually set reference grid: 1000m, 50s lap time (20 m/s constant speed)
         self.engine._track_name = "TestTrack"
         self.engine._vehicle_name = "TestCar"
@@ -124,7 +124,7 @@ class TestDeltaEngine(unittest.TestCase):
 
         self.assertTrue(self.engine.has_reference)
 
-        # 1Hz scoring packet received at dist = 200m, time_into = 10.0s (Delta = 0.0)
+        # Scoring packet received at dist = 200m, time_into = 10.0s (Delta = 0.0)
         scoring_js = {
             "mTrackName": "TestTrack",
             "mLapDist": 1000.0,
@@ -143,15 +143,11 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine.update_scoring(scoring_js)
         self.assertAlmostEqual(self.engine.live_delta, 0.0, delta=0.05)
 
-        # 100ms later (50Hz physics tick), car driving at 25 m/s (faster than 20 m/s ref speed)
-        # In 0.1s, car moves 2.5m (dist 202.5m), time_into = 10.1s.
-        # Ref time at 202.5m is 202.5 / 20 = 10.125s.
-        # Live delta should be 10.10 - 10.125 = -0.025s (gaining time!)
-        import time
-        time.sleep(0.1)
-        self.engine.update_physics(25.0)
-
-        self.assertLess(self.engine.live_delta, 0.0)
+        # Next packet at dist = 250m (ref_time = 12.5s) with time_into = 12.0s -> Delta = -0.5s (gaining time)
+        scoring_js["mVehicles"][0]["mLapDist"] = 250.0
+        scoring_js["mVehicles"][0]["mTimeIntoLap"] = 12.0
+        self.engine.update_scoring(scoring_js)
+        self.assertAlmostEqual(self.engine.live_delta, -0.5, delta=0.05)
 
     def test_session_reset_on_track_change(self):
         """Verify engine resets state when track changes."""
@@ -288,6 +284,55 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
         self.assertEqual(self.engine.current_profile.lap_time, 48.0)
 
+    def test_mid_sector_reference_mode_switch(self):
+        """Verify that changing reference mode in the middle of Sector 2 dynamically recalculates sector deltas."""
+        from src.telemetry.delta_engine import DeltaReferenceMode
+        from src.telemetry.reference_profile import ReferenceLapProfile
+
+        # Setup 2 distinct reference profiles for a 1000m track
+        # Profile A (All-Time Best): 50.0s lap (S1=16.65s at 333m, S2=33.3s at 666m)
+        prof_a = ReferenceLapProfile(
+            track_name="TestTrack",
+            lap_time=50.0,
+            track_length=1000.0,
+            spatial_step=1.0,
+            num_points=1001,
+            t_grid=[(d / 1000.0) * 50.0 for d in range(1001)],
+        )
+        # Profile B (Session Best): 60.0s lap (S1=19.98s at 333m, S2=39.96s at 666m)
+        prof_b = ReferenceLapProfile(
+            track_name="TestTrack",
+            lap_time=60.0,
+            track_length=1000.0,
+            spatial_step=1.0,
+            num_points=1001,
+            t_grid=[(d / 1000.0) * 60.0 for d in range(1001)],
+        )
+
+        self.engine._all_time_best_profile = prof_a
+        self.engine._session_best_profile = prof_b
+        self.engine.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
+
+        # 1. Drive Sector 1 and cross into Sector 2 at 333m in 15.0s (vs Prof A S1=16.65s -> Delta S1 = -1.65s)
+        self.engine._handle_sector_transition(2, time_into=15.0, player_dist=333.0)
+        # Drive inside Sector 2 at 500m in 23.0s (Prof A ref=25.0s -> live delta = -2.0s)
+        self.engine._calculate_delta(500.0, 23.0)
+
+        self.assertAlmostEqual(self.engine._sector1_delta, -1.65, delta=0.01)
+        self.assertAlmostEqual(self.engine._sector2_delta, -0.35, delta=0.01)  # -2.0 - (-1.65) = -0.35s
+
+        # 2. Switch reference mode to SESSION_BEST (Profile B) in the middle of Sector 2!
+        self.engine.reference_mode = DeltaReferenceMode.SESSION_BEST
+
+        # With Profile B:
+        # Ref time at 333m was 19.98s -> S1 Delta should now be: 15.0 - 19.98 = -4.98s
+        # Ref time at 500m is 30.0s -> Live Delta should now be: 23.0 - 30.0 = -7.0s
+        # S2 Delta should now be: -7.0 - (-4.98) = -2.02s
+        self.engine._calculate_delta(500.0, 23.0)
+        self.assertAlmostEqual(self.engine._sector1_delta, -4.98, delta=0.01)
+        self.assertAlmostEqual(self.engine._sector2_delta, -2.02, delta=0.01)
+        self.assertAlmostEqual(self.engine.live_delta, -7.0, delta=0.01)
+
     def test_estimated_lap_time(self):
         """Verify estimated lap time projection and formatting."""
         self.engine._track_name = "TestTrack"
@@ -351,7 +396,7 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertAlmostEqual(self.engine.live_delta, 2.0 * (2.0 / 6.0), delta=0.01)
 
     def test_standstill_delta_freeze(self):
-        """Verify delta is strictly frozen when stationary because no new checkpoint is crossed."""
+        """Verify delta is calculated correctly when stationary."""
         self.engine._track_name = "TestTrack"
         self.engine._track_length = 1000.0
         self.engine._ref_lap_time = 50.0
@@ -360,21 +405,14 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._ref_num_points = 1001
 
         # Car reached checkpoint at 200m in 10.0s (ref_time = 10.0s, delta = 0.0)
-        self.engine._est_dist = 200.0
-        self.engine._est_time_into = 10.0
-        self.engine._last_checkpoint_idx = 200
         self.engine._calculate_delta(200.0, 10.0)
         self.assertEqual(self.engine.live_delta, 0.0)
 
-        # Vehicle stops (speed = 0.0 m/s) -> no new checkpoint crossed
-        self.engine._last_scoring_timestamp = 1000.0
-        self.engine._last_physics_timestamp = 1000.0
+        # Vehicle inputs update at standstill (speed = 0.0 m/s)
         self.engine.update_physics(veh_speed_ms=0.0)
 
-        # Delta must remain frozen at checkpoint value (0.0)
+        # Delta remains unchanged at 0.0
         self.assertEqual(self.engine.live_delta, 0.0)
-        self.assertEqual(self.engine._est_dist, 200.0)
-        self.assertEqual(self.engine._est_time_into, 10.0)
 
     def test_dirty_lap_not_recorded(self):
         """Verify dirty laps (lap_flag == 0) are strictly rejected from becoming reference laps."""
@@ -426,6 +464,74 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertAlmostEqual(self.engine.live_delta, 35.0)
         self.assertAlmostEqual(self.engine.estimated_lap_time, 85.0)
         self.assertEqual(self.engine.estimated_lap_time_str, "1:25.000")
+
+    def test_scoring_elapsed_time_crawl_and_stop(self):
+        """Verify that update_scoring and update_physics use real clock elapsed time (mCurrentET - mLapStartET)."""
+        from src.telemetry.reference_profile import ReferenceLapProfile
+        
+        prof = ReferenceLapProfile(
+            track_name="TestTrack",
+            vehicle_name="TestCar",
+            lap_time=50.0,
+            track_length=1000.0,
+            spatial_step=1.0,
+            num_points=1001,
+            t_grid=[(d / 1000.0) * 50.0 for d in range(1001)],  # 200m -> 10.0s
+        )
+        self.engine._track_name = "TestTrack"
+        self.engine._vehicle_name = "TestCar"
+        self.engine._all_time_best_profile = prof
+        self.engine._all_time_best_lap_time = 50.0
+        self.engine._apply_active_profile()
+
+        scoring_packet = {
+            "mTrackName": "TestTrack",
+            "mLapDist": 1000.0,
+            "mCurrentET": 160.0,  # Lap started at 100.0 -> 60s elapsed in lap
+            "mVehicles": [{
+                "mIsPlayer": True,
+                "mVehicleName": "TestCar",
+                "mLapDist": 200.0,  # Car is at 200m (ref is 10.0s)
+                "mLapStartET": 100.0,
+                "mTimeIntoLap": 10.0,  # Bogus distance-based estimated time from rF2/LMU
+                "mCountLapFlag": 2,
+                "mSector": 1,
+            }]
+        }
+
+        self.engine.update_scoring(scoring_packet)
+        # Real time_into = 160.0 - 100.0 = 60.0s -> delta = 60.0 - 10.0 = +50.0s (MASSIVE DELAY!)
+        self.assertAlmostEqual(self.engine.live_delta, 50.0)
+
+        # Now car is stationary at 200m for 10 more seconds (physics at 170.0s)
+        self.engine.update_physics(
+            veh_speed_ms=0.0,
+            elapsed_time=170.0,
+            lap_start_et=100.0,
+        )
+        # Delta must now be 70.0 - 10.0 = +60.0s!
+        self.assertAlmostEqual(self.engine.live_delta, 60.0)
+
+    def test_truncated_and_out_laps_rejected(self):
+        """Verify that out-laps with lap_time <= 0, partial track coverage, or impossible speed are rejected."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 5000.0
+        self.engine._all_time_best_lap_time = 120.0
+
+        # Case 1: Out-lap with lap_time = -1.0 (from game) and only 100 samples
+        self.engine._current_lap_samples = [(i * 20.0, i * 0.3, 20.0, 1.0, 0.0, 0.0) for i in range(100)]
+        self.engine._finalize_completed_lap(lap_time=-1.0, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine._all_time_best_lap_time, 120.0)
+
+        # Case 2: Physically impossible lap time (35.0s on 5000m track -> > 500 km/h)
+        self.engine._current_lap_samples = [(i * 50.0, i * 0.35, 50.0, 1.0, 0.0, 0.0) for i in range(101)]
+        self.engine._finalize_completed_lap(lap_time=35.0, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine._all_time_best_lap_time, 120.0)
+
+        # Case 3: Incomplete spatial coverage (samples only start at 2000m and end at 3000m)
+        self.engine._current_lap_samples = [(2000.0 + i * 10.0, 50.0 + i * 0.5, 20.0, 1.0, 0.0, 0.0) for i in range(100)]
+        self.engine._finalize_completed_lap(lap_time=110.0, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine._all_time_best_lap_time, 120.0)
 
 
 if __name__ == "__main__":
