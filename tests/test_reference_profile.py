@@ -28,17 +28,19 @@ class TestReferenceProfile(unittest.TestCase):
             num_points=1001,
             t_grid=[(i / 1000.0) * 120.0 for i in range(1001)],
             speed_grid=[20.0 + (i / 1000.0) * 30.0 for i in range(1001)],  # 20 to 50 m/s
+            gear_grid=[int(1 + (i // 150)) for i in range(1001)],          # Gear 1 to 7
             throttle_grid=[(i % 100) / 100.0 for i in range(1001)],
             brake_grid=[1.0 - (i % 100) / 100.0 for i in range(1001)],
             steering_grid=[((i % 200) - 100) / 100.0 for i in range(1001)],
         )
 
     def test_interpolation_at_distance(self):
-        """Test linear O(1) interpolation for all 5 telemetry signals."""
+        """Test linear O(1) interpolation for telemetry signals including gear."""
         vals = self.profile.get_value_at_dist(500.0)
         self.assertAlmostEqual(vals["time_into"], 60.0, places=2)
         self.assertAlmostEqual(vals["speed_ms"], 35.0, places=2)
         self.assertAlmostEqual(vals["speed_kmh"], 35.0 * 3.6, places=2)
+        self.assertEqual(vals["gear"], 4.0)  # 1 + (500 // 150) = 4
         self.assertTrue(0.0 <= vals["throttle"] <= 1.0)
         self.assertTrue(0.0 <= vals["brake"] <= 1.0)
         self.assertTrue(-1.0 <= vals["steering"] <= 1.0)
@@ -139,6 +141,8 @@ class TestReferenceProfile(unittest.TestCase):
             loaded = ReferenceLapProfile.load_from_file(telem_path)
             self.assertIsNotNone(loaded)
             self.assertEqual(loaded.lap_time, self.profile.lap_time)
+            self.assertEqual(len(loaded.gear_grid), len(self.profile.gear_grid))
+            self.assertEqual(loaded.gear_grid, self.profile.gear_grid)
             self.assertEqual(len(loaded.annotations), 2)
             self.assertEqual(loaded.annotations[0].type, AnnotationType.BRAKE)
             self.assertEqual(loaded.annotations[1].type, AnnotationType.GEAR)

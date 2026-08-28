@@ -160,6 +160,8 @@ class TelemetryTab:
                     dpg.add_text("--", tag="lbl_hud_live_car_dist", color=[0, 220, 255, 255])
                     dpg.add_text("| Speed:", color=[180, 180, 180, 255])
                     dpg.add_text("0.0 km/h", tag="lbl_hud_cursor_speed", color=[241, 196, 15, 255])
+                    dpg.add_text("| Gear:", color=[180, 180, 180, 255])
+                    dpg.add_text("N", tag="lbl_hud_cursor_gear", color=[46, 204, 113, 255])
                     dpg.add_text("| Thr:", color=[180, 180, 180, 255])
                     dpg.add_text("0 %", tag="lbl_hud_cursor_thr", color=[46, 204, 113, 255])
                     dpg.add_text("| Brk:", color=[180, 180, 180, 255])
@@ -184,6 +186,7 @@ class TelemetryTab:
                         dpg.set_axis_limits("axis_telem_y_inputs", -105, 360)
 
                         dpg.add_line_series([], [], label="Speed (km/h)", tag="series_telem_speed")
+                        dpg.add_line_series([], [], label="Gear", tag="series_telem_gear")
                         dpg.add_line_series([], [], label="Throttle (%)", tag="series_telem_throttle")
                         dpg.add_line_series([], [], label="Brake (%)", tag="series_telem_brake")
                         dpg.add_line_series([], [], label="Steering (%)", tag="series_telem_steering")
@@ -348,6 +351,10 @@ class TelemetryTab:
             vals = self._profile.get_value_at_dist(d_val)
             if dpg.does_item_exist("lbl_hud_cursor_speed"):
                 dpg.set_value("lbl_hud_cursor_speed", f"{vals['speed_kmh']:.1f} km/h")
+            if dpg.does_item_exist("lbl_hud_cursor_gear"):
+                g = int(vals.get("gear", 0))
+                gear_str = "R" if g == -1 else ("N" if g == 0 else str(g))
+                dpg.set_value("lbl_hud_cursor_gear", gear_str)
             if dpg.does_item_exist("lbl_hud_cursor_thr"):
                 dpg.set_value("lbl_hud_cursor_thr", f"{vals['throttle'] * 100.0:.0f} %")
             if dpg.does_item_exist("lbl_hud_cursor_brk"):
@@ -756,19 +763,25 @@ class TelemetryTab:
         else:
             speed_kmh = [0.0] * num_pts
 
-        # 2. Accélérateur (0 - 100%)
+        # 2. Rapport de boîte (Gear)
+        if self._profile.gear_grid and len(self._profile.gear_grid) == num_pts:
+            gear_data = [float(g) for g in self._profile.gear_grid]
+        else:
+            gear_data = [0.0] * num_pts
+
+        # 3. Accélérateur (0 - 100%)
         if self._profile.throttle_grid and len(self._profile.throttle_grid) == num_pts:
             thr_pct = [t * 100.0 for t in self._profile.throttle_grid]
         else:
             thr_pct = [0.0] * num_pts
 
-        # 3. Frein (0 - 100%)
+        # 4. Frein (0 - 100%)
         if self._profile.brake_grid and len(self._profile.brake_grid) == num_pts:
             brk_pct = [b * 100.0 for b in self._profile.brake_grid]
         else:
             brk_pct = [0.0] * num_pts
 
-        # 4. Volant (-100% à +100%)
+        # 5. Volant (-100% à +100%)
         if self._profile.steering_grid and len(self._profile.steering_grid) == num_pts:
             steer_pct = [s * 100.0 for s in self._profile.steering_grid]
         else:
@@ -776,6 +789,8 @@ class TelemetryTab:
 
         if dpg.does_item_exist("series_telem_speed"):
             dpg.set_value("series_telem_speed", [x_dist, speed_kmh])
+        if dpg.does_item_exist("series_telem_gear"):
+            dpg.set_value("series_telem_gear", [x_dist, gear_data])
         if dpg.does_item_exist("series_telem_throttle"):
             dpg.set_value("series_telem_throttle", [x_dist, thr_pct])
         if dpg.does_item_exist("series_telem_brake"):

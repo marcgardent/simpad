@@ -121,6 +121,7 @@ class DeltaEngine:
         self._last_throttle: float = 0.0
         self._last_brake: float = 0.0
         self._last_steering: float = 0.0
+        self._last_gear: int = 0
 
         # Dernier état de scoring (1-2 Hz)
         self._last_scoring_dist: float = 0.0
@@ -357,6 +358,7 @@ class DeltaEngine:
         throttle: float = 0.0,
         brake: float = 0.0,
         steering: float = 0.0,
+        gear: int = 0,
     ) -> None:
         """SLAP Helper: Collects live lap samples (full telemetry) for reference profile building."""
         if time_into > 0.0 and player_dist >= 0.0:
@@ -369,6 +371,7 @@ class DeltaEngine:
                         throttle,
                         brake,
                         steering,
+                        gear,
                     ))
 
     def update_scoring(self, scoring_js: dict) -> None:
@@ -470,6 +473,7 @@ class DeltaEngine:
                 throttle=self._last_throttle,
                 brake=self._last_brake,
                 steering=self._last_steering,
+                gear=self._last_gear,
             )
 
         self._last_scoring_dist = player_dist
@@ -496,6 +500,7 @@ class DeltaEngine:
         throttle: float = 0.0,
         brake: float = 0.0,
         steering: float = 0.0,
+        gear: int = 0,
         dt: float = 0.0,
         elapsed_time: float = 0.0,
         lap_start_et: float = 0.0,
@@ -508,6 +513,7 @@ class DeltaEngine:
         self._last_throttle = throttle
         self._last_brake = brake
         self._last_steering = steering
+        self._last_gear = gear
 
         if self._last_lap_flag == 2 and self._last_scoring_dist >= 0.0:
             effective_start_et = lap_start_et if lap_start_et > 0.0 else self._last_lap_start_et
@@ -606,10 +612,10 @@ class DeltaEngine:
         self,
         clean_samples: List[Tuple[float, ...]],
         spatial_step: float = 1.0,
-    ) -> Tuple[List[float], List[float], List[float], List[float], List[float], int]:
+    ) -> Tuple[List[float], List[float], List[float], List[float], List[float], List[int], int]:
         """
         SLAP Helper: Construction du profil ré-échantillonné mètre par mètre sur grille spatiale uniforme.
-        Interpole: temps, vitesse, accélérateur, frein, volant.
+        Interpole: temps, vitesse, accélérateur, frein, volant, rapport engagé (gear).
         """
         import bisect
         track_dist = clean_samples[-1][0]
@@ -620,11 +626,15 @@ class DeltaEngine:
         throttle_grid: List[float] = []
         brake_grid: List[float] = []
         steering_grid: List[float] = []
+        gear_grid: List[int] = []
 
         d_keys = [s[0] for s in clean_samples]
 
         def _get_val(sample_tuple, idx, default=0.0):
             return sample_tuple[idx] if len(sample_tuple) > idx else default
+
+        def _get_gear_val(sample_tuple, idx, default=0):
+            return int(round(sample_tuple[idx])) if len(sample_tuple) > idx else default
 
         for i in range(num_points):
             target_d = i * spatial_step
@@ -637,6 +647,7 @@ class DeltaEngine:
                 throttle_grid.append(_get_val(s, 3, 0.0))
                 brake_grid.append(_get_val(s, 4, 0.0))
                 steering_grid.append(_get_val(s, 5, 0.0))
+                gear_grid.append(_get_gear_val(s, 6, 0))
             elif idx >= len(clean_samples):
                 s = clean_samples[-1]
                 t_grid.append(s[1])
@@ -644,6 +655,7 @@ class DeltaEngine:
                 throttle_grid.append(_get_val(s, 3, 0.0))
                 brake_grid.append(_get_val(s, 4, 0.0))
                 steering_grid.append(_get_val(s, 5, 0.0))
+                gear_grid.append(_get_gear_val(s, 6, 0))
             else:
                 s1 = clean_samples[idx - 1]
                 s2 = clean_samples[idx]
@@ -665,7 +677,10 @@ class DeltaEngine:
                 str1, str2 = _get_val(s1, 5, 0.0), _get_val(s2, 5, 0.0)
                 steering_grid.append(str1 + frac * (str2 - str1))
 
-        return t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, num_points
+                g1, g2 = _get_gear_val(s1, 6, 0), _get_gear_val(s2, 6, 0)
+                gear_grid.append(g1 if frac < 0.5 else g2)
+
+        return t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, gear_grid, num_points
 
     def _finalize_completed_lap(
         self,
@@ -746,6 +761,7 @@ class DeltaEngine:
                 first_s[3] if len(first_s) > 3 else 0.0,
                 first_s[4] if len(first_s) > 4 else 0.0,
                 first_s[5] if len(first_s) > 5 else 0.0,
+                first_s[6] if len(first_s) > 6 else 0,
             ))
 
         # Extrapolation automatique du point de fin (track_length, lap_time) si absent
@@ -758,10 +774,11 @@ class DeltaEngine:
                 last_s[3] if len(last_s) > 3 else 0.0,
                 last_s[4] if len(last_s) > 4 else 0.0,
                 last_s[5] if len(last_s) > 5 else 0.0,
+                last_s[6] if len(last_s) > 6 else 0,
             ))
 
         spatial_step = 1.0
-        t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, num_points = self._resample_spatial_grid(
+        t_grid, speed_grid, throttle_grid, brake_grid, steering_grid, gear_grid, num_points = self._resample_spatial_grid(
             clean_samples,
             spatial_step=spatial_step,
         )
@@ -802,6 +819,7 @@ class DeltaEngine:
             num_points=num_points,
             t_grid=t_grid,
             speed_grid=speed_grid,
+            gear_grid=gear_grid,
             throttle_grid=throttle_grid,
             brake_grid=brake_grid,
             steering_grid=steering_grid,

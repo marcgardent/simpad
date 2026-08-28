@@ -436,6 +436,9 @@ class LMUParser:
             if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
                 cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
 
+            if "mGear" in js or "gear" in js:
+                cls._last_gear = int(js["mGear"]) if "mGear" in js else int(js["gear"])
+
             phys_dt = float(js.get("mDeltaTime", js.get("deltaTime", 0.0)))
             elapsed_time = float(js.get("mElapsedTime", js.get("elapsedTime", 0.0)))
             lap_start_et = float(js.get("mLapStartET", js.get("lapStartET", 0.0)))
@@ -445,6 +448,7 @@ class LMUParser:
                 throttle=cls._last_unfiltered_throttle,
                 brake=cls._last_unfiltered_brake,
                 steering=cls._last_unfiltered_steering,
+                gear=cls._last_gear,
                 dt=phys_dt,
                 elapsed_time=elapsed_time,
                 lap_start_et=lap_start_et,

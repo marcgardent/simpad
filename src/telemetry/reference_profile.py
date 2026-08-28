@@ -231,6 +231,7 @@ class ReferenceLapProfile:
     throttle_grid: List[float] = field(default_factory=list)     # Accélérateur [0.0 - 1.0]
     brake_grid: List[float] = field(default_factory=list)        # Frein [0.0 - 1.0]
     steering_grid: List[float] = field(default_factory=list)     # Volant [-1.0 - 1.0]
+    gear_grid: List[int] = field(default_factory=list)           # Rapport de boîte (0=N, -1=R, 1..8)
     annotations: List[TrackAnnotation] = field(default_factory=list)
     _marks_filepath: Optional[Path] = None
 
@@ -392,16 +393,23 @@ class ReferenceLapProfile:
             v2 = grid[idx2] if idx2 < len(grid) else v1
             return v1 + frac * (v2 - v1)
 
+        def _get_gear(grid: List[int], default: int = 0) -> int:
+            if not grid or idx1 >= len(grid):
+                return default
+            return int(grid[idx1] if frac < 0.5 else (grid[idx2] if idx2 < len(grid) else grid[idx1]))
+
         t_val = _interp(self.t_grid, 0.0)
         v_ms = _interp(self.speed_grid, 0.0)
         thr = _interp(self.throttle_grid, 0.0)
         brk = _interp(self.brake_grid, 0.0)
         steer = _interp(self.steering_grid, 0.0)
+        gear_val = _get_gear(self.gear_grid, 0)
 
         return {
             "time_into": t_val,
             "speed_ms": v_ms,
             "speed_kmh": v_ms * 3.6,
+            "gear": float(gear_val),
             "throttle": thr,
             "brake": brk,
             "steering": steer,
@@ -420,6 +428,7 @@ class ReferenceLapProfile:
             "num_points": int(self.num_points),
             "t_grid": [round(x, 4) for x in self.t_grid],
             "speed_grid": [round(x, 3) for x in self.speed_grid],
+            "gear_grid": [int(x) for x in self.gear_grid],
             "throttle_grid": [round(x, 3) for x in self.throttle_grid],
             "brake_grid": [round(x, 3) for x in self.brake_grid],
             "steering_grid": [round(x, 4) for x in self.steering_grid],
@@ -497,6 +506,7 @@ class ReferenceLapProfile:
             num_pts = len(t_grid) if t_grid else int(data.get("num_points", 0))
 
             speed_grid = [float(x) for x in data.get("speed_grid", [])]
+            gear_grid = [int(x) for x in data.get("gear_grid", [])]
             throttle_grid = [float(x) for x in data.get("throttle_grid", [])]
             brake_grid = [float(x) for x in data.get("brake_grid", [])]
             steering_grid = [float(x) for x in data.get("steering_grid", [])]
@@ -511,6 +521,7 @@ class ReferenceLapProfile:
                 num_points=num_pts,
                 t_grid=t_grid,
                 speed_grid=speed_grid,
+                gear_grid=gear_grid,
                 throttle_grid=throttle_grid,
                 brake_grid=brake_grid,
                 steering_grid=steering_grid,
