@@ -409,6 +409,44 @@ class NodeUIFactory:
         recompile_cb()
         return node_tag
 
+    def add_node_sensor_ecu_abs(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 520.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_ecu_abs_{nid}"
+        out_tag = f"attr_out_dyn_ecu_abs_{nid}"
+
+        with dpg.node(label=f"Input: Car ECU ABS Active #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Car ABS Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+                dpg.add_text("Car ECU ABS Active", color=[255, 100, 100, 255])
+
+        self.apply_pin_theme(out_tag, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_ecu_abs",
+            "out_attr": out_tag,
+        }
+        recompile_cb()
+        return node_tag
+
+    def add_node_sensor_ecu_tc(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 600.0)) -> str:
+        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
+        nid = self.get_next_nid(custom_nodes)
+        node_tag = f"dynamic_node_sensor_ecu_tc_{nid}"
+        out_tag = f"attr_out_dyn_ecu_tc_{nid}"
+
+        with dpg.node(label=f"Input: Car ECU TC Active #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Car TC Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+                dpg.add_text("Car ECU TC Active", color=[100, 200, 255, 255])
+
+        self.apply_pin_theme(out_tag, "normalized")
+
+        custom_nodes[node_tag] = {
+            "type": "sensor_ecu_tc",
+            "out_attr": out_tag,
+        }
+        recompile_cb()
+        return node_tag
+
     def add_node_output_xinput(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(580.0, 120.0)) -> str:
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)

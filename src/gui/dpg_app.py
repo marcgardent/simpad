@@ -615,8 +615,33 @@ class SimPadDPGApp:
                 grip_val=sensors.grip_intensity,
                 grip_l=sensors.grip_left,
                 grip_r=sensors.grip_right,
+                ecu_abs=sensors.ecu_abs_active,
+                ecu_tc=sensors.ecu_tc_active,
                 in_realtime=sensors.in_realtime,
             )
+
+        # Update Node Editor sidebar live sliders to reflect actual telemetry in real-time
+        if dpg.does_item_exist("test_sensor_abs_l"):
+            dpg.set_value("test_sensor_abs_l", sensors.lock_left)
+            dpg.set_value("test_sensor_abs_r", sensors.lock_right)
+            dpg.set_value("test_sensor_tc_l", sensors.spin_left)
+            dpg.set_value("test_sensor_tc_r", sensors.spin_right)
+            dpg.set_value("test_sensor_over_l", sensors.oversteer_left)
+            dpg.set_value("test_sensor_over_r", sensors.oversteer_right)
+            dpg.set_value("test_sensor_und_l", sensors.understeer_left)
+            dpg.set_value("test_sensor_und_r", sensors.understeer_right)
+            dpg.set_value("test_sensor_over_rev", sensors.overrev_intensity)
+            dpg.set_value("test_sensor_under_rev", sensors.underrev_intensity)
+            dpg.set_value("test_sensor_rpm", sensors.rpm_ratio)
+            dpg.set_value("test_sensor_gear", float(sensors.gear))
+            dpg.set_value("test_sensor_travel_l", sensors.travel_left)
+            dpg.set_value("test_sensor_travel_r", sensors.travel_right)
+            dpg.set_value("test_sensor_grip_l", sensors.grip_left)
+            dpg.set_value("test_sensor_grip_r", sensors.grip_right)
+            if dpg.does_item_exist("test_sensor_ecu_abs"):
+                dpg.set_value("test_sensor_ecu_abs", sensors.ecu_abs_active)
+            if dpg.does_item_exist("test_sensor_ecu_tc"):
+                dpg.set_value("test_sensor_ecu_tc", sensors.ecu_tc_active)
 
         al, ar, bgl, bgr = data.longitudinal_patch_vel
         cll, clr, crl, crr = data.lateral_patch_vel
@@ -630,8 +655,8 @@ class SimPadDPGApp:
         else:
             self._t.append(now)
 
-        self._d_abs.append(sensors.lock_intensity)
-        self._d_tc.append(sensors.spin_intensity)
+        self._d_abs.append(max(sensors.ecu_abs_active, sensors.lock_intensity))
+        self._d_tc.append(max(sensors.ecu_tc_active, sensors.spin_intensity))
         self._d_over.append(sensors.oversteer_intensity)
         self._d_und.append(sensors.understeer_intensity)
         self._d_over_rev.append(sensors.overrev_intensity)

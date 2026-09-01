@@ -254,6 +254,14 @@ wheels = [
 ]
 
 [[package]]
+name = "isimotor-rawudp-client"
+version = "0.1.3"
+source = { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.1.3/isimotor_rawudp_client-0.1.3-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.1.3/isimotor_rawudp_client-0.1.3-py3-none-any.whl", hash = "sha256:a928c92a29dc0407392d1f8332c7c0cef37c3e4ef33554fb1ecc8395b6e25d2e" },
+]
+
+[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -605,6 +613,7 @@ dependencies = [
     { name = "dearpygui" },
     { name = "glfw" },
     { name = "imgui-bundle" },
+    { name = "isimotor-rawudp-client" },
     { name = "numpy" },
     { name = "piper-tts" },
     { name = "pyside6" },
@@ -627,6 +636,7 @@ requires-dist = [
     { name = "dearpygui", specifier = ">=2.3.1" },
     { name = "glfw", specifier = ">=2.7.0" },
     { name = "imgui-bundle", specifier = ">=1.92.900" },
+    { name = "isimotor-rawudp-client", url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.1.3/isimotor_rawudp_client-0.1.3-py3-none-any.whl" },
     { name = "numpy", specifier = ">=2.5.2" },
     { name = "piper-tts", specifier = ">=1.2.0" },
     { name = "pyside6", specifier = ">=6.11.2" },

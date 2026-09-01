@@ -1,32 +1,28 @@
 """
-SimPad Telemetry — LMU Telemetry Parser mapped precisely to LeMansUltimateTelemetryPlugin Spec.
-
-Spec reference (from plugin documentation):
-TelemInfoV01:
-- mDeltaTime: Delta time in seconds (+/-)
-- mFuel: Remaining fuel in liters
-- mFrontDownforce, mRearDownforce: Aerodynamic downforce
-- mUnfilteredThrottle, mUnfilteredBrake: Pedal inputs
-- mGear, mEngineRPM, mEngineMaxRPM: Engine telemetry
-
-ScoringInfoV01:
-- mMaxLaps: Session max laps
-- mVehicles -> player_veh (mIsPlayer == True):
-    - mTotalLaps: Laps completed
-    - mCurSector1, mCurSector2: Current sector times
-    - mLastSector1, mLastSector2, mLastLapTime: Last lap sector & total times
-    - mBestSector1, mBestSector2, mBestLapTime: Personal best sector & lap times
+SimPad Telemetry — Standard ISI/LMU Binary Telemetry Parser.
+Exclusively implements the official binary SIMP standard protocol via isimotor_rawudp_client.
 """
 
-import json
-import math
-import struct
-import logging
 from dataclasses import dataclass
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, Any, Union
+import logging
+
+from isimotor_rawudp_client import (
+    TelemInfo,
+    TelemWheel,
+    CompactScoring,
+    FullScoringSession,
+    VehicleScoring,
+    SystemEvent,
+    ExtendedState,
+    ForceFeedback,
+    Graphics,
+    WeatherControl,
+    decode_packet,
+)
 
 from src.telemetry.sensors import VehicleSensors
-from src.telemetry.delta_engine import DeltaEngine, log_delta_debug
+from src.telemetry.delta_engine import DeltaEngine
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +41,6 @@ def format_time_sec(seconds: float) -> str:
 
 @dataclass
 class TelemetryData:
-
     """Représentation structurée de la télémétrie décodée."""
     longitudinal_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     longitudinal_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
@@ -60,7 +55,6 @@ class TelemetryData:
     unfiltered_steering: float = 0.0
     in_realtime: bool = True
     gear: int = 0
-    # Additional telemetry & scoring fields bound to HUD
     fuel: float = 0.0
     total_laps: int = 0
     laps_completed: int = 0
@@ -81,9 +75,35 @@ class TelemetryData:
     lap_flag: int = 2
     has_delta_reference: bool = False
     is_pit_lap: bool = False
-    raw_scoring: Optional[dict] = None
+    grip_fractions: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
+    raw_telemetry: Optional[TelemInfo] = None
 
     def to_sensors(self) -> VehicleSensors:
+        if self.raw_telemetry is not None:
+            return VehicleSensors.from_telem_info(
+                telem=self.raw_telemetry,
+                scoring=self.raw_scoring,
+                delta_time=self.delta_time,
+                estimated_lap_time=self.estimated_lap_time,
+                estimated_lap_time_str=self.estimated_lap_time_str,
+                sector1_time=self.sector1_time,
+                sector1_status=self.sector1_status,
+                sector2_time=self.sector2_time,
+                sector2_status=self.sector2_status,
+                sector3_time=self.sector3_time,
+                sector3_status=self.sector3_status,
+                explicit_aero_load=self.aero_downforce,
+                current_sector=self.current_sector,
+                sector1_delta=self.sector1_delta,
+                sector2_delta=self.sector2_delta,
+                sector3_delta=self.sector3_delta,
+                lap_flag=self.lap_flag,
+                has_delta_reference=self.has_delta_reference,
+                is_pit_lap=self.is_pit_lap,
+                in_realtime=self.in_realtime,
+            )
+
         remaining = max(0, self.total_laps - self.laps_completed) if (self.total_laps > 0 and self.total_laps < 1000) else 0
         return VehicleSensors.from_wheel_velocities(
             self.longitudinal_patch_vel,
@@ -117,19 +137,15 @@ class TelemetryData:
             lap_flag=self.lap_flag,
             has_delta_reference=self.has_delta_reference,
             is_pit_lap=self.is_pit_lap,
+            grip_fractions=self.grip_fractions,
         )
-
-
 
 
 class LMUParser:
     """
-    Décodeur de paquets UDP JSON pour Le Mans Ultimate Telemetry Plugin.
-    Conforme à la spécification LeMansUltimateTelemetryPlugin (TelemInfoV01 & ScoringInfoV01).
+    Décodeur standard de paquets UDP binaires SIMP (isiMotor-RawUDP / Le Mans Ultimate).
     """
 
-    PACKET_FORMAT = "<8f"
-    PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
     _last_in_realtime: bool = True
     _in_garage_trap: bool = False
 
@@ -160,71 +176,43 @@ class LMUParser:
     _last_lat_pv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lat_gv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_travels: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_grips: tuple = (1.0, 1.0, 1.0, 1.0)
     _last_susp_vels: tuple = (0.0, 0.0, 0.0, 0.0)
 
     _last_current_sector: int = 1
     _last_sector1_delta: float = 0.0
     _last_sector2_delta: float = 0.0
     _last_sector3_delta: float = 0.0
-    _s1_checkpoint_delta: float = 0.0
-    _s2_checkpoint_delta: float = 0.0
     _last_lap_flag: int = 2
-    _last_scoring_json: Optional[dict] = None
+
+    # Cached domain models from isimotor_rawudp_client
+    _last_telem_info: Optional[TelemInfo] = None
+    _last_compact_scoring: Optional[CompactScoring] = None
+    _last_full_scoring: Optional[FullScoringSession] = None
+    _last_extended_state: Optional[ExtendedState] = None
+    _last_weather: Optional[WeatherControl] = None
+    _last_ffb: Optional[ForceFeedback] = None
+    _last_graphics: Optional[Graphics] = None
 
     @classmethod
-    def get_latest_scoring(cls) -> Optional[dict]:
-        """Retourne le dernier paquet ScoringInfoV01 reçu."""
-        return cls._last_scoring_json
-
-
-    # Live lap reference spline recorder
-    _best_lap_samples: List[Tuple[float, float]] = []
-    _current_lap_samples: List[Tuple[float, float]] = []
-    _last_recorded_lap_num: int = -1
-    _best_lap_time_val: float = 999999.0
-
-    ENABLE_DISK_DUMP: bool = False
+    def get_latest_scoring(cls) -> Optional[Union[FullScoringSession, CompactScoring]]:
+        """Retourne le dernier paquet de scoring reçu."""
+        return cls._last_full_scoring or cls._last_compact_scoring
 
     @classmethod
-    def _dump_to_file(cls, js: dict) -> None:
-        """Enregistre le paquet JSON brut si le dump est activé."""
-        # TODO [SLAP]: File dumping operations mixed with telemetry parser logic.
-        if not cls.ENABLE_DISK_DUMP:
-            return
-        try:
-            from pathlib import Path
-            project_root = Path(__file__).resolve().parent.parent.parent
-            dump_file = project_root / "telemetry_dump.jsonl"
-            with open(dump_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(js) + "\n")
-        except Exception as e:
-            logger.debug(f"[LMUParser] Error dumping telemetry: {e}")
+    def get_latest_full_scoring(cls) -> Optional[FullScoringSession]:
+        """Retourne la dernière session multi-voitures FullScoringSession reçue."""
+        return cls._last_full_scoring
 
     @classmethod
-    def _dump_scoring_to_file(cls, js: dict) -> None:
-        """Enregistre le paquet ScoringInfoV01 brut si le dump est activé."""
-        if not cls.ENABLE_DISK_DUMP:
-            return
-        try:
-            from pathlib import Path
-            project_root = Path(__file__).resolve().parent.parent.parent
-            dump_file = project_root / "scoring_dump.json"
-            dump_file.write_text(json.dumps(js, indent=2), encoding="utf-8")
-        except Exception as e:
-            logger.debug(f"[LMUParser] Error dumping scoring: {e}")
+    def get_latest_compact_scoring(cls) -> Optional[CompactScoring]:
+        """Retourne le dernier paquet CompactScoring reçu."""
+        return cls._last_compact_scoring
 
     @classmethod
-    def _extract_player_vehicle(cls, vehicles: list) -> Optional[dict]:
-        """Extracts the player vehicle dictionary from the vehicle list (DRY helper)."""
-        if not isinstance(vehicles, list):
-            return None
-        for v in vehicles:
-            if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
-                return v
-        for v in vehicles:
-            if isinstance(v, dict) and v.get("mControl") == 0:
-                return v
-        return None
+    def get_latest_telemetry_info(cls) -> Optional[TelemInfo]:
+        """Retourne le dernier paquet TelemInfo reçu."""
+        return cls._last_telem_info
 
     @classmethod
     def _calculate_sector_status(cls, val: float, best_val: float, session_best: float) -> str:
@@ -237,37 +225,32 @@ class LMUParser:
 
     @classmethod
     def _calculate_session_bests(cls, vehicles: list) -> Tuple[float, float, float]:
-        """SLAP Helper: Computes session best sector 1, individual sector 2, and individual sector 3 times."""
+        """Computes session best sector 1, individual sector 2, and individual sector 3 times."""
         s1, s2_indiv, s3_indiv = 999999.0, 999999.0, 999999.0
-        if not isinstance(vehicles, list):
-            return s1, s2_indiv, s3_indiv
-
         for v in vehicles:
-            if isinstance(v, dict):
-                bs1 = float(v.get("mBestSector1", -1.0))
-                bs2 = float(v.get("mBestSector2", -1.0))
-                blap = float(v.get("mBestLapTime", -1.0))
+            bs1 = float(getattr(v, "best_sector1", -1.0))
+            bs2 = float(getattr(v, "best_sector2", -1.0))
+            blap = float(getattr(v, "best_lap_time", -1.0))
 
-                if 0.0 < bs1 < s1:
-                    s1 = bs1
-                if 0.0 < bs1 and 0.0 < bs2 and (bs2 - bs1) > 0.0:
-                    if (bs2 - bs1) < s2_indiv:
-                        s2_indiv = bs2 - bs1
-                if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
-                    if (blap - bs2) < s3_indiv:
-                        s3_indiv = blap - bs2
+            if 0.0 < bs1 < s1:
+                s1 = bs1
+            if 0.0 < bs1 and 0.0 < bs2 and (bs2 - bs1) > 0.0:
+                if (bs2 - bs1) < s2_indiv:
+                    s2_indiv = bs2 - bs1
+            if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
+                if (blap - bs2) < s3_indiv:
+                    s3_indiv = blap - bs2
 
         return s1, s2_indiv, s3_indiv
 
     @classmethod
-    def _update_player_sector_times(cls, player_veh: dict, session_bests: Tuple[float, float, float]) -> None:
-        """SLAP Helper: Formats sector times and assigns purple/green/default status colors for player vehicle."""
+    def _update_player_sector_times_from_model(cls, player_veh: VehicleScoring, session_bests: Tuple[float, float, float]) -> None:
+        """Formats sector times from typed VehicleScoring model."""
         session_best_s1, session_best_s2_indiv, session_best_s3_indiv = session_bests
 
-        # Sector 1
-        cur_s1 = float(player_veh.get("mCurSector1", -1.0))
-        last_s1 = float(player_veh.get("mLastSector1", -1.0))
-        best_s1 = float(player_veh.get("mBestSector1", -1.0))
+        cur_s1 = float(player_veh.cur_sector1)
+        last_s1 = float(player_veh.last_sector1)
+        best_s1 = float(player_veh.best_sector1)
 
         if cur_s1 > 0.0:
             cls._last_sector1_time = format_time_sec(cur_s1)
@@ -276,10 +259,9 @@ class LMUParser:
             cls._last_sector1_time = format_time_sec(last_s1)
             cls._last_sector1_status = cls._calculate_sector_status(last_s1, best_s1, session_best_s1)
 
-        # Sector 2
-        cur_s2 = float(player_veh.get("mCurSector2", -1.0))
-        last_s2 = float(player_veh.get("mLastSector2", -1.0))
-        best_s2 = float(player_veh.get("mBestSector2", -1.0))
+        cur_s2 = float(player_veh.cur_sector2)
+        last_s2 = float(player_veh.last_sector2)
+        best_s2 = float(player_veh.best_sector2)
 
         if cur_s2 > 0.0 and cur_s1 > 0.0:
             indiv_s2 = cur_s2 - cur_s1
@@ -294,9 +276,8 @@ class LMUParser:
                 cls._last_sector2_time = format_time_sec(indiv_s2)
                 cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
 
-        # Sector 3
-        last_lap = float(player_veh.get("mLastLapTime", -1.0))
-        best_lap = float(player_veh.get("mBestLapTime", -1.0))
+        last_lap = float(player_veh.last_lap_time)
+        best_lap = float(player_veh.best_lap_time)
 
         if last_lap > 0.0 and last_s2 > 0.0:
             indiv_s3 = last_lap - last_s2
@@ -306,190 +287,182 @@ class LMUParser:
                 cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
 
     @classmethod
-    def _parse_json_scoring(cls, js: dict) -> TelemetryData:
-        """Parses ScoringInfoV01 packets (SLAP/KISS/SRP helper, CCN < 8)."""
-        cls._dump_scoring_to_file(js)
-        cls._last_scoring_json = js
+    def process_telemetry(cls, telem: TelemInfo) -> TelemetryData:
+        """Traite un paquet binaire TelemInfo issu de isimotor_rawudp_client."""
+        cls._last_telem_info = telem
+        cls._last_fuel = telem.fuel
 
-        in_rt_top = js.get("mInRealtime", js.get("inRealtime", False))
-        is_in_realtime = bool(in_rt_top != 0 and in_rt_top is not False)
+        f_df = abs(float(telem.front_downforce))
+        r_df = abs(float(telem.rear_downforce))
+        cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
 
-        max_laps = int(js.get("mMaxLaps", js.get("maxLaps", 0)))
-        if 0 < max_laps < 1000:
-            cls._last_total_laps = max_laps
+        wheels = telem.wheels
+        if wheels and len(wheels) >= 4:
+            cls._last_lpv = tuple(float(w.longitudinal_patch_vel) for w in wheels[:4])
+            cls._last_lgv = tuple(float(w.longitudinal_ground_vel) for w in wheels[:4])
+            cls._last_lat_pv = tuple(float(w.lateral_patch_vel) for w in wheels[:4])
+            cls._last_lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
+            raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
+            cls._last_travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
+            cls._last_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
+            cls._last_susp_vels = (0.0, 0.0, 0.0, 0.0)
 
-        vehicles = js.get("mVehicles", [])
-        session_bests = cls._calculate_session_bests(vehicles)
-        player_veh = cls._extract_player_vehicle(vehicles)
+        cls._last_unfiltered_throttle = float(telem.unfiltered_throttle)
+        cls._last_unfiltered_brake = float(telem.unfiltered_brake)
+        cls._last_unfiltered_steering = float(telem.unfiltered_steering)
+        cls._last_gear = int(telem.gear)
+        cls._last_engine_rpm = float(telem.engine_rpm)
+        cls._last_engine_max_rpm = float(telem.engine_max_rpm) if telem.engine_max_rpm > 1000.0 else 7500.0
 
-        cls._in_garage_trap = False
-        if player_veh:
-            in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
-            ctrl = player_veh.get("mControl", 0)
-            if in_garage or ctrl != 0:
-                is_in_realtime = False
-                cls._in_garage_trap = True
-
-            if "mTotalLaps" in player_veh:
-                cls._last_laps_completed = int(player_veh["mTotalLaps"])
-
-            if "mCountLapFlag" in player_veh:
-                cls._last_lap_flag = int(player_veh["mCountLapFlag"])
-            elif "countLapFlag" in player_veh:
-                cls._last_lap_flag = int(player_veh["countLapFlag"])
-
-            cls._update_player_sector_times(player_veh, session_bests)
-
-            cls._delta_engine.update_scoring(js)
-            cls._last_delta_time = cls._delta_engine.display_delta
-            cls._last_sector1_delta = cls._delta_engine.sector1_delta
-            cls._last_sector2_delta = cls._delta_engine.sector2_delta
-            cls._last_sector3_delta = cls._delta_engine.sector3_delta
-            raw_sec = int(player_veh.get("mSector", 1))
-            cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
-
-        cls._last_in_realtime = is_in_realtime
-        snap = cls._build_telemetry_snapshot()
-        sensors = snap.to_sensors()
-        log_delta_debug(
-            f"[HUD_SNAPSHOT] delta_time={sensors.delta_time:+.3f}s, str='{sensors.delta_time_str}', "
-            f"has_ref={sensors.has_delta_reference}, flag={sensors.lap_flag}, in_rt={sensors.in_realtime}, "
-            f"is_pit={sensors.is_pit_lap}"
+        cls._delta_engine.update_physics(
+            veh_speed_ms=telem.speed_mps,
+            throttle=telem.unfiltered_throttle,
+            brake=telem.unfiltered_brake,
+            steering=telem.unfiltered_steering,
+            gear=telem.gear,
+            dt=telem.delta_time,
+            elapsed_time=telem.elapsed_time,
+            lap_start_et=telem.lap_start_et,
         )
-        return snap
+        cls._last_delta_time = cls._delta_engine.display_delta
+        cls._last_sector1_delta = cls._delta_engine.sector1_delta
+        cls._last_sector2_delta = cls._delta_engine.sector2_delta
+        cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
-    @classmethod
-    def _extract_wheel_velocities(cls, wheels: list, veh_speed: float):
-        """SLAP Helper: Computes wheel longitudinal, lateral, suspension travel and velocity vectors."""
-        def _get_ground_vel(w: dict, default_speed: float) -> float:
-            for k in ("mLongitudinalGroundVel", "longitudinalGroundVel", "mGroundSpeed", "groundSpeed"):
-                if k in w:
-                    return float(w[k])
-            return default_speed
+        # Détection automatique de reprise en piste active
+        speed = float(telem.speed_mps) if hasattr(telem, "speed_mps") else 0.0
+        if speed > 0.5 or int(telem.gear) > 0 or float(telem.unfiltered_throttle) > 0.05 or float(telem.unfiltered_brake) > 0.05:
+            cls._in_garage_trap = False
+            cls._last_in_realtime = True
 
-        def _get_patch_vel(w: dict, default_speed: float, ground_v: float) -> float:
-            if "mRotation" in w and "mUnloadedRadius" in w:
-                r = float(w["mUnloadedRadius"]) if float(w.get("mUnloadedRadius", 0)) > 0.05 else 0.33
-                return float(w["mRotation"]) * r
-            for k in ("mLongitudinalPatchVel", "longitudinalPatchVel", "mWheelSpeed", "wheelSpeed"):
-                if k in w:
-                    val = float(w[k])
-                    if val == 0.0 and abs(ground_v) > 0.5:
-                        return 0.0
-                    if abs(ground_v) > 0.5 and abs(abs(val) - abs(ground_v)) < 0.3 * abs(ground_v):
-                        return val
-                    if abs(ground_v) > 0.5 and 0.0 < abs(val) < 0.5 * abs(ground_v):
-                        return ground_v
-                    return val
-            return ground_v if abs(ground_v) > 0.1 else default_speed
-
-        lgv = tuple(_get_ground_vel(w, veh_speed) for w in wheels[:4])
-        lpv = tuple(_get_patch_vel(w, veh_speed, lgv[i]) for i, w in enumerate(wheels[:4]))
-        lat_pv = tuple(float(w.get("mLateralPatchVel", w.get("lateralPatchVel", 0.0))) for w in wheels[:4])
-        lat_gv = tuple(float(w.get("mLateralGroundVel", w.get("lateralGroundVel", 0.0))) for w in wheels[:4])
-        raw_deflections = tuple(float(w.get("mSuspensionDeflection", w.get("suspensionDeflection", 0.0))) for w in wheels[:4])
-        travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
-        susp_vels = tuple(abs(float(w.get("mSuspensionVelocity", w.get("suspensionVelocity", 0.0)))) for w in wheels[:4])
-
-        return lpv, lgv, lat_pv, lat_gv, travels, susp_vels
-
-    @classmethod
-    def _determine_realtime_status(cls, js: dict) -> bool:
-        """SLAP Helper: Determines if game engine is currently driving in active realtime."""
-        if "mInRealtime" in js or "inRealtime" in js:
-            in_rt_val = js.get("mInRealtime", js.get("inRealtime", None))
-            if in_rt_val is not None:
-                in_rt_flag = bool(in_rt_val != 0 and in_rt_val is not False)
-                cls._in_garage_trap = not in_rt_flag
-                cls._last_in_realtime = in_rt_flag
-                return in_rt_flag
-
-        return False if cls._in_garage_trap else cls._last_in_realtime
-
-    @classmethod
-    def _parse_json_telemetry(cls, js: dict) -> TelemetryData:
-        """Parses TelemInfoV01 packets (SLAP/KISS helper, CCN < 6)."""
-        if "mFuel" in js:
-            cls._last_fuel = float(js["mFuel"])
-
-        if "mFrontDownforce" in js and "mRearDownforce" in js:
-            f_df = abs(float(js["mFrontDownforce"]))
-            r_df = abs(float(js["mRearDownforce"]))
-            cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
-
-        wheels = js.get("mWheel") or js.get("wheels") or []
-        if isinstance(wheels, list) and len(wheels) >= 4:
-            vel = js.get("mLocalVel")
-            if isinstance(vel, dict) and any(k in vel for k in ("x", "y", "z")):
-                vx = float(vel.get("x", 0.0))
-                vy = float(vel.get("y", 0.0))
-                vz = float(vel.get("z", 0.0))
-                veh_speed = math.sqrt(vx * vx + vy * vy + vz * vz)
-            elif isinstance(vel, (list, tuple)) and len(vel) >= 3:
-                veh_speed = math.sqrt(float(vel[0])**2 + float(vel[1])**2 + float(vel[2])**2)
-            else:
-                veh_speed = float(js.get("mSpeed", js.get("speed", 0.0)))
-
-            if any(k in js for k in ("mUnfilteredThrottle", "mThrottle", "unfilteredThrottle", "throttle")):
-                cls._last_unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
-
-            if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
-                cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
-
-            if "mGear" in js or "gear" in js:
-                cls._last_gear = int(js["mGear"]) if "mGear" in js else int(js["gear"])
-
-            phys_dt = float(js.get("mDeltaTime", js.get("deltaTime", 0.0)))
-            elapsed_time = float(js.get("mElapsedTime", js.get("elapsedTime", 0.0)))
-            lap_start_et = float(js.get("mLapStartET", js.get("lapStartET", 0.0)))
-
-            cls._delta_engine.update_physics(
-                veh_speed,
-                throttle=cls._last_unfiltered_throttle,
-                brake=cls._last_unfiltered_brake,
-                steering=cls._last_unfiltered_steering,
-                gear=cls._last_gear,
-                dt=phys_dt,
-                elapsed_time=elapsed_time,
-                lap_start_et=lap_start_et,
-            )
-            cls._last_delta_time = cls._delta_engine.display_delta
-            cls._last_sector1_delta = cls._delta_engine.sector1_delta
-            cls._last_sector2_delta = cls._delta_engine.sector2_delta
-            cls._last_sector3_delta = cls._delta_engine.sector3_delta
-
-            lpv, lgv, lat_pv, lat_gv, travels, susp_vels = cls._extract_wheel_velocities(wheels, veh_speed)
-            cls._last_lpv = lpv
-            cls._last_lgv = lgv
-            cls._last_lat_pv = lat_pv
-            cls._last_lat_gv = lat_gv
-            cls._last_travels = travels
-            cls._last_susp_vels = susp_vels
-
-        if "mEngineRPM" in js or "engineRPM" in js:
-            cls._last_engine_rpm = float(js.get("mEngineRPM", js.get("engineRPM", 0.0)))
-        if "mEngineMaxRPM" in js or "engineMaxRPM" in js:
-            cls._last_engine_max_rpm = float(js.get("mEngineMaxRPM", js.get("engineMaxRPM", 7500.0)))
-
-        cls._last_in_realtime = cls._determine_realtime_status(js)
-
-        if "mGear" in js or "gear" in js:
-            cls._last_gear = int(js["mGear"]) if "mGear" in js else int(js["gear"])
-
-        if any(k in js for k in ("mUnfilteredThrottle", "mThrottle", "unfilteredThrottle", "throttle")):
-            cls._last_unfiltered_throttle = float(js.get("mUnfilteredThrottle", js.get("mThrottle", js.get("unfilteredThrottle", js.get("throttle", 0.0)))))
-
-        if any(k in js for k in ("mUnfilteredBrake", "mBrake", "unfilteredBrake", "brake")):
-            cls._last_unfiltered_brake = float(js.get("mUnfilteredBrake", js.get("mBrake", js.get("unfilteredBrake", js.get("brake", 0.0)))))
-
-        if any(k in js for k in ("mUnfilteredSteering", "mSteering", "unfilteredSteering", "steering")):
-            cls._last_unfiltered_steering = float(js.get("mUnfilteredSteering", js.get("mSteering", js.get("unfilteredSteering", js.get("steering", 0.0)))))
+        raw_sec = int(telem.current_sector)
+        cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
         return cls._build_telemetry_snapshot()
 
     @classmethod
+    def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
+        """Traite un paquet binaire CompactScoring (SIMP Type 2)."""
+        cls._last_compact_scoring = scoring
+        cls._in_garage_trap = bool(scoring.in_garage_stall)
+        cls._last_in_realtime = bool(scoring.in_realtime and not scoring.in_garage_stall)
+
+        if 0 < scoring.max_laps < 1000:
+            cls._last_total_laps = int(scoring.max_laps)
+
+        cls._last_laps_completed = int(scoring.total_laps)
+        cls._last_lap_flag = int(scoring.count_lap_flag)
+
+        # Sector 1
+        if scoring.cur_sector1 > 0.0:
+            cls._last_sector1_time = format_time_sec(scoring.cur_sector1)
+            cls._last_sector1_status = cls._calculate_sector_status(scoring.cur_sector1, scoring.best_sector1, scoring.best_sector1)
+        elif scoring.last_sector1 > 0.0:
+            cls._last_sector1_time = format_time_sec(scoring.last_sector1)
+            cls._last_sector1_status = cls._calculate_sector_status(scoring.last_sector1, scoring.best_sector1, scoring.best_sector1)
+
+        # Sector 2
+        if scoring.cur_sector2_individual > 0.0:
+            cls._last_sector2_time = format_time_sec(scoring.cur_sector2_individual)
+            b2 = (scoring.best_sector2 - scoring.best_sector1) if (scoring.best_sector2 > 0 and scoring.best_sector1 > 0) else -1.0
+            cls._last_sector2_status = cls._calculate_sector_status(scoring.cur_sector2_individual, b2, -1.0)
+        elif scoring.last_sector2_individual > 0.0:
+            cls._last_sector2_time = format_time_sec(scoring.last_sector2_individual)
+            b2 = (scoring.best_sector2 - scoring.best_sector1) if (scoring.best_sector2 > 0 and scoring.best_sector1 > 0) else -1.0
+            cls._last_sector2_status = cls._calculate_sector_status(scoring.last_sector2_individual, b2, -1.0)
+
+        # Sector 3
+        if scoring.last_sector3_individual > 0.0:
+            cls._last_sector3_time = format_time_sec(scoring.last_sector3_individual)
+            b3 = (scoring.best_lap_time - scoring.best_sector2) if (scoring.best_lap_time > 0 and scoring.best_sector2 > 0) else -1.0
+            cls._last_sector3_status = cls._calculate_sector_status(scoring.last_sector3_individual, b3, -1.0)
+
+        cls._delta_engine.update_scoring(scoring)
+        cls._last_delta_time = cls._delta_engine.display_delta
+        cls._last_sector1_delta = cls._delta_engine.sector1_delta
+        cls._last_sector2_delta = cls._delta_engine.sector2_delta
+        cls._last_sector3_delta = cls._delta_engine.sector3_delta
+
+        raw_sec = int(scoring.sector)
+        cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+
+        return cls._build_telemetry_snapshot()
+
+    @classmethod
+    def process_full_scoring(cls, session: FullScoringSession) -> TelemetryData:
+        """Traite une session multi-voitures FullScoringSession (SIMP Type 4)."""
+        cls._last_full_scoring = session
+        player_veh = session.player_vehicle
+        session_bests = cls._calculate_session_bests(session.vehicles)
+
+        is_in_realtime = bool(session.in_realtime)
+        cls._in_garage_trap = False
+
+        if 0 < session.max_laps < 1000:
+            cls._last_total_laps = int(session.max_laps)
+
+        if player_veh:
+            if player_veh.in_garage_stall or player_veh.control != 0:
+                is_in_realtime = False
+                cls._in_garage_trap = True
+
+            cls._last_laps_completed = int(player_veh.total_laps)
+            cls._last_lap_flag = int(player_veh.count_lap_flag)
+
+            cls._update_player_sector_times_from_model(player_veh, session_bests)
+            cls._delta_engine.update_scoring(session)
+
+            cls._last_delta_time = cls._delta_engine.display_delta
+            cls._last_sector1_delta = cls._delta_engine.sector1_delta
+            cls._last_sector2_delta = cls._delta_engine.sector2_delta
+            cls._last_sector3_delta = cls._delta_engine.sector3_delta
+
+            raw_sec = int(player_veh.sector)
+            cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+
+        cls._last_in_realtime = is_in_realtime
+        return cls._build_telemetry_snapshot()
+
+    @classmethod
+    def process_system_event(cls, event: SystemEvent) -> TelemetryData:
+        """Traite un événement de session / cockpit SystemEvent (SIMP Type 3)."""
+        if getattr(event, "in_realtime", None) is True or getattr(event, "event_id", 0) in (1, 3):
+            cls._in_garage_trap = False
+            cls._last_in_realtime = True
+            return cls._build_telemetry_snapshot()
+        else:
+            cls._in_garage_trap = True
+            cls._last_in_realtime = False
+            return TelemetryData(in_realtime=False)
+
+    @classmethod
+    def process_packet(cls, pkt: Any) -> Optional[TelemetryData]:
+        """Achemine tout paquet domaine isimotor_rawudp_client vers la méthode spécialisée correspondante."""
+        if isinstance(pkt, TelemInfo):
+            return cls.process_telemetry(pkt)
+        elif isinstance(pkt, CompactScoring):
+            return cls.process_compact_scoring(pkt)
+        elif isinstance(pkt, FullScoringSession):
+            return cls.process_full_scoring(pkt)
+        elif isinstance(pkt, SystemEvent):
+            return cls.process_system_event(pkt)
+        elif isinstance(pkt, ExtendedState):
+            cls._last_extended_state = pkt
+            return cls._build_telemetry_snapshot()
+        elif isinstance(pkt, WeatherControl):
+            cls._last_weather = pkt
+            return cls._build_telemetry_snapshot()
+        elif isinstance(pkt, ForceFeedback):
+            cls._last_ffb = pkt
+            return cls._build_telemetry_snapshot()
+        elif isinstance(pkt, Graphics):
+            cls._last_graphics = pkt
+            return cls._build_telemetry_snapshot()
+        return None
+
+    @classmethod
     def _build_telemetry_snapshot(cls) -> TelemetryData:
-        """Helper to instantiate TelemetryData with current class state (DRY helper)."""
+        """Instancie TelemetryData avec l'état courant."""
         return TelemetryData(
             longitudinal_patch_vel=cls._last_lpv,
             longitudinal_ground_vel=cls._last_lgv,
@@ -524,76 +497,26 @@ class LMUParser:
             lap_flag=cls._last_lap_flag,
             has_delta_reference=cls._delta_engine.has_reference,
             is_pit_lap=cls._delta_engine.is_pit_lap,
-            raw_scoring=cls._last_scoring_json,
+            grip_fractions=cls._last_grips,
+            raw_scoring=cls.get_latest_scoring(),
+            raw_telemetry=cls._last_telem_info,
         )
 
     @classmethod
     def parse(cls, data: bytes) -> Optional[TelemetryData]:
         """
-        Décodeur principal conforme SLAP/KISS.
-        Délègue le traitement aux sous-fonctions spécialisées par type de paquet.
+        Décodeur principal conforme au standard binaire SIMP via isimotor_rawudp_client.
         """
-        if not data or len(data) < 10:
+        if not data or len(data) < 24:
             return None
 
-        raw_strip = data.strip()
-        if raw_strip.startswith(b"{"):
-            try:
-                js = json.loads(raw_strip.decode("utf-8", errors="ignore"))
-                msg_type = js.get("Type") or js.get("type", "")
-
-                cls._dump_to_file(js)
-
-                if msg_type == "System" or "Message" in js:
-                    msg_text = str(js.get("Message", "")).lower()
-                    if "enter realtime" in msg_text or "start session" in msg_text:
-                        cls._in_garage_trap = False
-                        cls._last_in_realtime = True
-                        return cls._build_telemetry_snapshot()
-                    elif "exit realtime" in msg_text or "end session" in msg_text:
-                        cls._in_garage_trap = True
-                        cls._last_in_realtime = False
-                        return TelemetryData(in_realtime=False)
-
-                if msg_type == "ScoringInfoV01" or "mVehicles" in js:
-                    return cls._parse_json_scoring(js)
-
-                if msg_type == "TelemInfoV01" or "mWheel" in js or "wheels" in js or "mEngineRPM" in js:
-                    return cls._parse_json_telemetry(js)
-
-            except Exception as e:
-                logger.debug(f"[LMUParser] JSON decode error: {e}")
-
-        if len(data) >= cls.PACKET_SIZE:
-            try:
-                values = struct.unpack(cls.PACKET_FORMAT, data[:cls.PACKET_SIZE])
-                lpv = (float(values[0]), float(values[1]), float(values[2]), float(values[3]))
-                lat_pv = (float(values[4]), float(values[5]), float(values[6]), float(values[7]))
-                max_v = max(abs(v) for v in lpv)
-                lgv = (max_v, max_v, max_v, max_v)
-                return TelemetryData(
-                    longitudinal_patch_vel=lpv,
-                    longitudinal_ground_vel=lgv,
-                    lateral_patch_vel=lat_pv,
-                    in_realtime=True,
-                    fuel=cls._last_fuel,
-                    total_laps=cls._last_total_laps,
-                    laps_completed=cls._last_laps_completed,
-                    delta_time=cls._last_delta_time,
-                    sector1_time=cls._last_sector1_time,
-                    sector1_status=cls._last_sector1_status,
-                    sector2_time=cls._last_sector2_time,
-                    sector2_status=cls._last_sector2_status,
-                    sector3_time=cls._last_sector3_time,
-                    sector3_status=cls._last_sector3_status,
-                    aero_downforce=cls._last_aero_downforce,
-                    current_sector=cls._last_current_sector,
-                    sector1_delta=cls._last_sector1_delta,
-                    sector2_delta=cls._last_sector2_delta,
-                    sector3_delta=cls._last_sector3_delta,
-                    lap_flag=cls._last_lap_flag,
-                )
-            except Exception as e:
-                logger.debug(f"[LMUParser] Erreur unpack 32b: {e}")
+        try:
+            pkt = decode_packet(data)
+            if pkt is not None:
+                return cls.process_packet(pkt)
+        except Exception as e:
+            logger.debug(f"[LMUParser] SIMP binary decode error: {e}")
 
         return None
+
+

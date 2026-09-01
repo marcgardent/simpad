@@ -33,7 +33,7 @@ class ThrottleGaugeWidget(BaseHudWidget):
         else:
             raw_throttle = sensors.spin_intensity * 100.0
 
-        is_spinning = extra_data.get("wheelspin", False) or (sensors.spin_intensity > 0.05)
+        is_spinning = extra_data.get("wheelspin", False) or (sensors.ecu_tc_active > 0.01) or (sensors.spin_intensity > 0.05)
 
         # LERP smoothing
         self.display_throttle = lerp(self.display_throttle, raw_throttle, 0.15)

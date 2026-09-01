@@ -59,10 +59,17 @@ class NodeSidebarControl:
                 dpg.add_slider_float(label="R", tag="test_sensor_travel_r", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
 
             dpg.add_spacer(height=2)
+            dpg.add_spacer(height=2)
             dpg.add_text("Grip Fraction", color=[0, 255, 180, 255])
             with dpg.group(horizontal=True):
                 dpg.add_slider_float(label="L", tag="test_sensor_grip_l", default_value=1.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
                 dpg.add_slider_float(label="R", tag="test_sensor_grip_r", default_value=1.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
+
+            dpg.add_spacer(height=2)
+            dpg.add_text("Official Car ECU Aids (Electronic)", color=[255, 140, 0, 255])
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="ABS", tag="test_sensor_ecu_abs", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="TC", tag="test_sensor_ecu_tc", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
 
             dpg.add_spacer(height=10)
             dpg.add_separator()
@@ -79,8 +86,8 @@ class NodeSidebarControl:
                 dpg.add_button(label="Under L", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_und_l"))
                 dpg.add_button(label="Under R", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_und_r"))
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Sur-régime", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_over_rev"))
-                dpg.add_button(label="Sous-régime", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_under_rev"))
+                dpg.add_button(label="ECU ABS", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_ecu_abs"))
+                dpg.add_button(label="ECU TC", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_ecu_tc"))
                 dpg.add_button(label="Curb Left", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_travel_l"))
                 dpg.add_button(label="Curb Right", width=65, callback=lambda *args: self.trigger_sensor_pulse(parent_editor._synth_engine, "test_sensor_travel_r"))
 
@@ -113,7 +120,8 @@ class NodeSidebarControl:
             "test_sensor_over_rev", "test_sensor_under_rev",
             "test_sensor_rpm", "test_sensor_gear",
             "test_sensor_travel_l", "test_sensor_travel_r",
-            "test_sensor_grip_l", "test_sensor_grip_r"
+            "test_sensor_grip_l", "test_sensor_grip_r",
+            "test_sensor_ecu_abs", "test_sensor_ecu_tc"
         ]:
             if dpg.does_item_exist(tag):
                 default_val = 1.0 if tag in ["test_sensor_grip_l", "test_sensor_grip_r"] else 0.0
@@ -153,6 +161,9 @@ class NodeSidebarControl:
             grip_r = dpg.get_value("test_sensor_grip_r") if dpg.does_item_exist("test_sensor_grip_r") else 1.0
             grip_val = min(grip_l, grip_r)
 
+            ecu_abs = dpg.get_value("test_sensor_ecu_abs") if dpg.does_item_exist("test_sensor_ecu_abs") else 0.0
+            ecu_tc = dpg.get_value("test_sensor_ecu_tc") if dpg.does_item_exist("test_sensor_ecu_tc") else 0.0
+
             synth_engine.update_telemetry(
                 abs_val=abs_val, abs_l=abs_l, abs_r=abs_r,
                 tc_val=tc_val, tc_l=tc_l, tc_r=tc_r,
@@ -160,7 +171,8 @@ class NodeSidebarControl:
                 und_val=und_val, und_l=und_l, und_r=und_r,
                 over_rev=over_rev, under_rev=under_rev, rpm=rpm_val, gear=gear_val,
                 travel_val=travel_val, travel_l=travel_l, travel_r=travel_r,
-                grip_val=grip_val, grip_l=grip_l, grip_r=grip_r
+                grip_val=grip_val, grip_l=grip_l, grip_r=grip_r,
+                ecu_abs=ecu_abs, ecu_tc=ecu_tc
             )
 
     def evaluate_graph(self, synth_engine: Any, profile_manager: Any, update_preset_ui_cb: Callable[[], None]) -> Tuple[float, float]:

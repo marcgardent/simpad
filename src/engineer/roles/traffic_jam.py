@@ -8,7 +8,7 @@ import time
 import logging
 from typing import Optional, Dict, Any, List
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from src.engineer.context import EngineerContext, get_vehicle_attr
 from src.engineer.registry import RoleRegistry
 from src.engineer.params import RoleParam, FloatRangeParam, BoolParam
 from src.telemetry.reference_profile import ReferenceLapProfile
@@ -189,7 +189,8 @@ class TrafficJamRole(BaseRole):
             self._is_active_alert = True
             slow_cars_ahead.sort(key=lambda x: x[0])
             closest_dist, closest_speed, closest_opp = slow_cars_ahead[0]
-            self._target_slow_car_info = f"{closest_opp.get('mDriverName', 'Car')} ({closest_speed * 3.6:.0f} km/h, {closest_dist:.0f}m ahead)"
+            driver_name = get_vehicle_attr(closest_opp, "driver_name", "Car")
+            self._target_slow_car_info = f"{driver_name} ({closest_speed * 3.6:.0f} km/h, {closest_dist:.0f}m ahead)"
 
             if (now - self._last_alert_time) > self.cooldown_sec:
                 self._last_alert_time = now

@@ -374,24 +374,66 @@ class DeltaEngine:
                         gear,
                     ))
 
-    def update_scoring(self, scoring_js: dict) -> None:
+    def update_scoring(self, scoring_js: Any) -> None:
         """
-        Traite un paquet ScoringInfoV01 (1-2 Hz).
+        Traite un paquet Scoring (FullScoringSession, CompactScoring ou JSON dict).
         Gère les changements de tours, réinitialisations de sessions et transitions de secteurs.
         """
         now = time.time()
-        scoring_info = scoring_js.get("mScoringInfo", scoring_js)
-        track_name = str(scoring_info.get("mTrackName", scoring_info.get("trackName", ""))).strip()
-        track_len = float(scoring_info.get("mLapDist", scoring_info.get("lapDist", 0.0)))
+        if hasattr(scoring_js, "track_name") and not isinstance(scoring_js, dict):
+            track_name = str(getattr(scoring_js, "track_name", "")).strip()
+            track_len = float(getattr(scoring_js, "lap_dist", 0.0))
+            current_et = float(getattr(scoring_js, "current_et", 0.0))
 
-        vehicles = scoring_info.get("mVehicles", scoring_info.get("vehicles", []))
-        player_veh = self._find_player_vehicle(vehicles)
-        if not player_veh:
-            return
+            if hasattr(scoring_js, "player_vehicle"):
+                player_veh = getattr(scoring_js, "player_vehicle", None)
+                if not player_veh:
+                    return
+                veh_name = str(getattr(player_veh, "vehicle_name", "")).strip()
+                veh_class = str(getattr(player_veh, "vehicle_class", "")).strip()
+                laps_comp = int(getattr(player_veh, "total_laps", 0))
+                lap_start_et = float(getattr(player_veh, "lap_start_et", 0.0))
+                time_into_lap = float(getattr(player_veh, "time_into_lap", -1.0))
+                player_dist = float(getattr(player_veh, "lap_dist", 0.0))
+                raw_sec = int(getattr(player_veh, "sector", 1))
+                in_garage = bool(getattr(player_veh, "in_garage_stall", False))
+                in_pits = bool(getattr(player_veh, "in_pits", False))
+                lap_flag = int(getattr(player_veh, "count_lap_flag", 2))
+                last_lap_time = float(getattr(player_veh, "last_lap_time", -1.0))
+            else:
+                veh_name = self._vehicle_name
+                veh_class = self._vehicle_class
+                laps_comp = int(getattr(scoring_js, "total_laps", 0))
+                lap_start_et = 0.0
+                time_into_lap = 0.0
+                player_dist = float(getattr(scoring_js, "lap_dist", 0.0))
+                raw_sec = int(getattr(scoring_js, "sector", 1))
+                in_garage = bool(getattr(scoring_js, "in_garage_stall", False))
+                in_pits = False
+                lap_flag = int(getattr(scoring_js, "count_lap_flag", 2))
+                last_lap_time = float(getattr(scoring_js, "last_lap_time", -1.0))
+        else:
+            scoring_info = scoring_js.get("mScoringInfo", scoring_js) if isinstance(scoring_js, dict) else {}
+            track_name = str(scoring_info.get("mTrackName", scoring_info.get("trackName", ""))).strip()
+            track_len = float(scoring_info.get("mLapDist", scoring_info.get("lapDist", 0.0)))
 
-        veh_name = str(player_veh.get("mVehicleName", player_veh.get("vehicleName", ""))).strip()
-        veh_class = str(player_veh.get("mVehicleClass", player_veh.get("vehicleClass", ""))).strip()
-        laps_comp = int(player_veh.get("mTotalLaps", player_veh.get("totalLaps", 0)))
+            vehicles = scoring_info.get("mVehicles", scoring_info.get("vehicles", []))
+            player_veh = self._find_player_vehicle(vehicles)
+            if not player_veh:
+                return
+
+            veh_name = str(player_veh.get("mVehicleName", player_veh.get("vehicleName", ""))).strip()
+            veh_class = str(player_veh.get("mVehicleClass", player_veh.get("vehicleClass", ""))).strip()
+            laps_comp = int(player_veh.get("mTotalLaps", player_veh.get("totalLaps", 0)))
+            current_et = float(scoring_info.get("mCurrentET", scoring_info.get("currentET", 0.0)))
+            lap_start_et = float(player_veh.get("mLapStartET", player_veh.get("lapStartET", 0.0)))
+            time_into_lap = float(player_veh.get("mTimeIntoLap", -1.0))
+            player_dist = float(player_veh.get("mLapDist", 0.0))
+            raw_sec = int(player_veh.get("mSector", 1))
+            in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
+            in_pits = bool(player_veh.get("mInPits", player_veh.get("inPits", False)))
+            lap_flag = int(player_veh.get("mCountLapFlag", player_veh.get("countLapFlag", 2)))
+            last_lap_time = float(player_veh.get("mLastLapTime", -1.0))
 
         # Changement de session/circuit/véhicule
         if track_name and (track_name != self._track_name or (veh_name and veh_name != self._vehicle_name)):
@@ -429,28 +471,14 @@ class DeltaEngine:
         if track_len > 0.0:
             self._track_length = track_len
 
-        current_et = float(scoring_info.get("mCurrentET", scoring_info.get("currentET", 0.0)))
-        lap_start_et = float(player_veh.get("mLapStartET", player_veh.get("lapStartET", 0.0)))
-        time_into_lap = float(player_veh.get("mTimeIntoLap", -1.0))
-
-        # Calcul autoritaire du temps écoulé dans le tour : mCurrentET - mLapStartET
-        # (mTimeIntoLap du SDK rF2/LMU est une simple estimation basée sur la distance,
-        # non continue et insensible aux arrêts ou rythmes lents)
+        # Calcul autoritaire du temps écoulé dans le tour : current_et - lap_start_et
         if lap_start_et > 0.0 and current_et >= lap_start_et:
             time_into = current_et - lap_start_et
             self._last_lap_start_et = lap_start_et
         else:
             time_into = time_into_lap if time_into_lap > 0.0 else 0.0
 
-        player_dist = float(player_veh.get("mLapDist", 0.0))
-        raw_sec = int(player_veh.get("mSector", 1))
         curr_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
-
-        in_garage = bool(player_veh.get("mInGarageStall", player_veh.get("inGarageStall", False)))
-        in_pits = bool(player_veh.get("mInPits", player_veh.get("inPits", False)))
-        lap_flag = int(player_veh.get("mCountLapFlag", player_veh.get("countLapFlag", 2)))
-        last_lap_time = float(player_veh.get("mLastLapTime", -1.0))
-
         self._last_lap_flag = lap_flag
 
         self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits)
@@ -496,7 +524,7 @@ class DeltaEngine:
 
     def update_physics(
         self,
-        veh_speed_ms: float,
+        veh_speed_ms: Any,
         throttle: float = 0.0,
         brake: float = 0.0,
         steering: float = 0.0,
@@ -506,10 +534,21 @@ class DeltaEngine:
         lap_start_et: float = 0.0,
     ) -> None:
         """
-        Traite un paquet TelemInfoV01 à haute fréquence (50-100 Hz).
+        Traite un paquet TelemInfoV01 / TelemInfo à haute fréquence (50-100 Hz).
         Met à jour le delta live en direct à 100 Hz avec le chrono continu (elapsed_time - lap_start_et).
         """
-        self._last_speed_ms = veh_speed_ms
+        if hasattr(veh_speed_ms, "speed_mps") and not isinstance(veh_speed_ms, (int, float)):
+            telem = veh_speed_ms
+            veh_speed_ms = float(getattr(telem, "speed_mps", 0.0))
+            throttle = float(getattr(telem, "unfiltered_throttle", 0.0))
+            brake = float(getattr(telem, "unfiltered_brake", 0.0))
+            steering = float(getattr(telem, "unfiltered_steering", 0.0))
+            gear = int(getattr(telem, "gear", 0))
+            dt = float(getattr(telem, "delta_time", 0.0))
+            elapsed_time = float(getattr(telem, "elapsed_time", 0.0))
+            lap_start_et = float(getattr(telem, "lap_start_et", 0.0))
+
+        self._last_speed_ms = float(veh_speed_ms)
         self._last_throttle = throttle
         self._last_brake = brake
         self._last_steering = steering
@@ -993,6 +1032,11 @@ class DeltaEngine:
     def track_name(self) -> str:
         """Retourne le nom du circuit de la session active."""
         return self._track_name
+
+    @property
+    def track_length(self) -> float:
+        """Retourne la longueur totale du circuit en mètres."""
+        return self._track_length
 
     @property
     def last_scoring_dist(self) -> float:

@@ -143,6 +143,8 @@ class GraphSerializer:
             "logic_bool": lambda: editor_tab._add_node_boolean(op=ndata.get("op", "AND"), val_a=ndata.get("val_a", 0.0), val_b=ndata.get("val_b", 0.0), pos=pos),
             "sensor_wheel_travel": lambda: editor_tab._add_node_sensor_travel(pos=pos),
             "sensor_grip_fract": lambda: editor_tab._add_node_sensor_grip(pos=pos),
+            "sensor_ecu_abs": lambda: editor_tab._add_node_sensor_ecu_abs(pos=pos),
+            "sensor_ecu_tc": lambda: editor_tab._add_node_sensor_ecu_tc(pos=pos),
             "output_xinput": lambda: editor_tab._add_node_output_xinput(pos=pos),
         }
         creator = creators.get(ntype)

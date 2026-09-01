@@ -150,6 +150,17 @@ class RaceEngineer:
         """Retourne la liste des rôles actuellement occupés."""
         return [r for r in self._roles if r.enabled and r.is_busy()]
 
+    def _get_active_reference_profile(self) -> Optional[Any]:
+        """Résout le profil de tour de référence actif depuis le DeltaEngine global."""
+        try:
+            from src.telemetry.lmu_parser import LMUParser
+            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            if delta_eng:
+                return delta_eng.all_time_best_profile or delta_eng.current_profile
+        except Exception:
+            pass
+        return None
+
     def update(
         self,
         telemetry: Optional[TelemetryData] = None,
@@ -169,6 +180,7 @@ class RaceEngineer:
             scoring=scoring,
             timestamp=now,
             audio_engine=self.audio_engine,
+            reference_profile=self._get_active_reference_profile(),
         )
 
         emitted_messages: List[EngineerMessage] = []

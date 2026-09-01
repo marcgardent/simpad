@@ -1,17 +1,25 @@
 """
-SimPad Telemetry — LMU Plugin Installer & Detector.
-Detects Le Mans Ultimate installation, checks Plugins/ folder,
-installs LeMansUltimateTelemetryPlugin.dll and configures CustomPluginVariables.JSON.
+SimPad Telemetry — LMU / isiMotor Plugin Installer & Detector.
+Detects Le Mans Ultimate installation, downloads isiMotor-RawUDP-Plugin from GitHub Release,
+installs isiMotor_RawUDP.dll into Plugins/ folder and configures CustomPluginVariables.JSON + Settings.JSON.
 """
 
 import os
+import io
 import json
 import shutil
 import logging
+import zipfile
+import urllib.request
 from pathlib import Path
 from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PLUGIN_RELEASE_URL = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.1.3/isiMotor-RawUDP-Plugin-v0.1.3-Windows-x64-MinGW-w64.zip"
+PLUGIN_DLL_NAME = "isiMotor_RawUDP.dll"
+LEGACY_DLL_NAMES = ["LeMansUltimateTelemetryPlugin.dll"]
+
 
 def get_steam_vdf_candidate_paths() -> List[Path]:
     """
@@ -97,26 +105,8 @@ def parse_vdf_library_paths(vdf_path: Path) -> List[Path]:
     return library_paths
 
 
-def get_known_lmu_paths() -> List[Path]:
-    """Builds fallback list of known LMU installation directories dynamically."""
-    paths: List[Path] = []
-    if os.name == "nt":
-        for env_var in ["ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"]:
-            pf = os.environ.get(env_var)
-            if pf:
-                paths.append(Path(pf) / "Steam" / "steamapps" / "common" / "Le Mans Ultimate")
-        for drive in ["C:/", "D:/", "E:/", "F:/"]:
-            paths.append(Path(drive) / "SteamLibrary" / "steamapps" / "common" / "Le Mans Ultimate")
-
-    home = Path.home()
-    paths.append(home / ".steam" / "steam" / "steamapps" / "common" / "Le Mans Ultimate")
-    paths.append(home / ".local" / "share" / "Steam" / "steamapps" / "common" / "Le Mans Ultimate")
-    paths.append(home / ".var" / "app" / "com.valvesoftware.Steam" / ".steam" / "steam" / "steamapps" / "common" / "Le Mans Ultimate")
-    return paths
-
-
 class LMUPluginManager:
-    """Manages detection, DLL copying, and JSON configuration of LMU Telemetry Plugin."""
+    """Manages detection, remote download, DLL copying, and JSON configuration of isiMotor-RawUDP Plugin."""
 
     def __init__(self, project_root: Optional[Path] = None):
         self.project_root = Path(project_root) if project_root else self.get_project_root()
@@ -139,33 +129,92 @@ class LMUPluginManager:
                     if lmu_path.exists() and (lmu_path / "Le Mans Ultimate.exe").exists():
                         if lmu_path not in found:
                             found.append(lmu_path)
-
-        for p in get_known_lmu_paths():
-            if p.exists() and (p / "Le Mans Ultimate.exe").exists():
-                if p not in found:
-                    found.append(p)
-
         return found
 
-    @staticmethod
-    def find_lmu_install_dir() -> Optional[Path]:
+    @classmethod
+    def find_lmu_install_dir(cls) -> Optional[Path]:
         """Detects primary LMU installation directory."""
-        dirs = LMUPluginManager.get_all_lmu_install_dirs()
+        dirs = cls.get_all_lmu_install_dirs()
         return dirs[0] if dirs else None
 
     @classmethod
-    def get_source_dll(cls, project_root: Optional[Path] = None) -> Optional[Path]:
-        """Find source plugin DLL in project root."""
+    def download_and_extract_dll(
+        cls,
+        url: str = DEFAULT_PLUGIN_RELEASE_URL,
+        dest_dir: Optional[Path] = None,
+        timeout: float = 20.0,
+    ) -> Optional[Path]:
+        """
+        Downloads the native plugin ZIP archive from GitHub Releases and extracts isiMotor_RawUDP.dll.
+        """
+        dest_dir = dest_dir or (cls.get_project_root() / "assets" / "plugins" / "isiMotor-RawUDP-Plugin")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_dll = dest_dir / PLUGIN_DLL_NAME
+
+        try:
+            logger.info(f"[PluginManager] Downloading plugin from {url}...")
+            print(f"[PluginManager] Téléchargement du plugin depuis {url}...", flush=True)
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "SimPad-PluginInstaller/0.1.2"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                zip_bytes = response.read()
+
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                for member in zf.namelist():
+                    if member.endswith(".dll") or member.lower() == PLUGIN_DLL_NAME.lower():
+                        with zf.open(member) as src, open(dest_dll, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+                        logger.info(f"[PluginManager] Extracted {member} -> {dest_dll}")
+                        print(f"[PluginManager] Extrait {member} -> {dest_dll}", flush=True)
+                        return dest_dll
+
+            logger.error(f"[PluginManager] DLL {PLUGIN_DLL_NAME} introuvable dans l'archive zip")
+            return None
+        except Exception as e:
+            logger.error(f"[PluginManager] Erreur lors du téléchargement/extraction depuis {url}: {e}")
+            print(f"[PluginManager] Erreur téléchargement plugin: {e}", flush=True)
+            return None
+
+    @classmethod
+    def get_source_dll(
+        cls,
+        project_root: Optional[Path] = None,
+        download_if_missing: bool = True,
+        url: str = DEFAULT_PLUGIN_RELEASE_URL,
+    ) -> Optional[Path]:
+        """
+        Locates the source plugin DLL in the project root or downloads it from the release URL if missing.
+        """
         root = project_root or cls.get_project_root()
-        candidate = root / "assets" / "plugins" / "lmu" / "LeMansUltimateTelemetryPlugin" / "LeMansUltimateTelemetryPlugin.dll"
-        if candidate.exists():
+
+        # 1. Check primary modern directory
+        candidate = root / "assets" / "plugins" / "isiMotor-RawUDP-Plugin" / PLUGIN_DLL_NAME
+        if candidate.exists() and candidate.stat().st_size > 0:
             return candidate
+
+        # 2. Check alternative plugin directories
+        for sub in ["lmu", "isiMotor", "LeMansUltimateTelemetryPlugin", ""]:
+            c = root / "assets" / "plugins" / sub / PLUGIN_DLL_NAME
+            if c.exists() and c.stat().st_size > 0:
+                return c
+            for leg in LEGACY_DLL_NAMES:
+                c_leg = root / "assets" / "plugins" / sub / leg
+                if c_leg.exists() and c_leg.stat().st_size > 0:
+                    return c_leg
+
+        # 3. Download from GitHub release URL
+        if download_if_missing:
+            target_dir = root / "assets" / "plugins" / "isiMotor-RawUDP-Plugin"
+            return cls.download_and_extract_dll(url=url, dest_dir=target_dir)
+
         return None
 
     @classmethod
     def check_plugin_installed(cls, project_root: Optional[Path] = None) -> Tuple[bool, str, Optional[Path]]:
         """
-        Checks if LMU plugin is installed in the game directory and configured in JSON.
+        Checks if the telemetry plugin is installed in the game directory and active.
         Returns (is_installed, status_message, lmu_dir_path).
         """
         lmu_dir = cls.find_lmu_install_dir()
@@ -173,98 +222,120 @@ class LMUPluginManager:
             return False, "LMU Game Directory Not Found", None
 
         plugins_dir = lmu_dir / "Plugins"
-        target_dll = plugins_dir / "LeMansUltimateTelemetryPlugin.dll"
+
+        # Check modern DLL
+        target_dll = plugins_dir / PLUGIN_DLL_NAME
         if target_dll.exists() and target_dll.stat().st_size > 0:
-            return True, "Plugin Active & Configured", lmu_dir
+            return True, f"Plugin Active ({PLUGIN_DLL_NAME})", lmu_dir
+
+        # Check legacy DLL names
+        for leg in LEGACY_DLL_NAMES:
+            leg_dll = plugins_dir / leg
+            if leg_dll.exists() and leg_dll.stat().st_size > 0:
+                return True, f"Plugin Active ({leg})", lmu_dir
 
         return False, "Plugin DLL missing in Plugins/", lmu_dir
 
     @classmethod
-    def configure_plugin_json(cls, lmu_dir: Path) -> bool:
-        """Configures CustomPluginVariables.JSON to enable LeMansUltimateTelemetryPlugin.dll."""
-        json_targets = [
-            lmu_dir / "UserData" / "player" / "CustomPluginVariables.JSON",
-            lmu_dir / "UserData" / "CustomPluginVariables.JSON",
-        ]
+    def configure_plugin_json(
+        cls,
+        lmu_dir: Path,
+        target_ip: str = "127.0.0.1",
+        target_port: int = 5000,
+        inbound_port: int = 5001,
+    ) -> bool:
+        """
+        Configures CustomPluginVariables.JSON and Settings.JSON to enable isiMotor_RawUDP streaming.
+        """
+        user_json = lmu_dir / "UserData" / "player" / "CustomPluginVariables.JSON"
 
-        # Note: rFactor 2 / LMU engine uses " Enabled" (with leading space) and exact keys matched in main.cpp
         plugin_entry = {
             " Enabled": 1,
-            "telemetry": 1,
-            "scoring": 1,
+            "TargetIP": str(target_ip),
+            "TargetPort": str(target_port),
+            "InboundControl": "Enabled",
+            "InboundPort": str(inbound_port),
+            "TelemetryRate": "unlimited",
+            "CompactScoringRate": "off",
+            "FullScoringRate": "5Hz",
+            "WeatherRate": "1Hz",
+            "ExtendedStateRate": "off",
+            "ForceFeedbackRate": "off",
+            "GraphicsRate": "off",
+            "SystemEvents": "Enabled",
+            "UnsubscribedBuffersMask": "0",
+            "TrackRulesRate": "off",
+            "PitMenuRate": "off",
         }
 
         success = True
-        for jpath in json_targets:
-            try:
-                jpath.parent.mkdir(parents=True, exist_ok=True)
-                data = {}
-                if jpath.exists():
-                    try:
-                        content = jpath.read_text(encoding="utf-8", errors="ignore").strip()
-                        parsed = json.loads(content) if content else {}
-                        data = parsed if isinstance(parsed, dict) else {}
-                    except Exception:
-                        data = {}
-
-                data["LeMansUltimateTelemetryPlugin.dll"] = plugin_entry
-                data["LeMansUltimateTelemetryPlugin"] = plugin_entry
-                jpath.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                logger.info(f"[PluginManager] Configured JSON: {jpath}")
-                print(f"[PluginManager] Configured JSON: {jpath}", flush=True)
-            except Exception as e:
-                logger.error(f"[PluginManager] Failed to write JSON {jpath}: {e}")
-                success = False
-
-        # Also configure Settings.JSON to enable plugin mask (Plugin Mask = 255, Enable external plugins = True)
-        settings_paths = [
-            lmu_dir / "UserData" / "player" / "Settings.JSON",
-            lmu_dir / "UserData" / "Settings.JSON",
-        ]
-        for spath in settings_paths:
-            if spath.exists():
+        try:
+            user_json.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+            if user_json.exists():
                 try:
-                    content = spath.read_text(encoding="utf-8", errors="ignore").strip()
-                    sdata = json.loads(content) if content else {}
-                    if isinstance(sdata, dict):
-                        sdata["Enable external plugins"] = True
-                        sdata["Plugin Mask"] = 255
-                        spath.write_text(json.dumps(sdata, indent=2), encoding="utf-8")
-                        logger.info(f"[PluginManager] Configured Settings.JSON Plugin Mask: {spath}")
-                except Exception as e:
-                    logger.error(f"[PluginManager] Failed to update Settings.JSON {spath}: {e}")
+                    content = user_json.read_text(encoding="utf-8", errors="ignore").strip()
+                    parsed = json.loads(content) if content else {}
+                    data = parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    data = {}
+
+            data["isiMotor_RawUDP"] = plugin_entry
+            user_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            logger.info(f"[PluginManager] Configured CustomPluginVariables.JSON: {user_json}")
+            print(f"[PluginManager] Configured CustomPluginVariables.JSON: {user_json}", flush=True)
+        except Exception as e:
+            logger.error(f"[PluginManager] Failed to write JSON {user_json}: {e}")
+            success = False
+
+        # Configure Settings.JSON to enable external plugins
+        settings_path = lmu_dir / "UserData" / "player" / "Settings.JSON"
+        try:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            sdata = {}
+            if settings_path.exists():
+                try:
+                    content = settings_path.read_text(encoding="utf-8", errors="ignore").strip()
+                    parsed_s = json.loads(content) if content else {}
+                    sdata = parsed_s if isinstance(parsed_s, dict) else {}
+                except Exception:
+                    sdata = {}
+            sdata["Enable external plugins"] = True
+            sdata["Plugin Mask"] = 255
+            settings_path.write_text(json.dumps(sdata, indent=2), encoding="utf-8")
+            logger.info(f"[PluginManager] Configured Settings.JSON Plugin Mask: {settings_path}")
+        except Exception as e:
+            logger.error(f"[PluginManager] Failed to update Settings.JSON {settings_path}: {e}")
 
         return success
 
     @classmethod
-    def install_plugin(cls, project_root: Optional[Path] = None) -> Tuple[bool, str]:
+    def install_plugin(
+        cls,
+        project_root: Optional[Path] = None,
+        url: str = DEFAULT_PLUGIN_RELEASE_URL,
+    ) -> Tuple[bool, str]:
         """
-        Copies source DLL into LMU/Plugins/ and configures CustomPluginVariables.JSON.
+        Retrieves source DLL (or downloads it from release URL), copies it into LMU/Plugins/ and configures JSON.
         Returns (success, result_message).
         """
         root = project_root or cls.get_project_root()
-        src_dll = cls.get_source_dll(root)
-        if not src_dll:
-            return False, f"Source DLL not found in project root ({root})"
-
-        primary_dir = cls.find_lmu_install_dir()
-        if not primary_dir:
-            return False, "Le Mans Ultimate installation directory not found"
+        src_dll = cls.get_source_dll(root, download_if_missing=True, url=url)
+        if not src_dll or not src_dll.exists():
+            return False, f"Impossible de récupérer {PLUGIN_DLL_NAME} depuis {url} ou le cache local."
 
         lmu_dirs = cls.get_all_lmu_install_dirs()
-        if primary_dir not in lmu_dirs:
-            lmu_dirs.insert(0, primary_dir)
+        if not lmu_dirs:
+            return False, "Dossier d'installation de Le Mans Ultimate introuvable sur le système."
 
         installed_count = 0
         for lmu_dir in lmu_dirs:
             plugins_dir = lmu_dir / "Plugins"
             try:
-                # 1. Copy DLL to Plugins/ and root folder
+                # 1. Copy DLL to Plugins/
                 plugins_dir.mkdir(parents=True, exist_ok=True)
                 target_dll = plugins_dir / src_dll.name
                 shutil.copy(src_dll, target_dll)
-                root_dll = lmu_dir / src_dll.name
-                shutil.copy(src_dll, root_dll)
                 print(f"[PluginManager] Copied DLL -> {target_dll}", flush=True)
 
                 # 2. Configure JSON
@@ -273,34 +344,27 @@ class LMUPluginManager:
             except Exception as e:
                 logger.error(f"[PluginManager] Install error for {lmu_dir}: {e}")
 
-        # Also check Flatpak Steam UserData directory if present
-        home = Path.home()
-        flatpak_lmu = home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam" / "steamapps" / "common" / "Le Mans Ultimate"
-        if flatpak_lmu.exists() and flatpak_lmu not in lmu_dirs:
-            try:
-                flatpak_plugins = flatpak_lmu / "Plugins"
-                flatpak_plugins.mkdir(parents=True, exist_ok=True)
-                shutil.copy(src_dll, flatpak_plugins / src_dll.name)
-                cls.configure_plugin_json(flatpak_lmu)
-            except Exception:
-                pass
-
         if installed_count > 0:
-            return True, f"Successfully installed & configured {src_dll.name}!"
-        return False, "Installation failed"
+            return True, f"Plugin {src_dll.name} installé et configuré avec succès !"
+        return False, "Échec de l'installation du plugin."
 
     @classmethod
-    def install_all(cls, project_root: Optional[Path] = None) -> dict:
+    def install_all(
+        cls,
+        project_root: Optional[Path] = None,
+        url: str = DEFAULT_PLUGIN_RELEASE_URL,
+    ) -> dict:
         """
         Runs complete plugin installation workflow.
         Returns a dict with 'installed' (bool), 'message' (str), and 'lmu_dir' (Optional[Path]).
         """
         root = project_root or cls.get_project_root()
-        success, message = cls.install_plugin(root)
+        success, message = cls.install_plugin(root, url=url)
         lmu_dir = cls.find_lmu_install_dir()
         return {
             "installed": success,
             "message": message,
             "lmu_dir": lmu_dir,
         }
+
 

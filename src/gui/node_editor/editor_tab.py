@@ -112,7 +112,7 @@ class NodeEditorTab:
             dpg.add_separator()
             dpg.add_spacer(height=4)
 
-            dpg.add_text("Telemetry Sensors", color=[255, 220, 0, 255])
+            dpg.add_text("Telemetry Sensors (Wheel Slip)", color=[255, 220, 0, 255])
             dpg.add_button(label="+ Over-Braking Sensor", width=-1, callback=lambda *args: self._add_node_sensor_abs())
             dpg.add_spacer(height=2)
             dpg.add_button(label="+ Over-Accel Sensor", width=-1, callback=lambda *args: self._add_node_sensor_tc())
@@ -128,6 +128,14 @@ class NodeEditorTab:
             dpg.add_button(label="+ Wheel Travel Sensor", width=-1, callback=lambda *args: self._add_node_sensor_travel())
             dpg.add_spacer(height=2)
             dpg.add_button(label="+ Grip Fraction Sensor", width=-1, callback=lambda *args: self._add_node_sensor_grip())
+            dpg.add_spacer(height=6)
+            dpg.add_separator()
+            dpg.add_spacer(height=4)
+
+            dpg.add_text("Car ECU Aids (Electronic)", color=[255, 140, 0, 255])
+            dpg.add_button(label="+ Car ECU ABS Active", width=-1, callback=lambda *args: self._add_node_sensor_ecu_abs())
+            dpg.add_spacer(height=2)
+            dpg.add_button(label="+ Car ECU TC Active", width=-1, callback=lambda *args: self._add_node_sensor_ecu_tc())
             dpg.add_spacer(height=6)
             dpg.add_separator()
             dpg.add_spacer(height=4)
@@ -264,6 +272,12 @@ class NodeEditorTab:
 
     def _add_node_sensor_grip(self, pos=(30.0, 700.0)):
         return self._factory.add_node_sensor_grip(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_ecu_abs(self, pos=(30.0, 520.0)):
+        return self._factory.add_node_sensor_ecu_abs(self._custom_nodes, self.recompile_and_update_synth, pos)
+
+    def _add_node_sensor_ecu_tc(self, pos=(30.0, 600.0)):
+        return self._factory.add_node_sensor_ecu_tc(self._custom_nodes, self.recompile_and_update_synth, pos)
 
     def _add_node_boolean(self, op="AND", val_a=0.0, val_b=0.0, pos=(240.0, 80.0)):
         if not isinstance(op, str):

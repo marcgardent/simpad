@@ -216,3 +216,48 @@ def test_race_engineer_loads_pitlane_spotter_by_default():
     assert pit_role is not None
     assert isinstance(pit_role, PitlaneSpotterRole)
     assert pit_role.enabled is True
+
+
+def test_pitlane_spotter_with_typed_vehicle_scoring():
+    """Vérifie que PitlaneSpotterRole et EngineerContext gèrent parfaitement les objets typés VehicleScoring et FullScoringSession."""
+    from isimotor_rawudp_client import VehicleScoring, FullScoringSession, TelemVect3
+
+    player = VehicleScoring(
+        id=1,
+        driver_name="Player Driver",
+        is_player=True,
+        control=0,
+        in_pits=True,
+        pit_state=3,  # Stopped at box
+        in_garage_stall=False,
+        lap_dist=500.0,
+        local_vel=TelemVect3(0.0, 0.0, 0.0),
+    )
+    opp = VehicleScoring(
+        id=2,
+        driver_name="Fast Pit Opponent",
+        is_player=False,
+        control=1,
+        in_pits=True,
+        pit_state=2,
+        in_garage_stall=False,
+        lap_dist=480.0,  # 20m behind (within 28m unsafe release threshold)
+        local_vel=TelemVect3(0.0, 0.0, -16.0),  # 58 km/h fast lane
+    )
+    session = FullScoringSession(
+        session=10,
+        track_name="Bahrain International Circuit",
+        lap_dist=5412.0,
+        vehicles=[player, opp],
+    )
+
+    played = []
+    role = PitlaneSpotterRole(audio_engine=lambda pk, interrupt=False: played.append((pk, interrupt)))
+    ctx = EngineerContext(scoring=session)
+
+    msg = role.update(ctx)
+    assert msg is not None
+    assert msg.phrase_key == "car"
+    assert role.state == PitlaneSpotterState.UNSAFE_HAZARD
+    assert ("car", True) in played
+

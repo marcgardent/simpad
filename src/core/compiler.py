@@ -62,6 +62,8 @@ class GraphCompiler:
             "    grip_val = min(1.0, max(0.0, telemetry.get('grip', 1.0)))",
             "    grip_l   = min(1.0, max(0.0, telemetry.get('grip_l', grip_val)))",
             "    grip_r   = min(1.0, max(0.0, telemetry.get('grip_r', grip_val)))",
+            "    ecu_abs_val = min(1.0, max(0.0, telemetry.get('ecu_abs', 0.0)))",
+            "    ecu_tc_val  = min(1.0, max(0.0, telemetry.get('ecu_tc', 0.0)))",
             "",
             "    val_map = {",
             "        'attr_out_abs': abs_val,",
@@ -90,6 +92,8 @@ class GraphCompiler:
             "        'attr_out_grip': grip_val,",
             "        'attr_out_grip_l': grip_l,",
             "        'attr_out_grip_r': grip_r,",
+            "        'attr_out_ecu_abs': ecu_abs_val,",
+            "        'attr_out_ecu_tc': ecu_tc_val,",
             "    }",
             ""
         ]

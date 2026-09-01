@@ -71,6 +71,7 @@ class HapticSynthesizerEngine:
         travel_fl: Optional[float] = None, travel_fr: Optional[float] = None,
         travel_rl: Optional[float] = None, travel_rr: Optional[float] = None,
         grip_val: float = 1.0, grip_l: Optional[float] = None, grip_r: Optional[float] = None,
+        ecu_abs: float = 0.0, ecu_tc: float = 0.0,
         in_realtime: bool = True
     ):
         """Updates live telemetry input values thread-safely for all channels (CCN < 4)."""
@@ -82,6 +83,8 @@ class HapticSynthesizerEngine:
                 self._telemetry["grip"] = 1.0
                 self._telemetry["grip_l"] = 1.0
                 self._telemetry["grip_r"] = 1.0
+                self._telemetry["ecu_abs"] = 0.0
+                self._telemetry["ecu_tc"] = 0.0
                 return
 
             self._assign_channel_triplet("abs", abs_val, abs_l, abs_r)
@@ -101,6 +104,9 @@ class HapticSynthesizerEngine:
             self._telemetry["travel_rr"] = float(travel_rr) if travel_rr is not None else float(travel_val)
 
             self._assign_channel_triplet("grip", grip_val, grip_l, grip_r)
+
+            self._telemetry["ecu_abs"] = float(ecu_abs)
+            self._telemetry["ecu_tc"] = float(ecu_tc)
 
     def get_current_outputs(self) -> Tuple[float, float]:
         """Returns the most recent calculated (low_freq_rumble, high_freq_buzz) outputs."""

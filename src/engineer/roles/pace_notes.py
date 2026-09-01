@@ -8,7 +8,7 @@ import time
 import logging
 from typing import Optional, Dict, Any, Set, List
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from src.engineer.context import EngineerContext, get_vehicle_attr
 from src.engineer.registry import RoleRegistry
 from src.engineer.params import RoleParam, BoolParam, FloatRangeParam
 from src.telemetry.reference_profile import (
@@ -143,7 +143,10 @@ class PaceNotesRole(BaseRole):
         """Récupère le profil de référence actif avec isolation stricte par circuit."""
         scoring_track = ""
         if context and context.scoring:
-            scoring_track = str(context.scoring.get("mTrackName", context.scoring.get("trackName", "")))
+            if hasattr(context.scoring, "track_name") and context.scoring.track_name:
+                scoring_track = str(context.scoring.track_name).strip()
+            elif isinstance(context.scoring, dict):
+                scoring_track = str(context.scoring.get("mTrackName", context.scoring.get("trackName", ""))).strip()
 
         if self._custom_profile is not None:
             ref_track = getattr(self._custom_profile, "track_name", "")
@@ -211,7 +214,7 @@ class PaceNotesRole(BaseRole):
             return None
 
         # Gérer la réinitialisation des marqueurs lors du passage au tour suivant
-        laps_comp = int(player_veh.get("mTotalLaps", 0))
+        laps_comp = int(get_vehicle_attr(player_veh, "total_laps", 0))
         if self._last_laps_completed >= 0 and laps_comp != self._last_laps_completed:
             self._triggered_ann_ids.clear()
         self._last_laps_completed = laps_comp
@@ -230,7 +233,7 @@ class PaceNotesRole(BaseRole):
         if (track_len <= 0.0 or track_len == 5000.0) and profile.track_length > 0.0:
             track_len = profile.track_length
 
-        player_dist = float(player_veh.get("mLapDist", 0.0)) % track_len
+        player_dist = float(get_vehicle_attr(player_veh, "lap_dist", 0.0)) % track_len
         player_speed = context.get_player_speed_mps()
 
         # Si le joueur est presque à l'arrêt (< 2 m/s), ne pas anticiper

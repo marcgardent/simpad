@@ -31,6 +31,7 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
             "normalize", "math", "transform", "shape", "logic_bool", "invert",
             "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
             "sensor_engine_regime", "sensor_wheel_travel", "sensor_gear", "sensor_grip_fract",
+            "sensor_ecu_abs", "sensor_ecu_tc",
             "output_xinput"
         }
         self.assertTrue(expected_types.issubset(registered_types))
@@ -98,8 +99,12 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
 
     def test_lmu_parser_and_sensors_realtime_gear(self):
         from src.telemetry.lmu_parser import LMUParser
-        json_data = b'{"Type": "TelemInfoV01", "mInRealtime": 0, "mGear": 0, "mEngineRPM": 3000.0, "mEngineMaxRPM": 7500.0}'
-        parsed = LMUParser.parse(json_data)
+        from isimotor_rawudp_client import TelemInfo, SystemEvent
+
+        # Garage / exit realtime
+        LMUParser.process_system_event(SystemEvent(event_id=2))
+        telem_garage = TelemInfo(gear=0, engine_rpm=3000.0, engine_max_rpm=7500.0)
+        parsed = LMUParser.process_telemetry(telem_garage)
         self.assertIsNotNone(parsed)
         self.assertFalse(parsed.in_realtime)
         self.assertEqual(parsed.gear, 0)
@@ -110,8 +115,9 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         self.assertEqual(sensors.overrev_intensity, 0.0)
 
         # On track, neutral gear -> underrev/overrev must be 0.0
-        json_on_track_neutral = b'{"Type": "TelemInfoV01", "mInRealtime": 1, "mGear": 0, "mEngineRPM": 1500.0, "mEngineMaxRPM": 7500.0}'
-        parsed_on_track = LMUParser.parse(json_on_track_neutral)
+        LMUParser.process_system_event(SystemEvent(event_id=1))
+        telem_on_track = TelemInfo(gear=0, engine_rpm=1500.0, engine_max_rpm=7500.0)
+        parsed_on_track = LMUParser.process_telemetry(telem_on_track)
         sensors_on_track = parsed_on_track.to_sensors()
         self.assertTrue(sensors_on_track.in_realtime)
         self.assertEqual(sensors_on_track.underrev_intensity, 0.0)
@@ -186,6 +192,23 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         low, high = func({}, 0.0)
         self.assertAlmostEqual(low, 0.3)
         self.assertAlmostEqual(high, 0.7)
+
+    def test_ecu_abs_and_tc_sensor_nodes_evaluation(self):
+        graph_data = {
+            "nodes": {
+                "ecu_abs_node": {"type": "sensor_ecu_abs", "out_attr": "out_abs_active"},
+                "ecu_tc_node": {"type": "sensor_ecu_tc", "out_attr": "out_tc_active"},
+                "out": {"type": "output_xinput", "in_low": "in_l_pin", "in_high": "in_h_pin"}
+            },
+            "links": [
+                ["out_abs_active", "in_l_pin"],
+                ["out_tc_active", "in_h_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({"ecu_abs": 0.85, "ecu_tc": 0.60}, 0.0)
+        self.assertAlmostEqual(low, 0.85, places=4)
+        self.assertAlmostEqual(high, 0.60, places=4)
 
 
 if __name__ == "__main__":

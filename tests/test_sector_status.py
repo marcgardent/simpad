@@ -43,20 +43,22 @@ class TestSectorStatusCalculations(unittest.TestCase):
 
     def test_lmu_parser_last_sector_status_calculation(self):
         """Verify LMUParser calculates sector status (purple, green, default) for last_s1 and last_s2."""
+        from isimotor_rawudp_client import VehicleScoring
+
         session_bests = (30.0, 40.0, 25.0)  # S1 best = 30.0, S2 indiv best = 40.0, S3 indiv best = 25.0
 
-        player_veh = {
-            "mCurSector1": -1.0,
-            "mLastSector1": 30.0,  # Personal & Session best!
-            "mBestSector1": 30.0,
-            "mCurSector2": -1.0,
-            "mLastSector2": 70.0,  # indiv S2 = 70 - 30 = 40.0 (Personal & Session best!)
-            "mBestSector2": 70.0,
-            "mLastLapTime": 95.0,  # indiv S3 = 95 - 70 = 25.0 (Personal & Session best!)
-            "mBestLapTime": 95.0,
-        }
+        player_veh = VehicleScoring(
+            cur_sector1=-1.0,
+            last_sector1=30.0,  # Personal & Session best!
+            best_sector1=30.0,
+            cur_sector2=-1.0,
+            last_sector2=70.0,  # indiv S2 = 70 - 30 = 40.0 (Personal & Session best!)
+            best_sector2=70.0,
+            last_lap_time=95.0,  # indiv S3 = 95 - 70 = 25.0 (Personal & Session best!)
+            best_lap_time=95.0,
+        )
 
-        LMUParser._update_player_sector_times(player_veh, session_bests)
+        LMUParser._update_player_sector_times_from_model(player_veh, session_bests)
 
         self.assertEqual(LMUParser._last_sector1_time, "30.000")
         self.assertEqual(LMUParser._last_sector1_status, "purple")

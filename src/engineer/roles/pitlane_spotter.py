@@ -13,7 +13,7 @@ import logging
 from enum import Enum
 from typing import Optional, Dict, Any, List, Tuple
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from src.engineer.context import EngineerContext, get_vehicle_attr
 from src.engineer.registry import RoleRegistry
 from src.engineer.params import RoleParam, FloatRangeParam, BoolParam
 
@@ -180,8 +180,8 @@ class PitlaneSpotterRole(BaseRole):
         pit_opponents = context.get_pit_opponents()
 
         # Évaluer si le joueur est au box (arrêt / révision / démarrage)
-        pit_state = int(player_veh.get("mPitState", player_veh.get("pitState", 0)))
-        in_garage = bool(player_veh.get("mInGarageStall", False))
+        pit_state = int(get_vehicle_attr(player_veh, "pit_state", 0))
+        in_garage = bool(get_vehicle_attr(player_veh, "in_garage_stall", False))
         is_stationary_or_in_box = (
             in_garage
             or pit_state in (3, 4)  # 3=stopped, 4=exiting
@@ -211,8 +211,8 @@ class PitlaneSpotterRole(BaseRole):
     def _handle_unsafe_release_monitoring(
         self,
         context: EngineerContext,
-        player_veh: Dict[str, Any],
-        pit_opponents: List[Dict[str, Any]],
+        player_veh: Any,
+        pit_opponents: List[Any],
         track_length: float,
         now: float,
     ) -> Optional[EngineerMessage]:
@@ -233,8 +233,8 @@ class PitlaneSpotterRole(BaseRole):
 
                 if opp_speed >= self.pit_slow_speed_threshold_mps and (dist_effective <= self.unsafe_release_distance_m or ttc <= self.unsafe_release_ttc_sec):
                     threats.append({
-                        "id": opp.get("mID", -1),
-                        "name": opp.get("mDriverName", "Opponent"),
+                        "id": get_vehicle_attr(opp, "id", -1),
+                        "name": get_vehicle_attr(opp, "driver_name", "Opponent"),
                         "speed_mps": opp_speed,
                         "dist": dist_effective,
                         "ttc": ttc,
@@ -339,7 +339,8 @@ class PitlaneSpotterRole(BaseRole):
             if slow_ahead:
                 slow_ahead.sort(key=lambda x: x[0])
                 closest_dist, closest_speed, closest_opp = slow_ahead[0]
-                self._live_pit_info = f"Slow car ahead in pits: {closest_opp.get('mDriverName', 'Car')} ({closest_dist:.0f}m)"
+                driver_name = get_vehicle_attr(closest_opp, "driver_name", "Car")
+                self._live_pit_info = f"Slow car ahead in pits: {driver_name} ({closest_dist:.0f}m)"
 
                 if self.state != PitlaneSpotterState.PIT_TRAFFIC_AHEAD:
                     self.state = PitlaneSpotterState.PIT_TRAFFIC_AHEAD
@@ -367,7 +368,8 @@ class PitlaneSpotterRole(BaseRole):
                     alongside_cars.append(opp)
 
             if alongside_cars:
-                self._live_pit_info = f"Car alongside in pitlane: {alongside_cars[0].get('mDriverName', 'Car')}"
+                alongside_name = get_vehicle_attr(alongside_cars[0], "driver_name", "Car")
+                self._live_pit_info = f"Car alongside in pitlane: {alongside_name}"
                 if self.state != PitlaneSpotterState.PIT_OVERLAP:
                     self.state = PitlaneSpotterState.PIT_OVERLAP
                     self._last_state_change_time = now

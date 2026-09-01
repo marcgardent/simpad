@@ -6,7 +6,15 @@ Zero vibration while cruising; proportional vibration only on lock, spin, overst
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Optional, Any, Union
+
+try:
+    from isimotor_rawudp_client import TelemInfo, TelemWheel, CompactScoring, FullScoringSession
+except ImportError:
+    TelemInfo = Any  # type: ignore
+    TelemWheel = Any  # type: ignore
+    CompactScoring = Any  # type: ignore
+    FullScoringSession = Any  # type: ignore
 
 
 @dataclass
@@ -52,9 +60,11 @@ class VehicleSensors:
     # Vitesse du véhicule (m/s)
     vehicle_speed: float = 0.0
 
-    # Pédales non filtrées (0.0 à 1.0)
+    # Pédales non filtrées et filtrées (0.0 à 1.0)
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
+    filtered_throttle: float = 0.0
+    filtered_brake: float = 0.0
 
     # Télémétrie de session, chrono et énergie
     fuel_level: float = 0.0
@@ -96,6 +106,8 @@ class VehicleSensors:
         gear: int = 0,
         unfiltered_throttle: float = 0.0,
         unfiltered_brake: float = 0.0,
+        filtered_throttle: float = 0.0,
+        filtered_brake: float = 0.0,
         fuel_level: float = 0.0,
         remaining_laps: int = 0,
         delta_time: float = 0.0,
@@ -115,12 +127,17 @@ class VehicleSensors:
         lap_flag: int = 2,
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
+        grip_fractions: Optional[Tuple[float, float, float, float]] = None,
     ) -> "VehicleSensors":
 
         if not in_realtime:
             return cls(
                 in_realtime=False,
                 gear=gear,
+                unfiltered_throttle=max(0.0, min(1.0, float(unfiltered_throttle))),
+                unfiltered_brake=max(0.0, min(1.0, float(unfiltered_brake))),
+                filtered_throttle=max(0.0, min(1.0, float(filtered_throttle))),
+                filtered_brake=max(0.0, min(1.0, float(filtered_brake))),
                 fuel_level=fuel_level,
                 remaining_laps=remaining_laps,
                 delta_time=delta_time,
@@ -145,7 +162,6 @@ class VehicleSensors:
         locks = []
         spins = []
         lats = []
-        grips = []
 
         avg_speed = sum(abs(v) for v in long_ground_vels) / 4.0
 
@@ -154,31 +170,37 @@ class VehicleSensors:
             lgv = float(long_ground_vels[i]) if i < len(long_ground_vels) else 0.0
             lat_pv = float(lat_patch_vels[i]) if i < len(lat_patch_vels) else 0.0
 
-            lpv_mag = abs(lpv)
-            lgv_mag = abs(lgv)
-            lat_pv_mag = abs(lat_pv)
-
-            # Effective speed for slip ratio calculation
-            speed = max(0.5, lgv_mag, lpv_mag)
-
-            # Wheel Lockup (Over-braking): Ground speed > Patch speed par au moins 5% pour filtrer les micro-reliefs de piste
-            if lgv_mag > 1.5 and lpv_mag < 0.2 * lgv_mag:
-                locks.append(min(1.0, (lgv_mag - lpv_mag) / speed))
+            speed = abs(lgv)
+            if speed > 0.5:
+                # Dimensionless relative longitudinal slip ratio: (lpv - lgv) / speed
+                long_slip = (lpv - lgv) / speed
+                lat_slip = abs(lat_pv) / speed
+                lock_val = max(0.0, -long_slip)
+                spin_val = max(0.0, long_slip)
             else:
-                locks.append(0.0)
+                # Low-speed / standstill simulation
+                if lgv == 0.0 and lpv != 0.0:
+                    lock_val = abs(lpv) if i < 2 else max(0.0, -lpv)
+                    spin_val = abs(lpv) if i >= 2 else max(0.0, lpv)
+                else:
+                    long_slip = math.copysign(min(1.0, abs(lpv - lgv)), lpv - lgv)
+                    lock_val = max(0.0, -long_slip)
+                    spin_val = max(0.0, long_slip)
+                lat_slip = min(1.0, abs(lat_pv))
 
-            # Wheel Spin (TC / Over-acceleration): Patch speed > Ground speed (wheel spinning faster than vehicle ground speed)
-            if lpv_mag > lgv_mag + 2.0 and lgv_mag > 0.5:
-                spins.append(min(1.0, (lpv_mag - lgv_mag) / speed))
-            else:
-                spins.append(0.0)
+            locks.append(min(1.0, max(0.0, lock_val)))
+            spins.append(min(1.0, max(0.0, spin_val)))
+            lats.append(min(1.0, max(0.0, lat_slip)))
 
-            # Lateral Slip (Oversteer / Understeer): Lateral patch speed relative to effective speed
-            lats.append(min(1.0, lat_pv_mag / speed))
-            grips.append(max(0.0, 1.0 - max(locks[-1], spins[-1], lats[-1])))
+        if grip_fractions is not None and len(grip_fractions) >= 4:
+            grips = [min(1.0, max(0.0, float(g))) for g in grip_fractions[:4]]
+        else:
+            grips = [max(0.0, min(1.0, 1.0 - max(locks[i], spins[i], lats[i]))) for i in range(4)]
 
         # Dynamic kerb / vibreur travel intensity from suspension velocity (scaled: 0.40 m/s = 1.0)
-        travels = tuple(min(1.0, max(0.0, t)) for t in suspension_travels)
+        travels = tuple(min(1.0, max(0.0, float(t))) for t in suspension_travels)
+        if len(travels) < 4:
+            travels = travels + (0.0,) * (4 - len(travels))
 
         return cls(
             front_left_lock=locks[0],
@@ -206,6 +228,8 @@ class VehicleSensors:
             vehicle_speed=avg_speed,
             unfiltered_throttle=max(0.0, min(1.0, float(unfiltered_throttle))),
             unfiltered_brake=max(0.0, min(1.0, float(unfiltered_brake))),
+            filtered_throttle=max(0.0, min(1.0, float(filtered_throttle))),
+            filtered_brake=max(0.0, min(1.0, float(filtered_brake))),
             fuel_level=fuel_level,
             remaining_laps=remaining_laps,
             delta_time=delta_time,
@@ -229,6 +253,110 @@ class VehicleSensors:
             gear=gear,
         )
 
+    @classmethod
+    def from_telem_info(
+        cls,
+        telem: "TelemInfo",
+        scoring: Optional[Any] = None,
+        delta_time: float = 0.0,
+        estimated_lap_time: float = 0.0,
+        estimated_lap_time_str: str = "--:--.---",
+        sector1_time: str = "--",
+        sector1_status: str = "default",
+        sector2_time: str = "--",
+        sector2_status: str = "default",
+        sector3_time: str = "--",
+        sector3_status: str = "default",
+        explicit_aero_load: Optional[float] = None,
+        current_sector: int = 1,
+        sector1_delta: float = 0.0,
+        sector2_delta: float = 0.0,
+        sector3_delta: float = 0.0,
+        lap_flag: int = 2,
+        has_delta_reference: bool = False,
+        is_pit_lap: bool = False,
+        in_realtime: bool = True,
+    ) -> "VehicleSensors":
+        """Instancie un objet VehicleSensors directement depuis un paquet binaire TelemInfo de isimotor_rawudp_client."""
+        wheels = getattr(telem, "wheels", ())
+        if wheels and len(wheels) >= 4:
+            lpv = tuple(float(w.longitudinal_patch_vel) for w in wheels[:4])
+            lgv = tuple(float(w.longitudinal_ground_vel) for w in wheels[:4])
+            lat_pv = tuple(float(w.lateral_patch_vel) for w in wheels[:4])
+            lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
+            raw_deflections = tuple(float(getattr(w, "suspension_deflection", 0.0)) for w in wheels[:4])
+            travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
+            raw_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
+        else:
+            lpv = (0.0, 0.0, 0.0, 0.0)
+            lgv = (0.0, 0.0, 0.0, 0.0)
+            lat_pv = (0.0, 0.0, 0.0, 0.0)
+            lat_gv = (0.0, 0.0, 0.0, 0.0)
+            travels = (0.0, 0.0, 0.0, 0.0)
+            raw_grips = (1.0, 1.0, 1.0, 1.0)
+
+        if explicit_aero_load is None:
+            f_df = abs(float(getattr(telem, "front_downforce", 0.0)))
+            r_df = abs(float(getattr(telem, "rear_downforce", 0.0)))
+            aero_downforce = min(100.0, (f_df + r_df) / 50.0)
+        else:
+            aero_downforce = explicit_aero_load
+
+        remaining_laps = 0
+        if scoring is not None:
+            if hasattr(scoring, "max_laps") and hasattr(scoring, "total_laps"):
+                if 0 < scoring.max_laps < 1000:
+                    remaining_laps = max(0, scoring.max_laps - scoring.total_laps)
+            elif isinstance(scoring, dict):
+                max_laps = int(scoring.get("mMaxLaps", scoring.get("maxLaps", 0)))
+                total_laps = int(scoring.get("mTotalLaps", scoring.get("totalLaps", 0)))
+                if 0 < max_laps < 1000:
+                    remaining_laps = max(0, max_laps - total_laps)
+
+        engine_rpm = float(getattr(telem, "engine_rpm", 0.0))
+        engine_max_rpm = float(getattr(telem, "engine_max_rpm", 7500.0))
+        gear = int(getattr(telem, "gear", 0))
+        unfiltered_throttle = float(getattr(telem, "unfiltered_throttle", 0.0))
+        unfiltered_brake = float(getattr(telem, "unfiltered_brake", 0.0))
+        filtered_throttle = float(getattr(telem, "filtered_throttle", unfiltered_throttle))
+        filtered_brake = float(getattr(telem, "filtered_brake", unfiltered_brake))
+        fuel_level = float(getattr(telem, "fuel", 0.0))
+
+        return cls.from_wheel_velocities(
+            long_patch_vels=lpv,
+            long_ground_vels=lgv,
+            lat_patch_vels=lat_pv,
+            lat_ground_vels=lat_gv,
+            engine_rpm=engine_rpm,
+            engine_max_rpm=engine_max_rpm,
+            suspension_travels=travels,
+            in_realtime=in_realtime,
+            gear=gear,
+            unfiltered_throttle=unfiltered_throttle,
+            unfiltered_brake=unfiltered_brake,
+            filtered_throttle=filtered_throttle,
+            filtered_brake=filtered_brake,
+            fuel_level=fuel_level,
+            remaining_laps=remaining_laps,
+            delta_time=delta_time,
+            estimated_lap_time=estimated_lap_time,
+            estimated_lap_time_str=estimated_lap_time_str,
+            sector1_time=sector1_time,
+            sector1_status=sector1_status,
+            sector2_time=sector2_time,
+            sector2_status=sector2_status,
+            sector3_time=sector3_time,
+            sector3_status=sector3_status,
+            explicit_aero_load=aero_downforce,
+            current_sector=current_sector,
+            sector1_delta=sector1_delta,
+            sector2_delta=sector2_delta,
+            sector3_delta=sector3_delta,
+            lap_flag=lap_flag,
+            has_delta_reference=has_delta_reference,
+            is_pit_lap=is_pit_lap,
+            grip_fractions=raw_grips,
+        )
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────
     @property
@@ -436,6 +564,37 @@ class VehicleSensors:
         if v <= 0.0:
             return 0.0
         return min(1.0, max(0.0, (v / v_max) ** 1.5))
+
+    # ── Official Car Electronic Aids (ECU ABS & Traction Control) ─────────────
+    @property
+    def ecu_abs_active(self) -> float:
+        """
+        Official Car ECU ABS Active Intervention Intensity (0.0 to 1.0).
+        Measures electronic anti-lock regulation when driver brake pedal exceeds filtered caliper pressure.
+        Distinct from physical tire slip (wheel lockup).
+        """
+        if not self.in_realtime:
+            return 0.0
+        ub = self.unfiltered_brake
+        fb = getattr(self, "filtered_brake", ub)
+        if ub > 0.05 and fb < ub - 0.005:
+            return min(1.0, max(0.0, (ub - fb) / max(0.01, ub)))
+        return 0.0
+
+    @property
+    def ecu_tc_active(self) -> float:
+        """
+        Official Car ECU Traction Control (TC) Active Intervention Intensity (0.0 to 1.0).
+        Measures electronic traction control engine cuts when driver throttle pedal exceeds filtered engine throttle.
+        Distinct from physical tire slip (wheel spin).
+        """
+        if not self.in_realtime:
+            return 0.0
+        ut = self.unfiltered_throttle
+        ft = getattr(self, "filtered_throttle", ut)
+        if ut > 0.05 and ft < ut - 0.005:
+            return min(1.0, max(0.0, (ut - ft) / max(0.01, ut)))
+        return 0.0
 
 
 

@@ -34,7 +34,7 @@ class QtBrakeGaugeWidget(BaseQtHudWidget):
         else:
             raw_brake = sensors.lock_intensity * 100.0
 
-        is_locking = extra_data.get("overbrake", False) or (sensors.lock_intensity > 0.05)
+        is_locking = extra_data.get("overbrake", False) or (sensors.ecu_abs_active > 0.01) or (sensors.lock_intensity > 0.05)
 
         # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
         self.display_brake = lerp(self.display_brake, raw_brake, 0.65)

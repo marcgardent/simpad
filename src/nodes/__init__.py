@@ -21,6 +21,8 @@ from src.nodes.sensor import (
     EngineRegimeSensorNode,
     WheelTravelSensorNode,
     GripFractSensorNode,
+    EcuAbsSensorNode,
+    EcuTcSensorNode,
 )
 from src.nodes.output import XInputOutputNode
 
@@ -43,6 +45,8 @@ __all__ = [
     "EngineRegimeSensorNode",
     "WheelTravelSensorNode",
     "GripFractSensorNode",
+    "EcuAbsSensorNode",
+    "EcuTcSensorNode",
     "XInputOutputNode",
 ]
 

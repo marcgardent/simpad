@@ -10,7 +10,7 @@ import logging
 from enum import Enum
 from typing import Optional, Dict, Any, List, Tuple
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from src.engineer.context import EngineerContext, get_vehicle_attr
 from src.engineer.registry import RoleRegistry
 from src.engineer.params import RoleParam, FloatRangeParam, BoolParam
 from src.telemetry.reference_profile import ReferenceLapProfile
@@ -247,7 +247,7 @@ class TrafficSpotterRole(BaseRole):
         has_valid_ref = bool(ref_prof and getattr(ref_prof, "num_points", 0) >= 2)
 
         for opp in opponents:
-            opp_id = opp.get("mID", opp.get("id", -1))
+            opp_id = get_vehicle_attr(opp, "id", -1)
             opp_speed = context.extract_vehicle_speed_mps(opp)
             dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
             speed_delta = opp_speed - player_speed
@@ -268,12 +268,16 @@ class TrafficSpotterRole(BaseRole):
                     profile=ref_prof,
                     tolerance_kmh=self.domain_speed_tolerance_kmh,
                 )
+            elif self.enable_ref_lap_filter and not has_valid_ref:
+                logger.debug(
+                    "[TrafficSpotter] Filtre domaine activé mais aucun profil de référence — filtre bypassé"
+                )
 
             metrics.append({
                 "vehicle": opp,
                 "id": opp_id,
-                "driver_name": opp.get("mDriverName", "Opponent"),
-                "vehicle_name": opp.get("mVehicleName", ""),
+                "driver_name": get_vehicle_attr(opp, "driver_name", "Opponent"),
+                "vehicle_name": get_vehicle_attr(opp, "vehicle_name", ""),
                 "dist_behind": dist_behind,
                 "speed_delta_mps": speed_delta,
                 "speed_delta_kmh": speed_delta_kmh,

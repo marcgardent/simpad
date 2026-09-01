@@ -93,5 +93,29 @@ class TestLmuHudBoard(unittest.TestCase):
 
 
 
+    def test_hud_gauges_abs_and_tc_binding(self):
+        """Verify that ECU ABS and TC activation are properly bound to HUD gauges."""
+        board = LmuHudBoard()
+        # 1. Car ECU ABS Active (unfiltered_brake=1.0, filtered_brake=0.5 -> ecu_abs_active=0.5)
+        sensors_abs = VehicleSensors(
+            in_realtime=True,
+            unfiltered_brake=1.0,
+            filtered_brake=0.5,
+        )
+        ctx_abs = board._build_widget_context(sensors_abs)
+        self.assertTrue(ctx_abs["overbrake"])
+        self.assertFalse(ctx_abs["wheelspin"])
+
+        # 2. Car ECU TC Active (unfiltered_throttle=1.0, filtered_throttle=0.4 -> ecu_tc_active=0.6)
+        sensors_tc = VehicleSensors(
+            in_realtime=True,
+            unfiltered_throttle=1.0,
+            filtered_throttle=0.4,
+        )
+        ctx_tc = board._build_widget_context(sensors_tc)
+        self.assertFalse(ctx_tc["overbrake"])
+        self.assertTrue(ctx_tc["wheelspin"])
+
+
 if __name__ == "__main__":
     unittest.main()

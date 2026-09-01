@@ -244,3 +244,49 @@ class GripFractSensorNode(BaseNode):
         return lines
 
 
+class EcuAbsSensorNode(BaseNode):
+    """Input sensor node for Official Car ECU ABS (Anti-lock Braking System Active)."""
+
+    @property
+    def node_type(self) -> str:
+        return "sensor_ecu_abs"
+
+    @property
+    def display_name(self) -> str:
+        return "Input: Car ECU ABS Active"
+
+    def generate_code(self, ntag: str, ninfo: dict, in_to_outs: Dict[str, List[str]]) -> List[str]:
+        out_attr = ninfo.get("out_attr", "attr_out_ecu_abs")
+        lines = [
+            f"    # Sensor Node: Car ECU ABS Active ({ntag})",
+            "    val_map['attr_out_ecu_abs'] = ecu_abs_val",
+        ]
+        if out_attr != "attr_out_ecu_abs":
+            lines.append(f"    val_map['{out_attr}'] = ecu_abs_val")
+        lines.append("")
+        return lines
+
+
+class EcuTcSensorNode(BaseNode):
+    """Input sensor node for Official Car ECU TC (Traction Control Active)."""
+
+    @property
+    def node_type(self) -> str:
+        return "sensor_ecu_tc"
+
+    @property
+    def display_name(self) -> str:
+        return "Input: Car ECU TC Active"
+
+    def generate_code(self, ntag: str, ninfo: dict, in_to_outs: Dict[str, List[str]]) -> List[str]:
+        out_attr = ninfo.get("out_attr", "attr_out_ecu_tc")
+        lines = [
+            f"    # Sensor Node: Car ECU TC Active ({ntag})",
+            "    val_map['attr_out_ecu_tc'] = ecu_tc_val",
+        ]
+        if out_attr != "attr_out_ecu_tc":
+            lines.append(f"    val_map['{out_attr}'] = ecu_tc_val")
+        lines.append("")
+        return lines
+
+

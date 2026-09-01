@@ -6,21 +6,137 @@ Fournit un accès unifié, propre et optimisé à la télémétrie et aux donné
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Union
+
+try:
+    from isimotor_rawudp_client import (
+        TelemInfo,
+        CompactScoring,
+        FullScoringSession,
+        VehicleScoring,
+    )
+except ImportError:
+    TelemInfo = Any  # type: ignore
+    CompactScoring = Any  # type: ignore
+    FullScoringSession = Any  # type: ignore
+    VehicleScoring = Any  # type: ignore
+
 from src.telemetry.lmu_parser import TelemetryData
+
+
+def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
+    """
+    Récupère un attribut ou une clé de dictionnaire de façon universelle et sûre
+    pour un véhicule (VehicleScoring ou dict).
+    Gère les variantes de nommage (camelCase, snake_case, préfixe m).
+    """
+    if veh is None:
+        return default
+
+    # 1. Si c'est un dictionnaire
+    if isinstance(veh, dict):
+        if key in veh:
+            return veh[key]
+        key_mapping_dict = {
+            "id": ["mID", "id", "m_id"],
+            "mID": ["mID", "id", "m_id"],
+            "driver_name": ["mDriverName", "driverName", "driver_name"],
+            "mDriverName": ["mDriverName", "driverName", "driver_name"],
+            "vehicle_name": ["mVehicleName", "vehicleName", "vehicle_name"],
+            "mVehicleName": ["mVehicleName", "vehicleName", "vehicle_name"],
+            "pit_state": ["mPitState", "pitState", "pit_state"],
+            "mPitState": ["mPitState", "pitState", "pit_state"],
+            "in_garage_stall": ["mInGarageStall", "inGarageStall", "in_garage_stall"],
+            "mInGarageStall": ["mInGarageStall", "inGarageStall", "in_garage_stall"],
+            "in_pits": ["mInPits", "inPits", "in_pits"],
+            "mInPits": ["mInPits", "inPits", "in_pits"],
+            "lap_dist": ["mLapDist", "lapDist", "lap_dist"],
+            "mLapDist": ["mLapDist", "lapDist", "lap_dist"],
+            "total_laps": ["mTotalLaps", "totalLaps", "total_laps"],
+            "mTotalLaps": ["mTotalLaps", "totalLaps", "total_laps"],
+            "count_lap_flag": ["mCountLapFlag", "countLapFlag", "count_lap_flag"],
+            "mCountLapFlag": ["mCountLapFlag", "countLapFlag", "count_lap_flag"],
+            "is_player": ["mIsPlayer", "isPlayer", "is_player"],
+            "mIsPlayer": ["mIsPlayer", "isPlayer", "is_player"],
+            "control": ["mControl", "control"],
+            "mControl": ["mControl", "control"],
+            "finish_status": ["mFinishStatus", "finishStatus", "finish_status"],
+            "mFinishStatus": ["mFinishStatus", "finishStatus", "finish_status"],
+            "speed": ["mSpeed", "speed", "speed_mps"],
+            "speed_mps": ["speed_mps", "mSpeed", "speed"],
+            "pos": ["mPos", "pos"],
+            "mPos": ["mPos", "pos"],
+            "local_vel": ["mLocalVel", "localVel", "local_vel"],
+            "mLocalVel": ["mLocalVel", "localVel", "local_vel"],
+        }
+        for candidate in key_mapping_dict.get(key, []):
+            if candidate in veh:
+                return veh[candidate]
+        return default
+
+    # 2. Si c'est un objet (ex: VehicleScoring)
+    if hasattr(veh, key):
+        val = getattr(veh, key)
+        return val if val is not None else default
+
+    key_mapping_obj = {
+        "mID": "id",
+        "ID": "id",
+        "mDriverName": "driver_name",
+        "driverName": "driver_name",
+        "mVehicleName": "vehicle_name",
+        "vehicleName": "vehicle_name",
+        "mPitState": "pit_state",
+        "pitState": "pit_state",
+        "mInGarageStall": "in_garage_stall",
+        "inGarageStall": "in_garage_stall",
+        "mInPits": "in_pits",
+        "inPits": "in_pits",
+        "mLapDist": "lap_dist",
+        "lapDist": "lap_dist",
+        "mTotalLaps": "total_laps",
+        "totalLaps": "total_laps",
+        "mCountLapFlag": "count_lap_flag",
+        "countLapFlag": "count_lap_flag",
+        "mIsPlayer": "is_player",
+        "isPlayer": "is_player",
+        "mControl": "control",
+        "control": "control",
+        "mFinishStatus": "finish_status",
+        "finishStatus": "finish_status",
+        "mSpeed": "speed_mps",
+        "speed": "speed_mps",
+        "mSector": "sector",
+        "sector": "sector",
+        "mPos": "pos",
+        "pos": "pos",
+        "mLocalVel": "local_vel",
+        "localVel": "local_vel",
+    }
+    mapped = key_mapping_obj.get(key)
+    if mapped and hasattr(veh, mapped):
+        val = getattr(veh, mapped)
+        return val if val is not None else default
+
+    return default
 
 
 @dataclass
 class EngineerContext:
     """
     Objet de contexte transmis aux rôles lors de chaque cycle de calcul.
-    Encapsule la télémétrie physique et les informations globales de scoring/session.
+    Encapsule la télémétrie physique et les informations globales de scoring/session (dict ou modèles typés isimotor).
     """
-    telemetry: Optional[TelemetryData] = None
-    scoring: Optional[Dict[str, Any]] = None
+    telemetry: Optional[Union[TelemetryData, TelemInfo, Any]] = None
+    scoring: Optional[Union[Dict[str, Any], FullScoringSession, CompactScoring, Any]] = None
     timestamp: float = field(default_factory=time.time)
     audio_engine: Optional[Any] = None
     reference_profile: Optional[Any] = None
+
+    @staticmethod
+    def get_attr(veh: Any, key: str, default: Any = None) -> Any:
+        """Méthode statique utilitaire pour accéder aux attributs d'un véhicule."""
+        return get_vehicle_attr(veh, key, default)
 
     def get_session_type(self) -> int:
         """
@@ -32,11 +148,17 @@ class EngineerContext:
         10..13 = Race (Course 1 à 4)
         Retourne -1 si non disponible.
         """
-        if self.scoring:
-            try:
-                return int(self.scoring.get("mSession", self.scoring.get("session", -1)))
-            except (ValueError, TypeError):
-                pass
+        if self.scoring is not None:
+            if hasattr(self.scoring, "session"):
+                try:
+                    return int(self.scoring.session)
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(self.scoring, dict):
+                try:
+                    return int(self.scoring.get("mSession", self.scoring.get("session", -1)))
+                except (ValueError, TypeError):
+                    pass
         return -1
 
     def is_qualifying_session(self) -> bool:
@@ -53,10 +175,16 @@ class EngineerContext:
 
     def get_track_name(self) -> str:
         """Retourne le nom du circuit actif depuis le paquet de scoring ou le profil de référence."""
-        if self.scoring:
-            name = str(self.scoring.get("mTrackName", self.scoring.get("trackName", "")))
-            if name:
-                return name
+        if self.scoring is not None:
+            if hasattr(self.scoring, "track_name"):
+                name = str(self.scoring.track_name).strip()
+                if name:
+                    return name
+            elif isinstance(self.scoring, dict):
+                name = str(self.scoring.get("mTrackName", self.scoring.get("trackName", ""))).strip()
+                if name:
+                    return name
+
         if self.reference_profile is not None:
             ref_name = getattr(self.reference_profile, "track_name", "")
             if ref_name:
@@ -72,9 +200,7 @@ class EngineerContext:
 
     def get_reference_profile(self) -> Optional[Any]:
         """Retourne le profil du tour de référence actif s'il correspond au circuit en cours."""
-        scoring_track = ""
-        if self.scoring:
-            scoring_track = str(self.scoring.get("mTrackName", self.scoring.get("trackName", "")))
+        scoring_track = self.get_track_name()
 
         if self.reference_profile is not None:
             ref_track = getattr(self.reference_profile, "track_name", "")
@@ -125,10 +251,6 @@ class EngineerContext:
         """
         Vérifie si une vitesse donnée est dans le 'domaine normal'
         par rapport au tour de référence à une position précise du circuit.
-        
-        Si aucun tour de référence n'est chargé, retourne True (repli tolérant).
-        Si |Vitesse - VitesseRef| <= tolerance_kmh -> True (dans le domaine normal).
-        Sinon -> False (hors domaine / anomalie).
         """
         ref_prof = profile or self.get_reference_profile()
         if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
@@ -148,7 +270,7 @@ class EngineerContext:
 
     def is_vehicle_in_normal_domain(
         self,
-        veh: Dict[str, Any],
+        veh: Any,
         profile: Optional[Any] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
@@ -156,10 +278,11 @@ class EngineerContext:
         Détermine si un véhicule roule dans son domaine de vitesse 'normal'
         selon sa position sur la piste.
         """
-        if not isinstance(veh, dict):
+        if veh is None:
             return True
         track_len = self.get_track_length()
-        lap_dist = float(veh.get("mLapDist", veh.get("lapDist", 0.0))) % track_len
+        lap_dist = float(get_vehicle_attr(veh, "lap_dist", 0.0)) % track_len
+
         speed_mps = self.extract_vehicle_speed_mps(veh)
         return self.is_speed_in_normal_domain(
             speed_mps=speed_mps,
@@ -178,7 +301,7 @@ class EngineerContext:
         if not player_veh:
             return True
         track_len = self.get_track_length()
-        lap_dist = float(player_veh.get("mLapDist", player_veh.get("lapDist", 0.0))) % track_len
+        lap_dist = float(get_vehicle_attr(player_veh, "lap_dist", 0.0)) % track_len
         player_speed = self.get_player_speed_mps()
         return self.is_speed_in_normal_domain(
             speed_mps=player_speed,
@@ -189,18 +312,14 @@ class EngineerContext:
 
     def has_traffic_domain_anomaly(
         self,
-        player_veh: Dict[str, Any],
-        opp_veh: Dict[str, Any],
+        player_veh: Any,
+        opp_veh: Any,
         profile: Optional[Any] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
         Vérifie la condition de filtrage pour les rôles trafic :
         Il faut qu'au moins l'un des deux (moi OU l'autre) soit hors domaine.
-        
-        - Si aucun tour de référence n'est disponible -> True (pas de filtrage).
-        - Si le joueur OU l'adversaire est hors domaine -> True (alerte autorisée).
-        - Si les DEUX sont dans le domaine normal -> False (alerte filtrée / ignorée).
         """
         ref_prof = profile or self.get_reference_profile()
         if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
@@ -213,29 +332,39 @@ class EngineerContext:
 
     def get_track_length(self) -> float:
         """Retourne la longueur totale du circuit en mètres."""
-        if self.scoring:
-            lap_dist = float(self.scoring.get("mLapDist", self.scoring.get("lapDist", 0.0)))
-            if lap_dist > 500.0:
-                return lap_dist
+        if self.scoring is not None:
+            if hasattr(self.scoring, "lap_dist"):
+                lap_dist = float(self.scoring.lap_dist)
+                if lap_dist > 500.0:
+                    return lap_dist
+            elif isinstance(self.scoring, dict):
+                lap_dist = float(self.scoring.get("mLapDist", self.scoring.get("lapDist", 0.0)))
+                if lap_dist > 500.0:
+                    return lap_dist
         return 5000.0  # Valeur par défaut de repli
 
-    def get_player_vehicle(self) -> Optional[Dict[str, Any]]:
-        """Extrait le véhicule du joueur depuis la liste des véhicules scoring."""
+    def get_player_vehicle(self) -> Optional[Any]:
+        """Extrait le véhicule du joueur depuis la session scoring (VehicleScoring ou dict)."""
         if not self.scoring:
             return None
-        vehicles = self.scoring.get("mVehicles", [])
-        if not isinstance(vehicles, list):
-            return None
 
-        # Priorité au flag explicite isPlayer
-        for v in vehicles:
-            if isinstance(v, dict) and (v.get("mIsPlayer") or v.get("isPlayer")):
-                return v
+        if hasattr(self.scoring, "player_vehicle"):
+            pv = self.scoring.player_vehicle
+            if pv is not None:
+                return pv
 
-        # Repli sur le contrôle joueur local (mControl == 0)
-        for v in vehicles:
-            if isinstance(v, dict) and v.get("mControl") == 0:
-                return v
+        vehicles = getattr(self.scoring, "vehicles", None)
+        if vehicles is None and isinstance(self.scoring, dict):
+            vehicles = self.scoring.get("mVehicles", [])
+
+        if isinstance(vehicles, (list, tuple)):
+            for v in vehicles:
+                if get_vehicle_attr(v, "is_player") or get_vehicle_attr(v, "mIsPlayer"):
+                    return v
+
+            for v in vehicles:
+                if get_vehicle_attr(v, "control") == 0:
+                    return v
 
         return None
 
@@ -254,16 +383,16 @@ class EngineerContext:
         return self.is_vehicle_in_garage(player)
 
     @classmethod
-    def is_vehicle_in_pits(cls, veh: Dict[str, Any]) -> bool:
+    def is_vehicle_in_pits(cls, veh: Any) -> bool:
         """
         Indique si un véhicule donné est dans la pitlane.
-        Vérifie les drapeaux mInPits et l'état mPitState (2=entering, 3=stopped, 4=exiting).
+        Vérifie les drapeaux in_pits/mInPits et l'état pit_state/mPitState (2=entering, 3=stopped, 4=exiting).
         """
-        if not isinstance(veh, dict):
+        if veh is None:
             return False
-        if veh.get("mInPits") or veh.get("inPits"):
+        if bool(get_vehicle_attr(veh, "in_pits", False)):
             return True
-        pit_state = veh.get("mPitState", veh.get("pitState", 0))
+        pit_state = get_vehicle_attr(veh, "pit_state", 0)
         try:
             if int(pit_state) in (2, 3, 4):
                 return True
@@ -272,41 +401,44 @@ class EngineerContext:
         return False
 
     @classmethod
-    def is_vehicle_in_garage(cls, veh: Dict[str, Any]) -> bool:
+    def is_vehicle_in_garage(cls, veh: Any) -> bool:
         """Indique si un véhicule donné est dans son garage / box."""
-        if not isinstance(veh, dict):
+        if veh is None:
             return False
-        return bool(veh.get("mInGarageStall") or veh.get("inGarageStall"))
+        return bool(get_vehicle_attr(veh, "in_garage_stall", False))
 
-    def get_track_opponents(self) -> List[Dict[str, Any]]:
+    def get_track_opponents(self) -> List[Any]:
         """
         Retourne uniquement la liste des véhicules adverses actifs SUR LA PISTE (hors stands et garage).
         Garantit qu'aucun véhicule en pitlane ne perturbe les calculs de spotter ou de trafic en piste.
         """
         return self.get_opponent_vehicles(include_pits=False, include_garage=False)
 
-    def get_pit_opponents(self) -> List[Dict[str, Any]]:
+    def get_pit_opponents(self) -> List[Any]:
         """
         Retourne la liste des véhicules adverses présents DANS LA PITLANE (hors garage).
         Permet un traitement distinct du trafic en voie des stands.
         """
         if not self.scoring:
             return []
-        vehicles = self.scoring.get("mVehicles", [])
-        if not isinstance(vehicles, list):
+
+        vehicles = getattr(self.scoring, "vehicles", None)
+        if vehicles is None and isinstance(self.scoring, dict):
+            vehicles = self.scoring.get("mVehicles", [])
+
+        if not isinstance(vehicles, (list, tuple)):
             return []
 
         pit_opponents = []
         for v in vehicles:
-            if not isinstance(v, dict):
-                continue
-            if v.get("mIsPlayer") or v.get("isPlayer") or v.get("mControl") == 0:
+            if get_vehicle_attr(v, "is_player") or get_vehicle_attr(v, "control") == 0:
                 continue
             if self.is_vehicle_in_garage(v):
                 continue
             if not self.is_vehicle_in_pits(v):
                 continue
-            if v.get("mFinishStatus", 0) not in (0, "0"):
+            finish_status = get_vehicle_attr(v, "finish_status", 0)
+            if finish_status not in (0, "0"):
                 continue
             pit_opponents.append(v)
         return pit_opponents
@@ -315,7 +447,7 @@ class EngineerContext:
         self,
         include_pits: bool = False,
         include_garage: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Any]:
         """
         Retourne la liste des véhicules adverses actifs.
         Exclut le joueur, les véhicules au garage (sauf si include_garage=True),
@@ -323,62 +455,74 @@ class EngineerContext:
         """
         if not self.scoring:
             return []
-        vehicles = self.scoring.get("mVehicles", [])
-        if not isinstance(vehicles, list):
+
+        vehicles = getattr(self.scoring, "vehicles", None)
+        if vehicles is None and isinstance(self.scoring, dict):
+            vehicles = self.scoring.get("mVehicles", [])
+
+        if not isinstance(vehicles, (list, tuple)):
             return []
 
         opponents = []
         for v in vehicles:
-            if not isinstance(v, dict):
-                continue
-            if v.get("mIsPlayer") or v.get("isPlayer") or v.get("mControl") == 0:
+            if get_vehicle_attr(v, "is_player") or get_vehicle_attr(v, "control") == 0:
                 continue
             if not include_garage and self.is_vehicle_in_garage(v):
                 continue
             if not include_pits and self.is_vehicle_in_pits(v):
                 continue
-            # Exclure les voitures ayant abandonné (finishStatus != 0)
-            if v.get("mFinishStatus", 0) not in (0, "0"):
+            finish_status = get_vehicle_attr(v, "finish_status", 0)
+            if finish_status not in (0, "0"):
                 continue
-
             opponents.append(v)
-
         return opponents
 
     @classmethod
-    def extract_vehicle_speed_mps(cls, veh: Dict[str, Any]) -> float:
-        """Calcule la vitesse scalaire en m/s d'un véhicule depuis son vecteur de vitesse locale."""
-        vel = veh.get("mLocalVel") or veh.get("localVel")
+    def extract_vehicle_speed_mps(cls, veh: Any) -> float:
+        """Calcule la vitesse scalaire en m/s d'un véhicule (VehicleScoring ou dict)."""
+        if veh is None:
+            return 0.0
+        if hasattr(veh, "speed_mps"):
+            return float(veh.speed_mps)
+
+        vel = get_vehicle_attr(veh, "local_vel")
         if isinstance(vel, dict):
             vx = float(vel.get("x", 0.0))
             vy = float(vel.get("y", 0.0))
             vz = float(vel.get("z", 0.0))
             return math.sqrt(vx * vx + vy * vy + vz * vz)
+        elif hasattr(vel, "x") and hasattr(vel, "y") and hasattr(vel, "z"):
+            return math.sqrt(float(vel.x)**2 + float(vel.y)**2 + float(vel.z)**2)
         elif isinstance(vel, (list, tuple)) and len(vel) >= 3:
             return math.sqrt(float(vel[0])**2 + float(vel[1])**2 + float(vel[2])**2)
-        elif "mSpeed" in veh or "speed" in veh:
-            return float(veh.get("mSpeed", veh.get("speed", 0.0)))
+
+        speed = get_vehicle_attr(veh, "speed")
+        if speed is not None:
+            return float(speed)
         return 0.0
 
     def get_player_speed_mps(self) -> float:
         """Retourne la vitesse instantanée du joueur en m/s."""
         # 1. Depuis la télémétrie haute fréquence si disponible
-        if self.telemetry and self.telemetry.longitudinal_ground_vel:
-            speeds = [abs(v) for v in self.telemetry.longitudinal_ground_vel if isinstance(v, (int, float))]
-            if speeds:
-                return max(speeds)
+        if self.telemetry is not None:
+            if hasattr(self.telemetry, "speed_mps"):
+                return float(self.telemetry.speed_mps)
+            if hasattr(self.telemetry, "longitudinal_ground_vel") and self.telemetry.longitudinal_ground_vel:
+                speeds = [abs(v) for v in self.telemetry.longitudinal_ground_vel if isinstance(v, (int, float))]
+                if speeds:
+                    return max(speeds)
 
         # 2. Depuis le véhicule joueur dans le scoring
         player_veh = self.get_player_vehicle()
-        if player_veh:
+        if player_veh is not None:
             return self.extract_vehicle_speed_mps(player_veh)
 
         return 0.0
 
     def compute_distance_behind(
         self,
-        player_veh: Dict[str, Any],
-        opp_veh: Dict[str, Any],
+        player_veh: Any,
+        opp_veh: Any,
         track_length: Optional[float] = None,
     ) -> float:
         """
@@ -388,8 +532,8 @@ class EngineerContext:
         Gère le rebouclage de la ligne de départ/arrivée (wraparound).
         """
         l_track = track_length or self.get_track_length()
-        p_dist = float(player_veh.get("mLapDist", player_veh.get("lapDist", 0.0))) % l_track
-        o_dist = float(opp_veh.get("mLapDist", opp_veh.get("lapDist", 0.0))) % l_track
+        p_dist = float(get_vehicle_attr(player_veh, "lap_dist", 0.0)) % l_track
+        o_dist = float(get_vehicle_attr(opp_veh, "lap_dist", 0.0)) % l_track
 
         delta = (p_dist - o_dist) % l_track
         if delta < l_track / 2.0:
@@ -398,20 +542,33 @@ class EngineerContext:
             return delta - l_track  # Adversaire devant (valeur négative)
 
     @classmethod
-    def compute_euclidean_distance(cls, veh_a: Dict[str, Any], veh_b: Dict[str, Any]) -> float:
-        """Calcule la distance euclidienne 3D entre deux véhicules si la position mPos est disponible."""
-        pos_a = veh_a.get("mPos") or veh_a.get("pos")
-        pos_b = veh_b.get("mPos") or veh_b.get("pos")
-        if not pos_a or not pos_b:
+    def compute_euclidean_distance(cls, veh_a: Any, veh_b: Any) -> float:
+        """Calcule la distance euclidienne 3D entre deux véhicules si la position mPos/pos est disponible."""
+        def _get_xyz(v):
+            if v is None:
+                return None
+            p = get_vehicle_attr(v, "pos")
+            if p is not None:
+                if hasattr(p, "x") and hasattr(p, "y") and hasattr(p, "z"):
+                    x, y, z = float(p.x), float(p.y), float(p.z)
+                    if not (x == 0.0 and y == 0.0 and z == 0.0):
+                        return x, y, z
+                elif isinstance(p, dict):
+                    x, y, z = float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0))
+                    if not (x == 0.0 and y == 0.0 and z == 0.0):
+                        return x, y, z
+                elif isinstance(p, (list, tuple)) and len(p) >= 3:
+                    x, y, z = float(p[0]), float(p[1]), float(p[2])
+                    if not (x == 0.0 and y == 0.0 and z == 0.0):
+                        return x, y, z
+            return None
+
+        pos_a = _get_xyz(veh_a)
+        pos_b = _get_xyz(veh_b)
+        if pos_a is None or pos_b is None:
             return float("inf")
 
-        def _get_xyz(p):
-            if isinstance(p, dict):
-                return float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0))
-            elif isinstance(p, (list, tuple)) and len(p) >= 3:
-                return float(p[0]), float(p[1]), float(p[2])
-            return 0.0, 0.0, 0.0
-
-        xa, ya, za = _get_xyz(pos_a)
-        xb, yb, zb = _get_xyz(pos_b)
+        xa, ya, za = pos_a
+        xb, yb, zb = pos_b
         return math.sqrt((xa - xb)**2 + (ya - yb)**2 + (za - zb)**2)
+

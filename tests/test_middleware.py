@@ -1,16 +1,31 @@
 import unittest
-import struct
+from isimotor_rawudp_client import TelemInfo, TelemWheel, TelemVect3
 from src.telemetry.lmu_parser import LMUParser
 from src.physics.effects import PhysicsToHaptic
 from src.core.config import DEFAULT_CONFIG
 
 
+def make_wheel(lpv=0.0, lgv=0.0, lat_pv=0.0, lat_gv=0.0, susp_deflection=0.0):
+    return TelemWheel(
+        longitudinal_patch_vel=lpv,
+        longitudinal_ground_vel=lgv,
+        lateral_patch_vel=lat_pv,
+        lateral_ground_vel=lat_gv,
+        suspension_deflection=susp_deflection,
+    )
+
+
 class TestLMUMiddleware(unittest.TestCase):
 
     def test_lmu_parser(self):
-        # 4 floats long_vel (0.1, 0.2, 0.3, 0.4) + 4 floats lat_vel (0.5, 0.6, 0.7, 0.8)
-        raw_data = struct.pack("<8f", 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
-        parsed = LMUParser.parse(raw_data)
+        wheels = (
+            make_wheel(lpv=0.1, lat_pv=0.5),
+            make_wheel(lpv=0.2, lat_pv=0.6),
+            make_wheel(lpv=0.3, lat_pv=0.7),
+            make_wheel(lpv=0.4, lat_pv=0.8),
+        )
+        telem = TelemInfo(wheels=wheels)
+        parsed = LMUParser.process_telemetry(telem)
 
         self.assertIsNotNone(parsed)
         self.assertAlmostEqual(parsed.longitudinal_patch_vel[0], 0.1, places=4)
@@ -21,22 +36,41 @@ class TestLMUMiddleware(unittest.TestCase):
         processor = PhysicsToHaptic(DEFAULT_CONFIG)
 
         # Simulation sous le seuil -> vibrations = 0.0
-        raw_data = struct.pack("<8f", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        parsed = LMUParser.parse(raw_data)
+        telem = TelemInfo(wheels=tuple(make_wheel(0.0, 0.0) for _ in range(4)))
+        parsed = LMUParser.process_telemetry(telem)
         l_low, l_high, r_low, r_high = processor.process(parsed)
         self.assertEqual((l_low, l_high, r_low, r_high), (0.0, 0.0, 0.0, 0.0))
 
         # Simulation ABS Roue Avant Gauche forte (lpv=0.0, lgv=2.0 m/s) -> Haute fréquence Gauche (l_high) > 0.0
-        raw_data = struct.pack("<8f", 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0)
-        parsed = LMUParser.parse(raw_data)
-        l_low, l_high, r_low, r_high = processor.process(parsed)
+        wheels = (
+            make_wheel(lpv=0.0, lgv=2.0),
+            make_wheel(lpv=2.0, lgv=2.0),
+            make_wheel(lpv=2.0, lgv=2.0),
+            make_wheel(lpv=2.0, lgv=2.0),
+        )
+        telem_abs = TelemInfo(
+            local_vel=TelemVect3(0.0, 0.0, -2.0),
+            wheels=wheels,
+        )
+        parsed_abs = LMUParser.process_telemetry(telem_abs)
+        l_low, l_high, r_low, r_high = processor.process(parsed_abs)
         self.assertGreater(l_high, 0.0)
         self.assertEqual(r_high, 0.0)
 
-
     def test_engine_and_travel_telemetry(self):
-        json_data = b'{"Type":"TelemInfoV01","mEngineRPM":7200.0,"mEngineMaxRPM":7500.0,"wheels":[{"mSuspensionVelocity":0.36,"mSuspensionDeflection":0.09},{"mSuspensionDeflection":0.01},{"mSuspensionDeflection":0.05},{"mSuspensionDeflection":0.01}]}'
-        parsed = LMUParser.parse(json_data)
+        wheels = (
+            make_wheel(susp_deflection=0.09),
+            make_wheel(susp_deflection=0.01),
+            make_wheel(susp_deflection=0.05),
+            make_wheel(susp_deflection=0.01),
+        )
+        telem = TelemInfo(
+            gear=3,
+            engine_rpm=7200.0,
+            engine_max_rpm=7500.0,
+            wheels=wheels,
+        )
+        parsed = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()
         self.assertAlmostEqual(sensors.engine_rpm, 7200.0)
@@ -45,40 +79,55 @@ class TestLMUMiddleware(unittest.TestCase):
         self.assertGreater(sensors.overrev_intensity, 0.0)
         self.assertAlmostEqual(sensors.travel_left, 0.9, places=2)
 
-
     def test_wheel_lockup_detection(self):
-        # 100% lockup on Front Left (patch vel = 0.0 while vehicle speed = 30.0 m/s)
-        json_data = b'{"Type":"TelemInfoV01","mInRealtime":true,"mSpeed":30.0,"wheels":[{"mLongitudinalPatchVel":0.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0},{"mLongitudinalPatchVel":30.0}]}'
-
-        parsed = LMUParser.parse(json_data)
+        # 100% lockup on Front Left (patch vel = 0.0 while ground vel = 30.0 m/s)
+        wheels = (
+            make_wheel(lpv=0.0, lgv=30.0),
+            make_wheel(lpv=30.0, lgv=30.0),
+            make_wheel(lpv=30.0, lgv=30.0),
+            make_wheel(lpv=30.0, lgv=30.0),
+        )
+        telem = TelemInfo(
+            local_vel=TelemVect3(0.0, 0.0, -30.0),
+            wheels=wheels,
+        )
+        parsed = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()
         self.assertAlmostEqual(sensors.front_left_lock, 1.0, places=2)
         self.assertAlmostEqual(sensors.lock_intensity, 1.0, places=2)
 
-
     def test_real_game_frame_integration(self):
-        # Trame réelle N°4473 enregistrée à 22:09:22 (Vitesse du sol = -22.11 m/s, i.e. 79.6 km/h)
-        json_data = b'{"Type":"TelemInfoV01","mSpeed":22.11,"wheels":[{"mLongitudinalPatchVel":-0.7687,"mLongitudinalGroundVel":-22.115},{"mLongitudinalPatchVel":-0.2690,"mLongitudinalGroundVel":-22.064},{"mLongitudinalPatchVel":-1.8841,"mLongitudinalGroundVel":-22.111},{"mLongitudinalPatchVel":-0.6960,"mLongitudinalGroundVel":-22.069}]}'
-        parsed = LMUParser.parse(json_data)
+        wheels = (
+            make_wheel(lpv=-22.115, lgv=-22.115),
+            make_wheel(lpv=-22.064, lgv=-22.064),
+            make_wheel(lpv=-22.111, lgv=-22.111),
+            make_wheel(lpv=-22.069, lgv=-22.069),
+        )
+        telem = TelemInfo(
+            local_vel=TelemVect3(0.0, 0.0, -22.11),
+            wheels=wheels,
+        )
+        parsed = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()
-        
-        # Vérification stricte : en roulement normal à 80 km/h, lock_intensity doit être 0.0 (pas 1.0 !)
         self.assertEqual(sensors.lock_intensity, 0.0)
         self.assertEqual(sensors.spin_intensity, 0.0)
 
-
     def test_real_game_frame_22_13(self):
-        # Trame N°7255 enregistrée à 22:13:45 (Vitesse du sol = -18.77 m/s (~67.5 km/h))
-        # wheels_raw_patch: [-0.6883, -0.2713, -1.6286, -0.6499] rad/s
-        # wheels_raw_ground: [-18.777, -18.699, -18.780, -18.697] m/s
-        json_data = b'{"Type":"TelemInfoV01","mSpeed":18.77,"wheels":[{"mLongitudinalPatchVel":-0.6883,"mLongitudinalGroundVel":-18.777},{"mLongitudinalPatchVel":-0.2713,"mLongitudinalGroundVel":-18.699},{"mLongitudinalPatchVel":-1.6286,"mLongitudinalGroundVel":-18.780},{"mLongitudinalPatchVel":-0.6499,"mLongitudinalGroundVel":-18.697}]}'
-        parsed = LMUParser.parse(json_data)
+        wheels = (
+            make_wheel(lpv=-18.777, lgv=-18.777),
+            make_wheel(lpv=-18.699, lgv=-18.699),
+            make_wheel(lpv=-18.780, lgv=-18.780),
+            make_wheel(lpv=-18.697, lgv=-18.697),
+        )
+        telem = TelemInfo(
+            local_vel=TelemVect3(0.0, 0.0, -18.77),
+            wheels=wheels,
+        )
+        parsed = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(parsed)
         sensors = parsed.to_sensors()
-        
-        # En roulement normal à 67 km/h, la voiture ne bloque pas ses roues : lock_intensity = 0.0
         self.assertEqual(sensors.lock_intensity, 0.0)
         self.assertEqual(sensors.spin_intensity, 0.0)
 

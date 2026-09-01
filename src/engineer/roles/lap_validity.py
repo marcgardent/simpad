@@ -5,7 +5,7 @@ Surveille les transitions d'état du drapeau de tour LMU (mCountLapFlag).
 
 import time
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from src.engineer.context import EngineerContext, get_vehicle_attr
 from src.engineer.registry import RoleRegistry
 from src.engineer.params import RoleParam, FloatRangeParam
 
@@ -75,7 +75,7 @@ class LapValidityRole(BaseRole):
         elif context.scoring:
             player_veh = context.get_player_vehicle()
             if player_veh:
-                raw_flag = player_veh.get("mCountLapFlag", player_veh.get("countLapFlag", None))
+                raw_flag = get_vehicle_attr(player_veh, "count_lap_flag", None)
                 if raw_flag is not None:
                     current_flag = int(raw_flag)
 
