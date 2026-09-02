@@ -734,13 +734,15 @@ class VehicleSensors:
     def ecu_abs_active(self) -> float:
         """
         Official Car ECU ABS Active Intervention Intensity (0.0 to 1.0).
-        Uses native LMU EcuState.abs_active if available.
-        Strictly zero at standstill or speed <= 1.5 m/s.
+        Strictly zero at standstill or speed <= 1.5 m/s, or when ABS is disabled (level 0).
         """
         if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
-        if self.ecu_abs_active_raw is not None:
-            return 1.0 if self.ecu_abs_active_raw else 0.0
+        if self.ecu_abs_active_raw is True:
+            return 1.0
+        # If ABS is explicitly disabled at level 0 on an ABS-equipped car, return 0.0
+        if self.ecu_abs_level == 0 and self.ecu_abs_max > 0:
+            return 0.0
         ub = self.unfiltered_brake
         fb = self.filtered_brake if self.filtered_brake is not None else ub
         if ub > 0.05 and fb is not None and fb < ub - 0.005:
@@ -751,13 +753,27 @@ class VehicleSensors:
     def ecu_tc_active(self) -> float:
         """
         Official Car ECU Traction Control (TC) Active Intervention Intensity (0.0 to 1.0).
-        Uses native LMU EcuState.tc_active if available (strictly avoids upshift / rev-limiter false positives).
+        Detects native ECU tc_active flag OR ECU throttle cut during acceleration.
+        Strictly filters out upshifts, neutral, and rev-limiter cuts.
         Strictly zero at standstill or speed <= 1.5 m/s.
         """
         if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
-        if self.ecu_tc_active_raw is not None:
-            return 1.0 if self.ecu_tc_active_raw else 0.0
+        if self.ecu_tc_active_raw is True:
+            return 1.0
+        # If TC is explicitly disabled at level 0 on a TC-equipped car, return 0.0
+        if self.ecu_tc_level == 0 and self.ecu_tc_max > 0:
+            return 0.0
+        # Throttle cut detection (in gear only)
+        if self.gear <= 0:
+            return 0.0
+        ut = self.unfiltered_throttle
+        ft = self.filtered_throttle if self.filtered_throttle is not None else ut
+        if ut > 0.08 and ft is not None and ft < ut - 0.01:
+            # Filter out rev limiter (near max RPM)
+            if self.engine_rpm >= self.engine_max_rpm * 0.98:
+                return 0.0
+            return min(1.0, max(0.0, (ut - ft) / max(0.01, ut)))
         return 0.0
 
 

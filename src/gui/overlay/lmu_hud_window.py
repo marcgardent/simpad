@@ -155,7 +155,7 @@ class LmuHudQtWindow(QWidget):
                 "brake": sensors.unfiltered_brake * 100.0,
                 "throttle": sensors.unfiltered_throttle * 100.0,
                 "abs": sensors.ecu_abs_active * 100.0,
-                "tc": sensors.ecu_tc_active * 100.0,
+                "tc": max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0,
                 "overbrake": sensors.lock_intensity > 0.05,
                 "wheelspin": sensors.spin_intensity > 0.05,
                 "underrev": sensors.underrev_intensity > 0.1,

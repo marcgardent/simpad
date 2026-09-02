@@ -30,7 +30,7 @@ class QtTcGaugeWidget(BaseQtHudWidget):
         if "tc" in extra_data:
             raw_tc = float(extra_data["tc"])
         else:
-            raw_tc = sensors.ecu_tc_active * 100.0
+            raw_tc = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
 
         # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
         self.display_tc = lerp(self.display_tc, raw_tc, 0.65)

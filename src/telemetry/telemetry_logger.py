@@ -104,7 +104,7 @@ class TelemetryDiagnosticLogger:
         t_stamp = time.strftime("%H:%M:%S", time.localtime(now)) + f".{int((now % 1) * 1000):03d}"
 
         abs_gauge = sensors.ecu_abs_active * 100.0
-        tc_gauge = sensors.ecu_tc_active * 100.0
+        tc_gauge = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
 
         line = (
             f"[{t_stamp}] V={speed_kmh:5.1f}km/h G={sensors.gear:1d} | "

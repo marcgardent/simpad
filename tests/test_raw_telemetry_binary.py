@@ -290,14 +290,17 @@ def test_vehicle_sensors_ecu_abs_and_tc_intervention():
     assert sensors.ecu_abs_active == pytest.approx(0.40, abs=0.01)
     assert sensors.ecu_tc_active == 0.0
 
-    # 2. TC intervention sans ECU : reste 0.0 pour éviter les faux positifs d'upshift
+    # 2. TC intervention sans ECU (fallback coupure papillon 70%) :
     telem.unfiltered_brake = 0.0
     telem.filtered_brake = 0.0
     telem.unfiltered_throttle = 1.0
     telem.filtered_throttle = 0.30
+    telem.gear = 2
+    telem.engine_rpm = 5000.0
+    telem.engine_max_rpm = 7500.0
 
     sensors_tc = VehicleSensors.from_telem_info(telem)
-    assert sensors_tc.ecu_tc_active == 0.0
+    assert sensors_tc.ecu_tc_active == pytest.approx(0.70, abs=0.01)
     assert sensors_tc.ecu_abs_active == 0.0
 
 
