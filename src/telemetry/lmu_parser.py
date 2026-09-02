@@ -368,9 +368,6 @@ class LMUParser:
         else:
             cls._last_in_realtime = True
 
-        raw_sec = int(telem.current_sector)
-        cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
-
         snap = cls._build_telemetry_snapshot()
         try:
             from src.telemetry.telemetry_logger import TelemetryDiagnosticLogger
@@ -439,6 +436,23 @@ class LMUParser:
 
         raw_sec = int(scoring.sector)
         cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+        try:
+            from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+            OverlayAnomalyLogger.get_instance().check_sector_update(
+                current_sector=cls._last_current_sector,
+                raw_sector=raw_sec,
+                source="CompactScoring",
+                s1_time=cls._last_sector1_time,
+                s2_time=cls._last_sector2_time,
+                s3_time=cls._last_sector3_time,
+                s1_delta=cls._last_sector1_delta,
+                s2_delta=cls._last_sector2_delta,
+                s3_delta=cls._last_sector3_delta,
+                lap_dist=float(getattr(scoring, "lap_dist", 0.0)),
+                speed_kmh=float(cls._last_telem_info.speed_mps * 3.6) if cls._last_telem_info else 0.0,
+            )
+        except Exception:
+            pass
 
         return cls._build_telemetry_snapshot()
 
@@ -474,6 +488,23 @@ class LMUParser:
 
             raw_sec = int(player_veh.sector)
             cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+            try:
+                from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+                OverlayAnomalyLogger.get_instance().check_sector_update(
+                    current_sector=cls._last_current_sector,
+                    raw_sector=raw_sec,
+                    source="FullScoringSession",
+                    s1_time=cls._last_sector1_time,
+                    s2_time=cls._last_sector2_time,
+                    s3_time=cls._last_sector3_time,
+                    s1_delta=cls._last_sector1_delta,
+                    s2_delta=cls._last_sector2_delta,
+                    s3_delta=cls._last_sector3_delta,
+                    lap_dist=float(getattr(player_veh, "lap_dist", 0.0)),
+                    speed_kmh=current_speed * 3.6,
+                )
+            except Exception:
+                pass
 
         cls._in_garage_trap = is_in_garage
         cls._last_in_realtime = not is_in_garage

@@ -140,3 +140,43 @@ class OverlayAnomalyLogger:
             f"Mode d'affichage basculé de '{old_mode}' vers '{new_mode}' (Raison: {reason})",
             details
         )
+
+    def check_sector_update(
+        self,
+        current_sector: int,
+        raw_sector: Any,
+        source: str,
+        s1_time: str = "--",
+        s2_time: str = "--",
+        s3_time: str = "--",
+        s1_delta: float = 0.0,
+        s2_delta: float = 0.0,
+        s3_delta: float = 0.0,
+        lap_dist: float = 0.0,
+        speed_kmh: float = 0.0,
+    ) -> None:
+        """Trace chaque transition ou saut anormal de secteur dans le log."""
+        if not hasattr(self, "_prev_sector"):
+            self._prev_sector = current_sector
+
+        prev_sec = self._prev_sector
+
+        # Log si changement de secteur
+        if current_sector != prev_sec:
+            is_anomaly = (prev_sec, current_sector) not in [(1, 2), (2, 3), (3, 1)]
+            category = "SECTOR_GLITCH_JUMP" if is_anomaly else "SECTOR_TRANSITION"
+            msg = (
+                f"Secteur basculé de S{prev_sec} à S{current_sector} (raw={raw_sector}) | "
+                f"S1='{s1_time}' (d={s1_delta:+.3f}s), S2='{s2_time}' (d={s2_delta:+.3f}s), S3='{s3_time}' (d={s3_delta:+.3f}s)"
+            )
+            self.log_event(
+                category,
+                msg,
+                {
+                    "source": source,
+                    "speed_kmh": round(speed_kmh, 1),
+                    "lap_dist": round(lap_dist, 1),
+                }
+            )
+            self._prev_sector = current_sector
+

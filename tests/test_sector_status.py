@@ -78,6 +78,26 @@ class TestSectorStatusCalculations(unittest.TestCase):
         )
         self.assertEqual(sensors.sector_delta_str(1), "+0.000")
 
+    def test_telemetry_does_not_corrupt_scoring_sector(self):
+        """Verify TelemInfo with uninitialized current_sector (0) does not overwrite active scoring sector."""
+        from isimotor_rawudp_client import CompactScoring, TelemInfo
+
+        LMUParser._last_full_scoring = None
+
+        # 1. Scoring définit le secteur 2
+        scoring = CompactScoring(sector=2)
+        snap_sc = LMUParser.process_compact_scoring(scoring)
+        self.assertEqual(snap_sc.current_sector, 2)
+        self.assertEqual(LMUParser._last_current_sector, 2)
+
+        # 2. Arrivée d'un paquet physique TelemInfo avec current_sector=0
+        telem = TelemInfo(current_sector=0)
+        snap_telem = LMUParser.process_telemetry(telem)
+        self.assertIsNotNone(snap_telem)
+        self.assertEqual(snap_telem.current_sector, 2)  # Le secteur 2 doit être préservé !
+        self.assertEqual(LMUParser._last_current_sector, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
+
