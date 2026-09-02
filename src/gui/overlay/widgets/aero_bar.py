@@ -61,15 +61,16 @@ class QtAeroBarWidget(BaseQtHudWidget):
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        aero_width = 440.0 * scale_x
-        aero_height = 15.0 * scale_y
+        # Largeur ajustée (330px) pour se loger parfaitement entre les pneus arrière
+        aero_width = 330.0 * scale_x
+        aero_height = 12.0 * scale_y
         aero_x = center_x - (aero_width / 2.0)
-        aero_y = 245.0 * scale_y
+        aero_y = 250.0 * scale_y
 
         # Background track
         painter.setBrush(QBrush(QColor(17, 24, 39, 120)))
         painter.setPen(QPen(QColor(30, 41, 59, 200), 1))
-        painter.drawRect(QRectF(aero_x, aero_y, aero_width, aero_height))
+        painter.drawRoundedRect(QRectF(aero_x, aero_y, aero_width, aero_height), 2.0 * scale_x, 2.0 * scale_y)
 
         # Fill with 4-stage color ramp
         a = max(0.0, min(1.0, self.display_aero / 100.0))
@@ -79,7 +80,7 @@ class QtAeroBarWidget(BaseQtHudWidget):
         if fill_width > 0.5:
             painter.setBrush(QBrush(bar_color))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRect(QRectF(aero_x, aero_y, fill_width, aero_height))
+            painter.drawRoundedRect(QRectF(aero_x, aero_y, fill_width, aero_height), 2.0 * scale_x, 2.0 * scale_y)
 
         # ── Indicateur 'cleanlap' (Pastille ronde sous la jauge aéro) ──
         lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
@@ -92,8 +93,8 @@ class QtAeroBarWidget(BaseQtHudWidget):
             dot_color = QColor(34, 197, 94, 255)     # VERT (Tour lancé propre / Départ Course / Clean)
 
         dot_center_x = center_x
-        dot_center_y = aero_y + aero_height + (16.0 * scale_y)
-        dot_radius = 9.0 * scale_y
+        dot_center_y = aero_y + aero_height + (14.0 * scale_y)
+        dot_radius = 8.0 * scale_y
 
         painter.setBrush(QBrush(dot_color))
         painter.setPen(QPen(QColor(15, 23, 42, 255), 2))

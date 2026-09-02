@@ -52,9 +52,10 @@ def get_tire_colors(lock_val: float, slip_val: float) -> Tuple[list, list, str, 
 
 class TiresGaugeWidget(BaseHudWidget):
     """
-    Représentation Physique de la Vie des 4 Pneus.
-    - FL & RL disposés verticalement à droite du Frein.
-    - FR & RR disposés verticalement à gauche de l'Accélérateur.
+    Représentation Physique Tri-Axiale Complète des 4 Pneus :
+    - Section HAUTE (CCCC) : Jauge Verticale Cyan (Over-Acceleration / Motricité ⬆️)
+    - Section MÉDIANE (LLRR) : Jauge Horizontale Jaune (Dérive Latérale Gauche/Droite ⬅️ ➡️ / Sous-virage & Survirage)
+    - Section BASSE (BBBB) : Jauge Verticale Violette (Over-Braking / Blocage de frein ⬇️)
     """
 
     def __init__(self):
@@ -63,10 +64,20 @@ class TiresGaugeWidget(BaseHudWidget):
         self.disp_rl_lock = 0.0
         self.disp_rr_lock = 0.0
 
-        self.disp_fl_slip = 0.0
-        self.disp_fr_slip = 0.0
-        self.disp_rl_slip = 0.0
-        self.disp_rr_slip = 0.0
+        self.disp_fl_spin = 0.0
+        self.disp_fr_spin = 0.0
+        self.disp_rl_spin = 0.0
+        self.disp_rr_spin = 0.0
+
+        self.disp_fl_lat = 0.0
+        self.disp_fr_lat = 0.0
+        self.disp_rl_lat = 0.0
+        self.disp_rr_lat = 0.0
+
+        self.disp_fl_lat_s = 0.0
+        self.disp_fr_lat_s = 0.0
+        self.disp_rl_lat_s = 0.0
+        self.disp_rr_lat_s = 0.0
 
     def draw(
         self,
@@ -76,93 +87,232 @@ class TiresGaugeWidget(BaseHudWidget):
         sensors: VehicleSensors,
         extra_data: Dict[str, Any],
     ) -> None:
-        # LERP smoothing pour une restitution fluide des 4 roues
         alpha = 0.25
+        # 1. Longitudinal Lock (Over-Braking)
         self.disp_fl_lock = lerp(self.disp_fl_lock, sensors.front_left_lock, alpha)
         self.disp_fr_lock = lerp(self.disp_fr_lock, sensors.front_right_lock, alpha)
         self.disp_rl_lock = lerp(self.disp_rl_lock, sensors.rear_left_lock, alpha)
         self.disp_rr_lock = lerp(self.disp_rr_lock, sensors.rear_right_lock, alpha)
 
-        fl_slip_raw = max(sensors.front_left_spin, sensors.front_left_lat_slip)
-        fr_slip_raw = max(sensors.front_right_spin, sensors.front_right_lat_slip)
-        rl_slip_raw = max(sensors.rear_left_spin, sensors.rear_left_lat_slip)
-        rr_slip_raw = max(sensors.rear_right_spin, sensors.rear_right_lat_slip)
+        # 2. Longitudinal Spin (Over-Acceleration)
+        self.disp_fl_spin = lerp(self.disp_fl_spin, sensors.front_left_spin, alpha)
+        self.disp_fr_spin = lerp(self.disp_fr_spin, sensors.front_right_spin, alpha)
+        self.disp_rl_spin = lerp(self.disp_rl_spin, sensors.rear_left_spin, alpha)
+        self.disp_rr_spin = lerp(self.disp_rr_spin, sensors.rear_right_spin, alpha)
 
-        self.disp_fl_slip = lerp(self.disp_fl_slip, fl_slip_raw, alpha)
-        self.disp_fr_slip = lerp(self.disp_fr_slip, fr_slip_raw, alpha)
-        self.disp_rl_slip = lerp(self.disp_rl_slip, rl_slip_raw, alpha)
-        self.disp_rr_slip = lerp(self.disp_rr_slip, rr_slip_raw, alpha)
+        # 3. Lateral Scrub (Magnitude)
+        self.disp_fl_lat = lerp(self.disp_fl_lat, sensors.front_left_lat_slip, alpha)
+        self.disp_fr_lat = lerp(self.disp_fr_lat, sensors.front_right_lat_slip, alpha)
+        self.disp_rl_lat = lerp(self.disp_rl_lat, sensors.rear_left_lat_slip, alpha)
+        self.disp_rr_lat = lerp(self.disp_rr_lat, sensors.rear_right_lat_slip, alpha)
+
+        # 4. Lateral Scrub Signed (Left -1.0 to Right +1.0)
+        self.disp_fl_lat_s = lerp(self.disp_fl_lat_s, getattr(sensors, "front_left_lat_signed", 0.0), alpha)
+        self.disp_fr_lat_s = lerp(self.disp_fr_lat_s, getattr(sensors, "front_right_lat_signed", 0.0), alpha)
+        self.disp_rl_lat_s = lerp(self.disp_rl_lat_s, getattr(sensors, "rear_left_lat_signed", 0.0), alpha)
+        self.disp_rr_lat_s = lerp(self.disp_rr_lat_s, getattr(sensors, "rear_right_lat_signed", 0.0), alpha)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        gauge_y = 15.0 * scale_y
-        gauge_h = 245.0 * scale_y
+        # Proportions réalistes de pneu de course (ratio largeur/hauteur ~ 1:1.85)
+        tire_w = 40.0 * scale_x
+        tire_h = 74.0 * scale_y
 
-        tire_w = 24.0 * scale_x
-        tire_gap = 9.0 * scale_y
-        tire_h = (gauge_h - tire_gap) / 2.0  # 118.0 * scale_y
+        # Alignement :
+        # - Pneus Avant (FL, FR) : Alignés vers le HAUT (y = 15px)
+        front_y = 15.0 * scale_y
 
-        # Positions horizontales :
-        # - Pneus Gauche (FL, RL) : immédiatement à droite de la jauge de frein (qui finit à center_x - 220)
-        left_tires_x = center_x - (216.0 * scale_x)
+        # - Pneus Arrière (RL, RR) : Alignés vers le BAS (se termine à 236px, avec 14px de marge au-dessus de l'aéro à 250px)
+        rear_bot_y = 236.0 * scale_y
+        rear_y = rear_bot_y - tire_h  # 162.0 * scale_y
 
-        # - Pneus Droite (FR, RR) : immédiatement à gauche de la jauge d'accélérateur (qui commence à center_x + 220)
-        right_tires_x = center_x + (192.0 * scale_x)
+        # Positions horizontales (à côté des jauges de frein et d'accélérateur)
+        left_tires_x = center_x - (215.0 * scale_x)
+        right_tires_x = center_x + (175.0 * scale_x)
 
-        front_y = gauge_y
-        rear_y = gauge_y + tire_h + tire_gap
-
-        # Liste des 4 pneus (x, y, nom, lock, slip)
+        # Liste des 4 pneus (x, y, label, lock, spin, lat_mag, lat_signed)
         tires_info = [
-            (left_tires_x, front_y, "FL", self.disp_fl_lock, self.disp_fl_slip),
-            (left_tires_x, rear_y, "RL", self.disp_rl_lock, self.disp_rl_slip),
-            (right_tires_x, front_y, "FR", self.disp_fr_lock, self.disp_fr_slip),
-            (right_tires_x, rear_y, "RR", self.disp_rr_lock, self.disp_rr_slip),
+            (left_tires_x, front_y, "FL", self.disp_fl_lock, self.disp_fl_spin, self.disp_fl_lat, self.disp_fl_lat_s),
+            (left_tires_x, rear_y, "RL", self.disp_rl_lock, self.disp_rl_spin, self.disp_rl_lat, self.disp_rl_lat_s),
+            (right_tires_x, front_y, "FR", self.disp_fr_lock, self.disp_fr_spin, self.disp_fr_lat, self.disp_fr_lat_s),
+            (right_tires_x, rear_y, "RR", self.disp_rr_lock, self.disp_rr_spin, self.disp_rr_lat, self.disp_rr_lat_s),
         ]
 
-        for x, y, label, lock_val, slip_val in tires_info:
-            fill_col, border_col, mode, intensity = get_tire_colors(lock_val, slip_val)
+        # Découpage proportionnel interne : ccccccc (3) / LLL|RRR (2) / bbbbbbb (3)
+        header_h = 12.0 * scale_y
+        gap_y = 2.0 * scale_y
+        vert_h = 21.0 * scale_y   # Jauges verticales CCCC et BBBB
+        lat_h = 14.0 * scale_y    # Jauge médiane horizontale LLL|RRR
 
-            # Corps du pneu (Rectangle aux coins arrondis)
+        for x, y, label, lock_val, spin_val, lat_val, lat_s in tires_info:
+            # 1. Conteneur externe du pneu
             dpg.draw_rectangle(
                 pmin=[x, y],
                 pmax=[x + tire_w, y + tire_h],
-                fill=fill_col,
-                color=border_col,
-                thickness=1.5 if intensity > 0.05 else 1.0,
+                fill=[19, 24, 34, 220],
+                color=[46, 56, 77, 240],
+                thickness=1.0,
                 rounding=4.0 * scale_x,
                 parent=drawlist_tag,
             )
 
-            # Rainure de bande de roulement centrale
-            groove_x = x + tire_w / 2.0
-            dpg.draw_line(
-                p1=[groove_x, y + 4.0 * scale_y],
-                p2=[groove_x, y + tire_h - 4.0 * scale_y],
-                color=[border_col[0], border_col[1], border_col[2], 60 if intensity <= 0.02 else 120],
-                thickness=1.0,
-                parent=drawlist_tag,
-            )
-
-            # Label de la roue (FL, RL, FR, RR)
-            text_color = [255, 255, 255, 220] if intensity > 0.05 else [148, 163, 184, 160]
+            # En-tête label roue
             dpg.draw_text(
-                pos=[x + 4.0 * scale_x, y + 4.0 * scale_y],
+                pos=[x + 4.0 * scale_x, y + 2.0 * scale_y],
                 text=label,
-                color=text_color,
-                size=10.0 * scale_x,
+                color=[255, 255, 255, 220],
+                size=9.0 * scale_x,
                 parent=drawlist_tag,
             )
 
-            # Affichage de l'intensité numérique si glisse ou blocage
-            if intensity > 0.05:
-                pct_str = f"{int(round(intensity * 100))}%"
-                dpg.draw_text(
-                    pos=[x + 2.0 * scale_x, y + tire_h - 16.0 * scale_y],
-                    text=pct_str,
-                    color=[255, 255, 255, 255],
-                    size=9.0 * scale_x,
+            # ── SECTION 1 (CCCC) : Jauge Verticale Cyan (Over-Acceleration ⬆️) ──
+            c_top = y + header_h + gap_y
+            dpg.draw_rectangle(
+                pmin=[x + 2.0 * scale_x, c_top],
+                pmax=[x + tire_w - 2.0 * scale_x, c_top + vert_h],
+                fill=[15, 20, 30, 180],
+                color=[40, 50, 70, 150],
+                thickness=0.8,
+                rounding=2.0 * scale_x,
+                parent=drawlist_tag,
+            )
+            if spin_val > 0.02:
+                c_fill = max(2.0 * scale_y, vert_h * min(1.0, spin_val))
+                c_fill_y = c_top + vert_h - c_fill
+                dpg.draw_rectangle(
+                    pmin=[x + 2.5 * scale_x, c_fill_y],
+                    pmax=[x + tire_w - 2.5 * scale_x, c_top + vert_h],
+                    fill=[0, 220, 255, 220],
+                    color=[56, 189, 248, 255],
+                    thickness=0.8,
+                    rounding=1.5 * scale_x,
+                    parent=drawlist_tag,
+                )
+                dpg.draw_line(
+                    p1=[x + 3.0 * scale_x, c_fill_y],
+                    p2=[x + tire_w - 3.0 * scale_x, c_fill_y],
+                    color=[255, 255, 255, 240],
+                    thickness=1.0,
+                    parent=drawlist_tag,
+                )
+
+            # ── SECTION 2 (LLRR) : Jauge Horizontale Jaune avec Flèche (⬅️ ➡️) ──
+            l_top = c_top + vert_h + gap_y
+            dpg.draw_rectangle(
+                pmin=[x + 2.0 * scale_x, l_top],
+                pmax=[x + tire_w - 2.0 * scale_x, l_top + lat_h],
+                fill=[15, 20, 30, 200],
+                color=[50, 60, 80, 180],
+                thickness=0.8,
+                rounding=2.0 * scale_x,
+                parent=drawlist_tag,
+            )
+            mid_x = x + tire_w / 2.0
+            half_w = (tire_w - 7.0 * scale_x) / 2.0
+
+            # Séparateur central net entre Gauche et Droite
+            dpg.draw_line(
+                p1=[mid_x, l_top + 1.0 * scale_y],
+                p2=[mid_x, l_top + lat_h - 1.0 * scale_y],
+                color=[148, 163, 184, 255],
+                thickness=1.5,
+                parent=drawlist_tag,
+            )
+
+            # Flèche directionnelle selon le sens de glisse
+            if abs(lat_s) > 0.02:
+                bar_w = max(4.0 * scale_x, half_w * min(1.0, abs(lat_s)))
+                head_w = min(bar_w, 5.0 * scale_x)
+
+                if lat_s < 0:  # Glisse vers la Gauche (◄ Flèche pointant à gauche)
+                    tip_x = mid_x - 1.0 * scale_x - bar_w
+                    base_x = tip_x + head_w
+
+                    # Corps rectangulaire
+                    if bar_w > head_w:
+                        dpg.draw_rectangle(
+                            pmin=[base_x, l_top + 3.0 * scale_y],
+                            pmax=[mid_x - 1.0 * scale_x, l_top + lat_h - 3.0 * scale_y],
+                            fill=[250, 204, 21, 220],
+                            color=[234, 179, 8, 255],
+                            thickness=0.8,
+                            parent=drawlist_tag,
+                        )
+                    # Tête triangulaire
+                    dpg.draw_triangle(
+                        p1=[tip_x, l_top + lat_h / 2.0],
+                        p2=[base_x, l_top + 1.5 * scale_y],
+                        p3=[base_x, l_top + lat_h - 1.5 * scale_y],
+                        fill=[250, 204, 21, 240],
+                        color=[255, 255, 255, 240],
+                        thickness=1.0,
+                        parent=drawlist_tag,
+                    )
+                else:  # Glisse vers la Droite (► Flèche pointant à droite)
+                    tip_x = mid_x + 1.0 * scale_x + bar_w
+                    base_x = tip_x - head_w
+
+                    # Corps rectangulaire
+                    if bar_w > head_w:
+                        dpg.draw_rectangle(
+                            pmin=[mid_x + 1.0 * scale_x, l_top + 3.0 * scale_y],
+                            pmax=[base_x, l_top + lat_h - 3.0 * scale_y],
+                            fill=[250, 204, 21, 220],
+                            color=[234, 179, 8, 255],
+                            thickness=0.8,
+                            parent=drawlist_tag,
+                        )
+                    # Tête triangulaire
+                    dpg.draw_triangle(
+                        p1=[tip_x, l_top + lat_h / 2.0],
+                        p2=[base_x, l_top + 1.5 * scale_y],
+                        p3=[base_x, l_top + lat_h - 1.5 * scale_y],
+                        fill=[250, 204, 21, 240],
+                        color=[255, 255, 255, 240],
+                        thickness=1.0,
+                        parent=drawlist_tag,
+                    )
+            elif lat_val > 0.02:  # Fallback si amplitude non signée
+                bar_w = max(3.0 * scale_x, half_w * min(1.0, lat_val))
+                dpg.draw_rectangle(
+                    pmin=[mid_x - bar_w / 2.0, l_top + 2.0 * scale_y],
+                    pmax=[mid_x + bar_w / 2.0, l_top + lat_h - 2.0 * scale_y],
+                    fill=[250, 204, 21, 220],
+                    color=[234, 179, 8, 255],
+                    thickness=0.8,
+                    rounding=1.5 * scale_x,
+                    parent=drawlist_tag,
+                )
+
+            # ── SECTION 3 (BBBB) : Jauge Verticale Violette (Over-Braking ⬇️) ──
+            b_top = l_top + lat_h + gap_y
+            dpg.draw_rectangle(
+                pmin=[x + 2.0 * scale_x, b_top],
+                pmax=[x + tire_w - 2.0 * scale_x, b_top + vert_h],
+                fill=[15, 20, 30, 180],
+                color=[40, 50, 70, 150],
+                thickness=0.8,
+                rounding=2.0 * scale_x,
+                parent=drawlist_tag,
+            )
+            if lock_val > 0.02:
+                b_fill = max(2.0 * scale_y, vert_h * min(1.0, lock_val))
+                b_fill_bot = b_top + b_fill
+                dpg.draw_rectangle(
+                    pmin=[x + 2.5 * scale_x, b_top],
+                    pmax=[x + tire_w - 2.5 * scale_x, b_fill_bot],
+                    fill=[168, 85, 247, 220],
+                    color=[192, 132, 252, 255],
+                    thickness=0.8,
+                    rounding=1.5 * scale_x,
+                    parent=drawlist_tag,
+                )
+                dpg.draw_line(
+                    p1=[x + 3.0 * scale_x, b_fill_bot],
+                    p2=[x + tire_w - 3.0 * scale_x, b_fill_bot],
+                    color=[255, 255, 255, 240],
+                    thickness=1.0,
                     parent=drawlist_tag,
                 )

@@ -35,11 +35,17 @@ class VehicleSensors:
     rear_left_spin: float = 0.0
     rear_right_spin: float = 0.0
 
-    # 3. Glissement latéral - Virage / Décrochage (FL, FR, RL, RR)
+    # 3. Glissement latéral - Virage / Décrochage (FL, FR, RL, RR) [0.0 à 1.0]
     front_left_lat_slip: float = 0.0
     front_right_lat_slip: float = 0.0
     rear_left_lat_slip: float = 0.0
     rear_right_lat_slip: float = 0.0
+
+    # 3b. Glissement latéral orienté Gauche (-1.0) / Droite (+1.0) pour jauge horizontale
+    front_left_lat_signed: float = 0.0
+    front_right_lat_signed: float = 0.0
+    rear_left_lat_signed: float = 0.0
+    rear_right_lat_signed: float = 0.0
 
     # 4. Régime Moteur
     engine_rpm: float = 0.0
@@ -209,8 +215,14 @@ class VehicleSensors:
         locks = []
         spins = []
         lats = []
+        signed_lats = []
 
-        avg_speed = sum(abs(v) for v in long_ground_vels) / 4.0
+        avg_speed = sum(abs(v) for v in long_ground_vels) / max(1, len(long_ground_vels))
+        avg_patch = sum(abs(v) for v in long_patch_vels) / max(1, len(long_patch_vels))
+        # Telemetry convention auto-detection:
+        # If avg_patch is high (> 40% avg_speed), lpv is absolute wheel velocity (omega*R).
+        # Otherwise, lpv is contact patch relative slip velocity (Delta-V).
+        is_circumferential_mode = (avg_speed > 1.5) and (avg_patch > avg_speed * 0.40)
 
         LOCK_DEADBAND = 0.04      # 4% slip deadband (filter normal tire rolling compliance)
         LOCK_SATURATION = 0.18    # 18% slip saturation (full scale lockup / trail braking critical zone)
@@ -226,8 +238,11 @@ class VehicleSensors:
 
             speed = abs(lgv)
             if speed > 1.5:
-                # Relative longitudinal slip ratio (Using speed magnitudes to handle negative forward vector in isiMotor)
-                long_slip = (abs(lpv) - abs(lgv)) / speed
+                if is_circumferential_mode:
+                    long_slip = (abs(lpv) - abs(lgv)) / speed
+                else:
+                    long_slip = (lpv / lgv) if abs(lgv) > 0.001 else (lpv / speed)
+
                 raw_lat = abs(lat_gv) / speed
 
                 # Physical Lockup (wheel rotating slower than road, e.g. braking, downshift, lingering flatspot skid)
@@ -240,15 +255,19 @@ class VehicleSensors:
 
                 # Lateral scrub / drift
                 lat_slip = 0.0 if raw_lat <= LAT_DEADBAND else min(1.0, (raw_lat - LAT_DEADBAND) / (LAT_SATURATION - LAT_DEADBAND))
+                lat_sign = 1.0 if lat_gv >= 0.0 else -1.0
+                signed_lat = lat_sign * lat_slip
             else:
                 # Below 1.5 m/s (5.4 km/h / standstill): slip is strictly zero (Standstill guard)
                 lock_val = 0.0
                 spin_val = 0.0
                 lat_slip = 0.0
+                signed_lat = 0.0
 
             locks.append(min(1.0, max(0.0, lock_val)))
             spins.append(min(1.0, max(0.0, spin_val)))
             lats.append(min(1.0, max(0.0, lat_slip)))
+            signed_lats.append(min(1.0, max(-1.0, signed_lat)))
 
         if grip_fractions is not None and len(grip_fractions) >= 4:
             grips = [min(1.0, max(0.0, float(g))) for g in grip_fractions[:4]]
@@ -273,6 +292,10 @@ class VehicleSensors:
             front_right_lat_slip=lats[1],
             rear_left_lat_slip=lats[2],
             rear_right_lat_slip=lats[3],
+            front_left_lat_signed=signed_lats[0],
+            front_right_lat_signed=signed_lats[1],
+            rear_left_lat_signed=signed_lats[2],
+            rear_right_lat_signed=signed_lats[3],
             engine_rpm=max(0.0, float(engine_rpm)),
             engine_max_rpm=max(1000.0, float(engine_max_rpm)),
             front_left_travel=travels[0],

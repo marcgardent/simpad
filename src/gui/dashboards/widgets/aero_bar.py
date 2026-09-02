@@ -61,10 +61,11 @@ class AeroBarWidget(BaseHudWidget):
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        aero_width = 440.0 * scale_x
-        aero_height = 15.0 * scale_y
+        # Largeur ajustée (330px) pour se loger parfaitement entre les pneus arrière
+        aero_width = 330.0 * scale_x
+        aero_height = 12.0 * scale_y
         aero_x = center_x - (aero_width / 2.0)
-        aero_y = 245.0 * scale_y
+        aero_y = 250.0 * scale_y
 
         # Background (Semi-transparent track)
         dpg.draw_rectangle(
@@ -73,6 +74,7 @@ class AeroBarWidget(BaseHudWidget):
             fill=[17, 24, 39, 120],
             color=[30, 41, 59, 200],
             thickness=1,
+            rounding=2.0 * scale_x,
             parent=drawlist_tag,
         )
 
@@ -87,6 +89,7 @@ class AeroBarWidget(BaseHudWidget):
                 pmax=[aero_x + fill_width, aero_y + aero_height],
                 fill=bar_color,
                 color=[0, 0, 0, 0],
+                rounding=2.0 * scale_x,
                 parent=drawlist_tag,
             )
 
@@ -101,8 +104,8 @@ class AeroBarWidget(BaseHudWidget):
             dot_color = [34, 197, 94, 255]     # VERT (Tour lancé propre / Départ Course / Clean)
 
         dot_center_x = center_x
-        dot_center_y = aero_y + aero_height + (16.0 * scale_y)
-        dot_radius = 9.0 * scale_y
+        dot_center_y = aero_y + aero_height + (14.0 * scale_y)
+        dot_radius = 8.0 * scale_y
 
         dpg.draw_circle(
             center=[dot_center_x, dot_center_y],
