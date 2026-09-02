@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "roles": {
     "traffic_spotter": {
       "enabled": true,

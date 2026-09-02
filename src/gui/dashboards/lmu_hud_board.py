@@ -8,8 +8,11 @@ from typing import Dict, Any, List
 import dearpygui.dearpygui as dpg
 from src.gui.dashboards.base import BaseDashboard
 from src.gui.dashboards.widgets import (
+    AbsGaugeWidget,
     BrakeGaugeWidget,
     ThrottleGaugeWidget,
+    TcGaugeWidget,
+    TiresGaugeWidget,
     GearSpeedWidget,
     RevIndicatorWidget,
     AeroBarWidget,
@@ -36,8 +39,11 @@ class LmuHudBoard(BaseDashboard):
         self._extra_data: Dict[str, Any] = {}
 
         self._widgets = [
+            AbsGaugeWidget(),
             BrakeGaugeWidget(),
+            TiresGaugeWidget(),
             ThrottleGaugeWidget(),
+            TcGaugeWidget(),
             GearSpeedWidget(),
             RevIndicatorWidget(),
             AeroBarWidget(),
@@ -131,10 +137,12 @@ class LmuHudBoard(BaseDashboard):
             "energyLaps": sensors.fuel_level,
             "remainingLaps": sensors.remaining_laps,
             "aero": sensors.aero_load * 100.0,
-            "brake": sensors.unfiltered_brake * 100.0 if sensors.unfiltered_brake > 0.0 else sensors.lock_intensity * 100.0,
-            "throttle": sensors.unfiltered_throttle * 100.0 if sensors.unfiltered_throttle > 0.0 else sensors.spin_intensity * 100.0,
-            "overbrake": (sensors.ecu_abs_active > 0.01) or (sensors.lock_intensity > 0.05),
-            "wheelspin": (sensors.ecu_tc_active > 0.01) or (sensors.spin_intensity > 0.05),
+            "brake": sensors.unfiltered_brake * 100.0,
+            "throttle": sensors.unfiltered_throttle * 100.0,
+            "abs": sensors.ecu_abs_active * 100.0,
+            "tc": sensors.ecu_tc_active * 100.0,
+            "overbrake": sensors.lock_intensity > 0.05,
+            "wheelspin": sensors.spin_intensity > 0.05,
             "underrev": sensors.underrev_intensity > 0.1,
             "overrev": sensors.overrev_intensity > 0.1,
             "lap_flag": sensors.lap_flag,

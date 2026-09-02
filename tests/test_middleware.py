@@ -41,9 +41,9 @@ class TestLMUMiddleware(unittest.TestCase):
         l_low, l_high, r_low, r_high = processor.process(parsed)
         self.assertEqual((l_low, l_high, r_low, r_high), (0.0, 0.0, 0.0, 0.0))
 
-        # Simulation ABS Roue Avant Gauche forte (lpv=0.0, lgv=2.0 m/s) -> Haute fréquence Gauche (l_high) > 0.0
+        # Simulation ABS Roue Avant Gauche forte (lpv=0.5, lgv=2.0 m/s) -> Haute fréquence Gauche (l_high) > 0.0
         wheels = (
-            make_wheel(lpv=0.0, lgv=2.0),
+            make_wheel(lpv=0.5, lgv=2.0),
             make_wheel(lpv=2.0, lgv=2.0),
             make_wheel(lpv=2.0, lgv=2.0),
             make_wheel(lpv=2.0, lgv=2.0),
@@ -51,6 +51,7 @@ class TestLMUMiddleware(unittest.TestCase):
         telem_abs = TelemInfo(
             local_vel=TelemVect3(0.0, 0.0, -2.0),
             wheels=wheels,
+            unfiltered_brake=1.0,
         )
         parsed_abs = LMUParser.process_telemetry(telem_abs)
         l_low, l_high, r_low, r_high = processor.process(parsed_abs)
@@ -90,6 +91,7 @@ class TestLMUMiddleware(unittest.TestCase):
         telem = TelemInfo(
             local_vel=TelemVect3(0.0, 0.0, -30.0),
             wheels=wheels,
+            unfiltered_brake=1.0,
         )
         parsed = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(parsed)

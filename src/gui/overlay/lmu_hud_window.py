@@ -21,8 +21,11 @@ from PySide6.QtWidgets import QWidget, QApplication
 from src.gui.overlay.widgets import (
     QtGearSpeedWidget,
     QtRevIndicatorWidget,
+    QtAbsGaugeWidget,
     QtBrakeGaugeWidget,
     QtThrottleGaugeWidget,
+    QtTcGaugeWidget,
+    QtTiresGaugeWidget,
     QtDeltaTimerWidget,
     QtSectorTimesWidget,
     QtAeroBarWidget,
@@ -35,7 +38,7 @@ from src.utils.window_utils import get_hud_rect, _PROJECT_ROOT
 class LmuHudQtWindow(QWidget):
     """
     Fenêtre Overlay HUD PySide6 100% transparente et Always-On-Top.
-    Orchestre les 8 widgets de télémétrie LMU sans aucun fond noir.
+    Orchestre les widgets de télémétrie LMU sans aucun fond noir.
     """
 
     def __init__(self, parent=None):
@@ -45,10 +48,13 @@ class LmuHudQtWindow(QWidget):
         # 1. Chargement de la police de course Anta-Regular
         self.font_family = self._load_custom_font()
 
-        # 2. Instanciation modulaire des 8 widgets HUD
+        # 2. Instanciation modulaire des 11 widgets HUD
         self._widgets = [
+            QtAbsGaugeWidget(),
             QtBrakeGaugeWidget(),
+            QtTiresGaugeWidget(),
             QtThrottleGaugeWidget(),
+            QtTcGaugeWidget(),
             QtGearSpeedWidget(font_family=self.font_family),
             QtRevIndicatorWidget(),
             QtAeroBarWidget(),
@@ -146,10 +152,12 @@ class LmuHudQtWindow(QWidget):
                 "energyLaps": sensors.fuel_level,
                 "remainingLaps": sensors.remaining_laps,
                 "aero": sensors.aero_load * 100.0,
-                "brake": sensors.unfiltered_brake * 100.0 if sensors.unfiltered_brake > 0.0 else sensors.lock_intensity * 100.0,
-                "throttle": sensors.unfiltered_throttle * 100.0 if sensors.unfiltered_throttle > 0.0 else sensors.spin_intensity * 100.0,
-                "overbrake": (sensors.ecu_abs_active > 0.01) or (sensors.lock_intensity > 0.05),
-                "wheelspin": (sensors.ecu_tc_active > 0.01) or (sensors.spin_intensity > 0.05),
+                "brake": sensors.unfiltered_brake * 100.0,
+                "throttle": sensors.unfiltered_throttle * 100.0,
+                "abs": sensors.ecu_abs_active * 100.0,
+                "tc": sensors.ecu_tc_active * 100.0,
+                "overbrake": sensors.lock_intensity > 0.05,
+                "wheelspin": sensors.spin_intensity > 0.05,
                 "underrev": sensors.underrev_intensity > 0.1,
                 "overrev": sensors.overrev_intensity > 0.1,
                 "lap_flag": sensors.lap_flag,

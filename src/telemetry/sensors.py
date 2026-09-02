@@ -63,8 +63,8 @@ class VehicleSensors:
     # Pédales non filtrées et filtrées (0.0 à 1.0)
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
-    filtered_throttle: float = 0.0
-    filtered_brake: float = 0.0
+    filtered_throttle: Optional[float] = None
+    filtered_brake: Optional[float] = None
 
     # Télémétrie de session, chrono et énergie
     fuel_level: float = 0.0
@@ -91,6 +91,28 @@ class VehicleSensors:
     in_realtime: bool = True
     gear: int = 0
 
+    # 7. Données Électronique & Cockpit LMU (isiMotor-RawUDP v0.2.0)
+    ecu_abs_active_raw: Optional[bool] = None
+    ecu_tc_active_raw: Optional[bool] = None
+    ecu_abs_level: int = 0
+    ecu_abs_max: int = 0
+    ecu_tc_level: int = 0
+    ecu_tc_max: int = 0
+    ecu_tc_cut: int = 0
+    ecu_tc_cut_max: int = 0
+    ecu_tc_slip: int = 0
+    ecu_tc_slip_max: int = 0
+    ecu_motor_map: int = 0
+    ecu_motor_map_max: int = 0
+    ecu_brake_migration: int = 0
+    ecu_brake_migration_max: int = 0
+    ecu_front_arb: int = 0
+    ecu_front_arb_max: int = 0
+    ecu_rear_arb: int = 0
+    ecu_rear_arb_max: int = 0
+    ecu_wiper_state: int = 0
+    ecu_lift_and_coast: float = 0.0
+
     @classmethod
     def from_wheel_velocities(
         cls,
@@ -106,8 +128,8 @@ class VehicleSensors:
         gear: int = 0,
         unfiltered_throttle: float = 0.0,
         unfiltered_brake: float = 0.0,
-        filtered_throttle: float = 0.0,
-        filtered_brake: float = 0.0,
+        filtered_throttle: Optional[float] = None,
+        filtered_brake: Optional[float] = None,
         fuel_level: float = 0.0,
         remaining_laps: int = 0,
         delta_time: float = 0.0,
@@ -128,16 +150,41 @@ class VehicleSensors:
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
         grip_fractions: Optional[Tuple[float, float, float, float]] = None,
+        ecu_abs_active_raw: Optional[bool] = None,
+        ecu_tc_active_raw: Optional[bool] = None,
+        ecu_abs_level: int = 0,
+        ecu_abs_max: int = 0,
+        ecu_tc_level: int = 0,
+        ecu_tc_max: int = 0,
+        ecu_tc_cut: int = 0,
+        ecu_tc_cut_max: int = 0,
+        ecu_tc_slip: int = 0,
+        ecu_tc_slip_max: int = 0,
+        ecu_motor_map: int = 0,
+        ecu_motor_map_max: int = 0,
+        ecu_brake_migration: int = 0,
+        ecu_brake_migration_max: int = 0,
+        ecu_front_arb: int = 0,
+        ecu_front_arb_max: int = 0,
+        ecu_rear_arb: int = 0,
+        ecu_rear_arb_max: int = 0,
+        ecu_wiper_state: int = 0,
+        ecu_lift_and_coast: float = 0.0,
     ) -> "VehicleSensors":
+
+        ut_f = max(0.0, min(1.0, float(unfiltered_throttle)))
+        ub_f = max(0.0, min(1.0, float(unfiltered_brake)))
+        ft_f = max(0.0, min(1.0, float(filtered_throttle))) if filtered_throttle is not None else ut_f
+        fb_f = max(0.0, min(1.0, float(filtered_brake))) if filtered_brake is not None else ub_f
 
         if not in_realtime:
             return cls(
                 in_realtime=False,
                 gear=gear,
-                unfiltered_throttle=max(0.0, min(1.0, float(unfiltered_throttle))),
-                unfiltered_brake=max(0.0, min(1.0, float(unfiltered_brake))),
-                filtered_throttle=max(0.0, min(1.0, float(filtered_throttle))),
-                filtered_brake=max(0.0, min(1.0, float(filtered_brake))),
+                unfiltered_throttle=ut_f,
+                unfiltered_brake=ub_f,
+                filtered_throttle=ft_f,
+                filtered_brake=fb_f,
                 fuel_level=fuel_level,
                 remaining_laps=remaining_laps,
                 delta_time=delta_time,
@@ -165,28 +212,39 @@ class VehicleSensors:
 
         avg_speed = sum(abs(v) for v in long_ground_vels) / 4.0
 
+        LOCK_DEADBAND = 0.04      # 4% slip deadband (filter normal tire rolling compliance)
+        LOCK_SATURATION = 0.18    # 18% slip saturation (full scale lockup / trail braking critical zone)
+        SPIN_DEADBAND = 0.05      # 5% slip deadband (filter normal drive torque compliance)
+        SPIN_SATURATION = 0.20    # 20% slip saturation (full scale power wheelspin)
+        LAT_DEADBAND = 0.04       # 4% lateral scrub deadband
+        LAT_SATURATION = 0.20     # 20% lateral scrub saturation
+
         for i in range(4):
             lpv = float(long_patch_vels[i])
             lgv = float(long_ground_vels[i]) if i < len(long_ground_vels) else 0.0
-            lat_pv = float(lat_patch_vels[i]) if i < len(lat_patch_vels) else 0.0
+            lat_gv = float(lat_ground_vels[i]) if i < len(lat_ground_vels) else 0.0
 
             speed = abs(lgv)
-            if speed > 0.5:
-                # Dimensionless relative longitudinal slip ratio: (lpv - lgv) / speed
-                long_slip = (lpv - lgv) / speed
-                lat_slip = abs(lat_pv) / speed
-                lock_val = max(0.0, -long_slip)
-                spin_val = max(0.0, long_slip)
+            if speed > 1.5:
+                # Relative longitudinal slip ratio (Using speed magnitudes to handle negative forward vector in isiMotor)
+                long_slip = (abs(lpv) - abs(lgv)) / speed
+                raw_lat = abs(lat_gv) / speed
+
+                # Physical Lockup (wheel rotating slower than road, e.g. braking, downshift, lingering flatspot skid)
+                raw_lock = max(0.0, -long_slip)
+                lock_val = 0.0 if raw_lock <= LOCK_DEADBAND else min(1.0, (raw_lock - LOCK_DEADBAND) / (LOCK_SATURATION - LOCK_DEADBAND))
+
+                # Physical Drive Wheelspin (wheel rotating faster than road under power)
+                raw_spin = max(0.0, long_slip)
+                spin_val = 0.0 if raw_spin <= SPIN_DEADBAND else min(1.0, (raw_spin - SPIN_DEADBAND) / (SPIN_SATURATION - SPIN_DEADBAND))
+
+                # Lateral scrub / drift
+                lat_slip = 0.0 if raw_lat <= LAT_DEADBAND else min(1.0, (raw_lat - LAT_DEADBAND) / (LAT_SATURATION - LAT_DEADBAND))
             else:
-                # Low-speed / standstill simulation
-                if lgv == 0.0 and lpv != 0.0:
-                    lock_val = abs(lpv) if i < 2 else max(0.0, -lpv)
-                    spin_val = abs(lpv) if i >= 2 else max(0.0, lpv)
-                else:
-                    long_slip = math.copysign(min(1.0, abs(lpv - lgv)), lpv - lgv)
-                    lock_val = max(0.0, -long_slip)
-                    spin_val = max(0.0, long_slip)
-                lat_slip = min(1.0, abs(lat_pv))
+                # Below 1.5 m/s (5.4 km/h / standstill): slip is strictly zero (Standstill guard)
+                lock_val = 0.0
+                spin_val = 0.0
+                lat_slip = 0.0
 
             locks.append(min(1.0, max(0.0, lock_val)))
             spins.append(min(1.0, max(0.0, spin_val)))
@@ -226,10 +284,10 @@ class VehicleSensors:
             rear_left_grip=grips[2],
             rear_right_grip=grips[3],
             vehicle_speed=avg_speed,
-            unfiltered_throttle=max(0.0, min(1.0, float(unfiltered_throttle))),
-            unfiltered_brake=max(0.0, min(1.0, float(unfiltered_brake))),
-            filtered_throttle=max(0.0, min(1.0, float(filtered_throttle))),
-            filtered_brake=max(0.0, min(1.0, float(filtered_brake))),
+            unfiltered_throttle=ut_f,
+            unfiltered_brake=ub_f,
+            filtered_throttle=ft_f,
+            filtered_brake=fb_f,
             fuel_level=fuel_level,
             remaining_laps=remaining_laps,
             delta_time=delta_time,
@@ -251,6 +309,26 @@ class VehicleSensors:
             is_pit_lap=is_pit_lap,
             in_realtime=True,
             gear=gear,
+            ecu_abs_active_raw=ecu_abs_active_raw,
+            ecu_tc_active_raw=ecu_tc_active_raw,
+            ecu_abs_level=ecu_abs_level,
+            ecu_abs_max=ecu_abs_max,
+            ecu_tc_level=ecu_tc_level,
+            ecu_tc_max=ecu_tc_max,
+            ecu_tc_cut=ecu_tc_cut,
+            ecu_tc_cut_max=ecu_tc_cut_max,
+            ecu_tc_slip=ecu_tc_slip,
+            ecu_tc_slip_max=ecu_tc_slip_max,
+            ecu_motor_map=ecu_motor_map,
+            ecu_motor_map_max=ecu_motor_map_max,
+            ecu_brake_migration=ecu_brake_migration,
+            ecu_brake_migration_max=ecu_brake_migration_max,
+            ecu_front_arb=ecu_front_arb,
+            ecu_front_arb_max=ecu_front_arb_max,
+            ecu_rear_arb=ecu_rear_arb,
+            ecu_rear_arb_max=ecu_rear_arb_max,
+            ecu_wiper_state=ecu_wiper_state,
+            ecu_lift_and_coast=ecu_lift_and_coast,
         )
 
     @classmethod
@@ -287,6 +365,7 @@ class VehicleSensors:
             raw_deflections = tuple(float(getattr(w, "suspension_deflection", 0.0)) for w in wheels[:4])
             travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             raw_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
+            raw_bpres = tuple(float(getattr(w, "brake_pressure", 0.0)) for w in wheels[:4])
         else:
             lpv = (0.0, 0.0, 0.0, 0.0)
             lgv = (0.0, 0.0, 0.0, 0.0)
@@ -294,6 +373,7 @@ class VehicleSensors:
             lat_gv = (0.0, 0.0, 0.0, 0.0)
             travels = (0.0, 0.0, 0.0, 0.0)
             raw_grips = (1.0, 1.0, 1.0, 1.0)
+            raw_bpres = (0.0, 0.0, 0.0, 0.0)
 
         if explicit_aero_load is None:
             f_df = abs(float(getattr(telem, "front_downforce", 0.0)))
@@ -321,6 +401,54 @@ class VehicleSensors:
         filtered_throttle = float(getattr(telem, "filtered_throttle", unfiltered_throttle))
         filtered_brake = float(getattr(telem, "filtered_brake", unfiltered_brake))
         fuel_level = float(getattr(telem, "fuel", 0.0))
+
+        # Extract ECU & Cockpit state from isimotor-rawudp v0.2.0
+        ecu = getattr(telem, "ecu", None)
+        if ecu is None and hasattr(telem, "lmu") and getattr(telem, "lmu", None):
+            ecu = getattr(telem.lmu, "ecu", None)
+
+        ecu_abs_raw = None
+        ecu_tc_raw = None
+        ecu_abs_level = 0
+        ecu_abs_max = 0
+        ecu_tc_level = 0
+        ecu_tc_max = 0
+        ecu_tc_cut = 0
+        ecu_tc_cut_max = 0
+        ecu_tc_slip = 0
+        ecu_tc_slip_max = 0
+        ecu_motor_map = 0
+        ecu_motor_map_max = 0
+        ecu_brake_migration = 0
+        ecu_brake_migration_max = 0
+        ecu_front_arb = 0
+        ecu_front_arb_max = 0
+        ecu_rear_arb = 0
+        ecu_rear_arb_max = 0
+        ecu_wiper_state = 0
+        ecu_lift_and_coast = 0.0
+
+        if ecu is not None:
+            ecu_abs_raw = bool(getattr(ecu, "abs_active", False))
+            ecu_tc_raw = bool(getattr(ecu, "tc_active", False))
+            ecu_abs_level = max(0, int(getattr(ecu, "abs_level", 0)))
+            ecu_abs_max = max(0, int(getattr(ecu, "abs_max", 0)))
+            ecu_tc_level = max(0, int(getattr(ecu, "tc_level", 0)))
+            ecu_tc_max = max(0, int(getattr(ecu, "tc_max", 0)))
+            ecu_tc_cut = max(0, int(getattr(ecu, "tc_cut", 0)))
+            ecu_tc_cut_max = max(0, int(getattr(ecu, "tc_cut_max", 0)))
+            ecu_tc_slip = max(0, int(getattr(ecu, "tc_slip", 0)))
+            ecu_tc_slip_max = max(0, int(getattr(ecu, "tc_slip_max", 0)))
+            ecu_motor_map = max(0, int(getattr(ecu, "motor_map", 0)))
+            ecu_motor_map_max = max(0, int(getattr(ecu, "motor_map_max", 0)))
+            ecu_brake_migration = max(0, int(getattr(ecu, "brake_migration", 0)))
+            ecu_brake_migration_max = max(0, int(getattr(ecu, "brake_migration_max", 0)))
+            ecu_front_arb = max(0, int(getattr(ecu, "front_arb", 0)))
+            ecu_front_arb_max = max(0, int(getattr(ecu, "front_arb_max", 0)))
+            ecu_rear_arb = max(0, int(getattr(ecu, "rear_arb", 0)))
+            ecu_rear_arb_max = max(0, int(getattr(ecu, "rear_arb_max", 0)))
+            ecu_wiper_state = int(getattr(ecu, "wiper_state", 0))
+            ecu_lift_and_coast = float(getattr(ecu, "lift_and_coast", 0.0))
 
         return cls.from_wheel_velocities(
             long_patch_vels=lpv,
@@ -356,6 +484,26 @@ class VehicleSensors:
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
             grip_fractions=raw_grips,
+            ecu_abs_active_raw=ecu_abs_raw,
+            ecu_tc_active_raw=ecu_tc_raw,
+            ecu_abs_level=ecu_abs_level,
+            ecu_abs_max=ecu_abs_max,
+            ecu_tc_level=ecu_tc_level,
+            ecu_tc_max=ecu_tc_max,
+            ecu_tc_cut=ecu_tc_cut,
+            ecu_tc_cut_max=ecu_tc_cut_max,
+            ecu_tc_slip=ecu_tc_slip,
+            ecu_tc_slip_max=ecu_tc_slip_max,
+            ecu_motor_map=ecu_motor_map,
+            ecu_motor_map_max=ecu_motor_map_max,
+            ecu_brake_migration=ecu_brake_migration,
+            ecu_brake_migration_max=ecu_brake_migration_max,
+            ecu_front_arb=ecu_front_arb,
+            ecu_front_arb_max=ecu_front_arb_max,
+            ecu_rear_arb=ecu_rear_arb,
+            ecu_rear_arb_max=ecu_rear_arb_max,
+            ecu_wiper_state=ecu_wiper_state,
+            ecu_lift_and_coast=ecu_lift_and_coast,
         )
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────
@@ -408,45 +556,61 @@ class VehicleSensors:
             },
         ]
 
-    # ── Combined & Per-Side Sensor Intensity Properties (0.0 to 1.0) ──────────
+    # ── High-Level Haptic Sensor Aggregations ─────────────────────────────────
     @property
     def lock_intensity(self) -> float:
-        """Over-Braking intensity (Combined Max FL/FR/RL/RR)."""
+        """Over-Braking intensity (Combined Max 4 wheels)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.front_left_lock, self.front_right_lock, self.rear_left_lock, self.rear_right_lock)
 
     @property
     def lock_left(self) -> float:
         """Over-Braking Left side (Max FL, RL)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.front_left_lock, self.rear_left_lock)
 
     @property
     def lock_right(self) -> float:
         """Over-Braking Right side (Max FR, RR)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.front_right_lock, self.rear_right_lock)
 
     @property
     def lock_front(self) -> float:
         """Over-Braking Front axle (Max FL, FR)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.front_left_lock, self.front_right_lock)
 
     @property
     def lock_rear(self) -> float:
         """Over-Braking Rear axle (Max RL, RR)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.rear_left_lock, self.rear_right_lock)
 
     @property
     def spin_intensity(self) -> float:
         """Over-Acceleration intensity (Combined Max RL/RR)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return max(self.rear_left_spin, self.rear_right_spin)
 
     @property
     def spin_left(self) -> float:
         """Over-Acceleration Left wheel (RL)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return self.rear_left_spin
 
     @property
     def spin_right(self) -> float:
         """Over-Acceleration Right wheel (RR)."""
+        if self.vehicle_speed <= 1.5:
+            return 0.0
         return self.rear_right_spin
 
     @property
@@ -570,14 +734,16 @@ class VehicleSensors:
     def ecu_abs_active(self) -> float:
         """
         Official Car ECU ABS Active Intervention Intensity (0.0 to 1.0).
-        Measures electronic anti-lock regulation when driver brake pedal exceeds filtered caliper pressure.
-        Distinct from physical tire slip (wheel lockup).
+        Uses native LMU EcuState.abs_active if available.
+        Strictly zero at standstill or speed <= 1.5 m/s.
         """
-        if not self.in_realtime:
+        if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
+        if self.ecu_abs_active_raw is not None:
+            return 1.0 if self.ecu_abs_active_raw else 0.0
         ub = self.unfiltered_brake
-        fb = getattr(self, "filtered_brake", ub)
-        if ub > 0.05 and fb < ub - 0.005:
+        fb = self.filtered_brake if self.filtered_brake is not None else ub
+        if ub > 0.05 and fb is not None and fb < ub - 0.005:
             return min(1.0, max(0.0, (ub - fb) / max(0.01, ub)))
         return 0.0
 
@@ -585,16 +751,15 @@ class VehicleSensors:
     def ecu_tc_active(self) -> float:
         """
         Official Car ECU Traction Control (TC) Active Intervention Intensity (0.0 to 1.0).
-        Measures electronic traction control engine cuts when driver throttle pedal exceeds filtered engine throttle.
-        Distinct from physical tire slip (wheel spin).
+        Uses native LMU EcuState.tc_active if available (strictly avoids upshift / rev-limiter false positives).
+        Strictly zero at standstill or speed <= 1.5 m/s.
         """
-        if not self.in_realtime:
+        if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
-        ut = self.unfiltered_throttle
-        ft = getattr(self, "filtered_throttle", ut)
-        if ut > 0.05 and ft < ut - 0.005:
-            return min(1.0, max(0.0, (ut - ft) / max(0.01, ut)))
+        if self.ecu_tc_active_raw is not None:
+            return 1.0 if self.ecu_tc_active_raw else 0.0
         return 0.0
+
 
 
 

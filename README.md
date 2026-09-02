@@ -154,6 +154,7 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 ### 📌 Registered Pins Reference
 
 #### 1. Telemetry Sensor Output Pins (Source Pins)
+- **Electronics (ECU)**: `attr_out_ecu_abs` (Régulation ABS), `attr_out_ecu_tc` (Coupure TC)
 - **Over-Braking**: `attr_out_abs` (Max), `attr_out_abs_l` (Left), `attr_out_abs_r` (Right)
 - **Over-Acceleration**: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right)
 - **Oversteer**: `attr_out_over` (Max), `attr_out_over_l` (Left), `attr_out_over_r` (Right)
@@ -171,6 +172,7 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 
 | Node Type | Description | Key Parameters / Pins |
 | :--- | :--- | :--- |
+| `sensor_electronics` | Official Car ECU Electronic Aids (ABS & TC) | Outputs: `attr_out_ecu_abs` (Régulation ABS), `attr_out_ecu_tc` (Coupure TC) |
 | `sensor_over_braking` | Over-Braking telemetry sensor input | Outputs: `attr_out_abs` (Max), `attr_out_abs_l` (Left), `attr_out_abs_r` (Right) |
 | `sensor_over_accel` | Over-Acceleration telemetry sensor input | Outputs: `attr_out_tc` (Max), `attr_out_tc_l` (Left), `attr_out_tc_r` (Right) |
 | `sensor_oversteer` | Oversteer telemetry sensor input | Outputs: `attr_out_over` (Max), `attr_out_over_l` (Left), `attr_out_over_r` (Right) |

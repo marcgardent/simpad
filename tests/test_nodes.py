@@ -31,7 +31,7 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
             "normalize", "math", "transform", "shape", "logic_bool", "invert",
             "sensor_over_braking", "sensor_over_accel", "sensor_oversteer", "sensor_understeer",
             "sensor_engine_regime", "sensor_wheel_travel", "sensor_gear", "sensor_grip_fract",
-            "sensor_ecu_abs", "sensor_ecu_tc",
+            "sensor_electronics",
             "output_xinput"
         }
         self.assertTrue(expected_types.issubset(registered_types))
@@ -193,11 +193,10 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         self.assertAlmostEqual(low, 0.3)
         self.assertAlmostEqual(high, 0.7)
 
-    def test_ecu_abs_and_tc_sensor_nodes_evaluation(self):
+    def test_electronics_sensor_node_evaluation(self):
         graph_data = {
             "nodes": {
-                "ecu_abs_node": {"type": "sensor_ecu_abs", "out_attr": "out_abs_active"},
-                "ecu_tc_node": {"type": "sensor_ecu_tc", "out_attr": "out_tc_active"},
+                "elec_node": {"type": "sensor_electronics", "out_abs": "out_abs_active", "out_tc": "out_tc_active"},
                 "out": {"type": "output_xinput", "in_low": "in_l_pin", "in_high": "in_h_pin"}
             },
             "links": [
@@ -210,6 +209,38 @@ class TestNodeFactoryAndNodes(unittest.TestCase):
         self.assertAlmostEqual(low, 0.85, places=4)
         self.assertAlmostEqual(high, 0.60, places=4)
 
+    def test_topological_sort_reversed_nodes(self):
+        """Verify that nodes defined in reverse dependency order in dict are compiled in topological order."""
+        graph_data = {
+            "nodes": {
+                "out": {"type": "output_xinput", "in_low": "in_l_pin"},
+                "shape_node": {"type": "shape", "shape": "Sine (Smooth)", "freq": 20.0, "duty": 1.0, "in_attr": "in_s_pin", "out_attr": "out_s_pin"},
+                "tf_node": {"type": "transform", "gain": 1.0, "gamma": 1.0, "thresh": 0.0, "in_attr": "in_tf_pin", "out_attr": "in_s_pin"},
+                "elec_node": {"type": "sensor_electronics", "out_abs": "in_tf_pin"}
+            },
+            "links": [
+                ["in_tf_pin", "in_tf_pin"],
+                ["in_s_pin", "in_s_pin"],
+                ["out_s_pin", "in_l_pin"]
+            ]
+        }
+        func = GraphCompiler.compile_graph(graph_data)
+        low, high = func({"ecu_abs": 1.0}, 0.01)
+        self.assertGreater(low, 0.0)
+
+    def test_marc_profile_electronics_evaluation(self):
+        """Verify that Marc Profile produces vibration output when ECU ABS and TC are active."""
+        import json
+        with open("profiles/Marc Profile.json") as f:
+            data = json.load(f)
+
+        func = GraphCompiler.compile_graph(data["graph_data"])
+        low_abs, _ = func({"ecu_abs": 1.0, "ecu_tc": 0.0}, 0.01)
+        _, high_tc = func({"ecu_abs": 0.0, "ecu_tc": 1.0}, 0.01)
+        self.assertGreater(low_abs, 0.0)
+        self.assertGreater(high_tc, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

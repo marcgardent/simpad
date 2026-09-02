@@ -52,6 +52,8 @@ class TelemetryData:
     suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
+    filtered_throttle: Optional[float] = None
+    filtered_brake: Optional[float] = None
     unfiltered_steering: float = 0.0
     in_realtime: bool = True
     gear: int = 0
@@ -118,6 +120,8 @@ class TelemetryData:
             gear=self.gear,
             unfiltered_throttle=self.unfiltered_throttle,
             unfiltered_brake=self.unfiltered_brake,
+            filtered_throttle=self.filtered_throttle,
+            filtered_brake=self.filtered_brake,
             fuel_level=self.fuel,
             remaining_laps=remaining,
             delta_time=self.delta_time,
@@ -170,6 +174,8 @@ class LMUParser:
     _last_engine_max_rpm: float = 7500.0
     _last_unfiltered_throttle: float = 0.0
     _last_unfiltered_brake: float = 0.0
+    _last_filtered_throttle: Optional[float] = None
+    _last_filtered_brake: Optional[float] = None
     _last_unfiltered_steering: float = 0.0
     _last_lpv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lgv: tuple = (0.0, 0.0, 0.0, 0.0)
@@ -309,6 +315,8 @@ class LMUParser:
 
         cls._last_unfiltered_throttle = float(telem.unfiltered_throttle)
         cls._last_unfiltered_brake = float(telem.unfiltered_brake)
+        cls._last_filtered_throttle = float(getattr(telem, "filtered_throttle", telem.unfiltered_throttle))
+        cls._last_filtered_brake = float(getattr(telem, "filtered_brake", telem.unfiltered_brake))
         cls._last_unfiltered_steering = float(telem.unfiltered_steering)
         cls._last_gear = int(telem.gear)
         cls._last_engine_rpm = float(telem.engine_rpm)
@@ -338,7 +346,17 @@ class LMUParser:
         raw_sec = int(telem.current_sector)
         cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
-        return cls._build_telemetry_snapshot()
+        snap = cls._build_telemetry_snapshot()
+        try:
+            from src.telemetry.telemetry_logger import TelemetryDiagnosticLogger
+            TelemetryDiagnosticLogger.get_instance().log_sample(
+                sensors=snap.to_sensors(),
+                raw_lpv=cls._last_lpv,
+                raw_lgv=cls._last_lgv,
+            )
+        except Exception:
+            pass
+        return snap
 
     @classmethod
     def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
@@ -474,6 +492,8 @@ class LMUParser:
             suspension_velocities=cls._last_susp_vels,
             unfiltered_throttle=cls._last_unfiltered_throttle,
             unfiltered_brake=cls._last_unfiltered_brake,
+            filtered_throttle=cls._last_filtered_throttle,
+            filtered_brake=cls._last_filtered_brake,
             unfiltered_steering=cls._last_unfiltered_steering,
             in_realtime=cls._last_in_realtime,
             gear=cls._last_gear,

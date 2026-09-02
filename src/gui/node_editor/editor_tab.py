@@ -133,9 +133,7 @@ class NodeEditorTab:
             dpg.add_spacer(height=4)
 
             dpg.add_text("Car ECU Aids (Electronic)", color=[255, 140, 0, 255])
-            dpg.add_button(label="+ Car ECU ABS Active", width=-1, callback=lambda *args: self._add_node_sensor_ecu_abs())
-            dpg.add_spacer(height=2)
-            dpg.add_button(label="+ Car ECU TC Active", width=-1, callback=lambda *args: self._add_node_sensor_ecu_tc())
+            dpg.add_button(label="+ Car Electronics", width=-1, callback=lambda *args: self._add_node_sensor_electronics())
             dpg.add_spacer(height=6)
             dpg.add_separator()
             dpg.add_spacer(height=4)
@@ -273,11 +271,8 @@ class NodeEditorTab:
     def _add_node_sensor_grip(self, pos=(30.0, 700.0)):
         return self._factory.add_node_sensor_grip(self._custom_nodes, self.recompile_and_update_synth, pos)
 
-    def _add_node_sensor_ecu_abs(self, pos=(30.0, 520.0)):
-        return self._factory.add_node_sensor_ecu_abs(self._custom_nodes, self.recompile_and_update_synth, pos)
-
-    def _add_node_sensor_ecu_tc(self, pos=(30.0, 600.0)):
-        return self._factory.add_node_sensor_ecu_tc(self._custom_nodes, self.recompile_and_update_synth, pos)
+    def _add_node_sensor_electronics(self, pos=(30.0, 520.0)):
+        return self._factory.add_node_sensor_electronics(self._custom_nodes, self.recompile_and_update_synth, pos)
 
     def _add_node_boolean(self, op="AND", val_a=0.0, val_b=0.0, pos=(240.0, 80.0)):
         if not isinstance(op, str):

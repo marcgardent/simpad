@@ -409,40 +409,26 @@ class NodeUIFactory:
         recompile_cb()
         return node_tag
 
-    def add_node_sensor_ecu_abs(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 520.0)) -> str:
+    def add_node_sensor_electronics(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 520.0)) -> str:
         pos_f = self.get_next_spawn_pos(custom_nodes, pos)
         nid = self.get_next_nid(custom_nodes)
-        node_tag = f"dynamic_node_sensor_ecu_abs_{nid}"
-        out_tag = f"attr_out_dyn_ecu_abs_{nid}"
+        node_tag = f"dynamic_node_sensor_electronics_{nid}"
+        out_abs_tag = f"attr_out_dyn_ecu_abs_{nid}"
+        out_tc_tag = f"attr_out_dyn_ecu_tc_{nid}"
 
-        with dpg.node(label=f"Input: Car ECU ABS Active #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
-            with dpg.node_attribute(label="Car ABS Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+        with dpg.node(label=f"Input: Electronics #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
+            with dpg.node_attribute(label="Car ABS Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_abs_tag):
                 dpg.add_text("Car ECU ABS Active", color=[255, 100, 100, 255])
-
-        self.apply_pin_theme(out_tag, "normalized")
-
-        custom_nodes[node_tag] = {
-            "type": "sensor_ecu_abs",
-            "out_attr": out_tag,
-        }
-        recompile_cb()
-        return node_tag
-
-    def add_node_sensor_ecu_tc(self, custom_nodes: Dict[str, dict], recompile_cb: Callable[[], None], pos=(30.0, 600.0)) -> str:
-        pos_f = self.get_next_spawn_pos(custom_nodes, pos)
-        nid = self.get_next_nid(custom_nodes)
-        node_tag = f"dynamic_node_sensor_ecu_tc_{nid}"
-        out_tag = f"attr_out_dyn_ecu_tc_{nid}"
-
-        with dpg.node(label=f"Input: Car ECU TC Active #{nid}", tag=node_tag, parent="node_editor_canvas", pos=pos_f):
-            with dpg.node_attribute(label="Car TC Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_tag):
+            with dpg.node_attribute(label="Car TC Active", attribute_type=dpg.mvNode_Attr_Output, tag=out_tc_tag):
                 dpg.add_text("Car ECU TC Active", color=[100, 200, 255, 255])
 
-        self.apply_pin_theme(out_tag, "normalized")
+        self.apply_pin_theme(out_abs_tag, "normalized")
+        self.apply_pin_theme(out_tc_tag, "normalized")
 
         custom_nodes[node_tag] = {
-            "type": "sensor_ecu_tc",
-            "out_attr": out_tag,
+            "type": "sensor_electronics",
+            "out_abs": out_abs_tag,
+            "out_tc": out_tc_tag,
         }
         recompile_cb()
         return node_tag

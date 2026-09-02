@@ -23,8 +23,7 @@ from src.nodes.sensor import (
     WheelTravelSensorNode,
     GearSensorNode,
     GripFractSensorNode,
-    EcuAbsSensorNode,
-    EcuTcSensorNode,
+    ElectronicsSensorNode,
 )
 from src.nodes.output import XInputOutputNode
 
@@ -79,8 +78,7 @@ def _initialize_factory():
     NodeFactory.register(WheelTravelSensorNode)
     NodeFactory.register(GearSensorNode)
     NodeFactory.register(GripFractSensorNode)
-    NodeFactory.register(EcuAbsSensorNode)
-    NodeFactory.register(EcuTcSensorNode)
+    NodeFactory.register(ElectronicsSensorNode)
     NodeFactory.register(XInputOutputNode)
 
 

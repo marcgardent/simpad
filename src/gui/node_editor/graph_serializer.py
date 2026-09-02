@@ -19,6 +19,7 @@ class GraphSerializer:
         "attr_out_travel", "attr_out_travel_l", "attr_out_travel_r",
         "attr_out_travel_fl", "attr_out_travel_fr", "attr_out_travel_rl", "attr_out_travel_rr",
         "attr_out_grip", "attr_out_grip_l", "attr_out_grip_r",
+        "attr_out_ecu_abs", "attr_out_ecu_tc",
         "attr_out_const", "attr_in_low", "attr_in_high"
     ]
 
@@ -143,8 +144,7 @@ class GraphSerializer:
             "logic_bool": lambda: editor_tab._add_node_boolean(op=ndata.get("op", "AND"), val_a=ndata.get("val_a", 0.0), val_b=ndata.get("val_b", 0.0), pos=pos),
             "sensor_wheel_travel": lambda: editor_tab._add_node_sensor_travel(pos=pos),
             "sensor_grip_fract": lambda: editor_tab._add_node_sensor_grip(pos=pos),
-            "sensor_ecu_abs": lambda: editor_tab._add_node_sensor_ecu_abs(pos=pos),
-            "sensor_ecu_tc": lambda: editor_tab._add_node_sensor_ecu_tc(pos=pos),
+            "sensor_electronics": lambda: editor_tab._add_node_sensor_electronics(pos=pos),
             "output_xinput": lambda: editor_tab._add_node_output_xinput(pos=pos),
         }
         creator = creators.get(ntype)
@@ -184,6 +184,14 @@ class GraphSerializer:
 
         for base_tag in GraphSerializer.BASE_TAG_MAP:
             tag_remap[base_tag] = base_tag
+
+        # Map legacy attr_in_low / attr_in_high to dynamic XInput node pins if present on canvas
+        for ntag, ninfo in editor_tab._custom_nodes.items():
+            if ninfo.get("type") == "output_xinput":
+                if "in_low" in ninfo:
+                    tag_remap["attr_in_low"] = ninfo["in_low"]
+                if "in_high" in ninfo:
+                    tag_remap["attr_in_high"] = ninfo["in_high"]
 
         return tag_remap
 

@@ -78,6 +78,8 @@ def _create_mock_telem_info(speed_mps: float = 50.0, fuel: float = 45.0) -> Tele
         clutch_rpm=6500.0,
         unfiltered_throttle=0.85,
         unfiltered_brake=0.0,
+        filtered_throttle=0.85,
+        filtered_brake=0.0,
         unfiltered_steering=0.02,
         unfiltered_clutch=0.0,
         steering_shaft_torque=15.0,
@@ -229,7 +231,7 @@ def test_vehicle_sensors_from_telem_info():
 
 def test_vehicle_sensors_abs_lockup_calculation():
     """Vérifie le calcul sans dimension du glissement ABS au freinage (lpv - lgv) / speed."""
-    # Simulation d'un freinage violent : vitesse 50 m/s, roue avant gauche à 35 m/s (30% glissement / blocage)
+    # Simulation d'un freinage violent : vitesse 50 m/s, roue avant gauche à 35 m/s (30% glissement / blocage complet)
     from isimotor_rawudp_client import TelemWheel
     w_fl = TelemWheel(longitudinal_patch_vel=35.0, longitudinal_ground_vel=50.0, grip_fraction=0.70)
     w_fr = TelemWheel(longitudinal_patch_vel=50.0, longitudinal_ground_vel=50.0, grip_fraction=0.95)
@@ -237,14 +239,15 @@ def test_vehicle_sensors_abs_lockup_calculation():
     w_rr = TelemWheel(longitudinal_patch_vel=50.0, longitudinal_ground_vel=50.0, grip_fraction=0.98)
 
     telem = _create_mock_telem_info(speed_mps=50.0)
+    telem.unfiltered_brake = 1.0
     telem.wheels = (w_fl, w_fr, w_rl, w_rr)
 
     sensors = VehicleSensors.from_telem_info(telem)
-    # Glissement FL = (50 - 35) / 50 = 0.30
-    assert sensors.front_left_lock == pytest.approx(0.30, abs=0.001)
+    # Glissement FL brut = (50 - 35) / 50 = 0.30 -> Échelle calibrée: saturation à 0.18 -> lockup saturé à 1.0
+    assert sensors.front_left_lock == 1.0
     assert sensors.front_right_lock == 0.0
-    assert sensors.lock_intensity == pytest.approx(0.30, abs=0.001)
-    assert sensors.lock_left == pytest.approx(0.30, abs=0.001)
+    assert sensors.lock_intensity == 1.0
+    assert sensors.lock_left == 1.0
     assert sensors.lock_right == 0.0
     # Grip natif
     assert sensors.front_left_grip == 0.70
@@ -252,13 +255,33 @@ def test_vehicle_sensors_abs_lockup_calculation():
     assert sensors.grip_left == 0.70
 
 
+def test_vehicle_sensors_abs_trail_braking_micro_lockup():
+    """Vérifie la sensibilité accrue au micro-blocage lors du trail braking (glissement 10%)."""
+    from isimotor_rawudp_client import TelemWheel
+    w_fl = TelemWheel(longitudinal_patch_vel=45.0, longitudinal_ground_vel=50.0, grip_fraction=0.85)
+    w_fr = TelemWheel(longitudinal_patch_vel=50.0, longitudinal_ground_vel=50.0, grip_fraction=0.98)
+    w_rl = TelemWheel(longitudinal_patch_vel=50.0, longitudinal_ground_vel=50.0, grip_fraction=0.98)
+    w_rr = TelemWheel(longitudinal_patch_vel=50.0, longitudinal_ground_vel=50.0, grip_fraction=0.98)
+
+    telem = _create_mock_telem_info(speed_mps=50.0)
+    telem.unfiltered_brake = 0.80
+    telem.wheels = (w_fl, w_fr, w_rl, w_rr)
+
+    sensors = VehicleSensors.from_telem_info(telem)
+    # Glissement FL brut = (50 - 45) / 50 = 0.10 -> (0.10 - 0.04) / (0.18 - 0.04) = 0.06 / 0.14 ≈ 0.428
+    expected = (0.10 - 0.04) / (0.18 - 0.04)
+    assert sensors.front_left_lock == pytest.approx(expected, abs=0.01)
+    assert sensors.lock_intensity == pytest.approx(expected, abs=0.01)
+
+
 def test_vehicle_sensors_ecu_abs_and_tc_intervention():
     """Vérifie la détection et le calcul d'intensité des aides électroniques ABS et TC officielles de la voiture."""
-    # 1. ABS intervention : pédale frein pilote 1.0 (100%), pression régulée par le boîtier ABS = 0.60 (60%)
+    # 1. ABS fallback intervention (legacy / sans extension ECU) :
+    # Pédale frein pilote 1.0 (100%), pression régulée par le boîtier ABS = 0.60 (60%)
     telem = _create_mock_telem_info(speed_mps=45.0)
+    telem.lmu = None  # Simule une ancienne télémétrie sans extension ECU
     telem.unfiltered_brake = 1.0
     telem.filtered_brake = 0.60
-    # TC non actif (accélérateur 0)
     telem.unfiltered_throttle = 0.0
     telem.filtered_throttle = 0.0
 
@@ -267,16 +290,59 @@ def test_vehicle_sensors_ecu_abs_and_tc_intervention():
     assert sensors.ecu_abs_active == pytest.approx(0.40, abs=0.01)
     assert sensors.ecu_tc_active == 0.0
 
-    # 2. TC intervention : accélérateur pilote 1.0 (100%), coupure injection / boîtier TC = 0.30 (30%)
+    # 2. TC intervention sans ECU : reste 0.0 pour éviter les faux positifs d'upshift
     telem.unfiltered_brake = 0.0
     telem.filtered_brake = 0.0
     telem.unfiltered_throttle = 1.0
     telem.filtered_throttle = 0.30
 
     sensors_tc = VehicleSensors.from_telem_info(telem)
-    # Intervention TC = (1.0 - 0.30) / 1.0 = 0.70 (70%)
-    assert sensors_tc.ecu_tc_active == pytest.approx(0.70, abs=0.01)
+    assert sensors_tc.ecu_tc_active == 0.0
     assert sensors_tc.ecu_abs_active == 0.0
+
+
+def test_vehicle_sensors_native_ecu_state_v020():
+    """Vérifie la détection directe via EcuState de isimotor_rawudp_client v0.2.0."""
+    from isimotor_rawudp_client.models.ecu import EcuState
+    from isimotor_rawudp_client.models.lmu import LMUTelemetryExtension
+
+    telem = _create_mock_telem_info(speed_mps=50.0)
+    telem.unfiltered_brake = 1.0
+    telem.filtered_brake = 1.0  # Dans LMU, filtered_brake reste à 1.0
+    telem.unfiltered_throttle = 1.0
+    telem.filtered_throttle = 1.0
+
+    # Attache l'extension native LMU ECU
+    ecu = EcuState(
+        abs_active=True,
+        tc_active=True,
+        abs_level=5,
+        abs_max=12,
+        tc_level=3,
+        tc_max=10,
+        tc_cut=2,
+        tc_slip=4,
+        motor_map=1,
+        motor_map_max=5,
+        brake_migration=3,
+        front_arb=2,
+        rear_arb=4,
+    )
+    telem.lmu = LMUTelemetryExtension(ecu=ecu)
+
+    sensors = VehicleSensors.from_telem_info(telem)
+    assert sensors.ecu_abs_active == 1.0
+    assert sensors.ecu_tc_active == 1.0
+    assert sensors.ecu_abs_level == 5
+    assert sensors.ecu_abs_max == 12
+    assert sensors.ecu_tc_level == 3
+    assert sensors.ecu_tc_max == 10
+    assert sensors.ecu_tc_cut == 2
+    assert sensors.ecu_tc_slip == 4
+    assert sensors.ecu_motor_map == 1
+    assert sensors.ecu_brake_migration == 3
+    assert sensors.ecu_front_arb == 2
+    assert sensors.ecu_rear_arb == 4
 
 
 def test_lmu_parser_process_telemetry():

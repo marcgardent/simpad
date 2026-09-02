@@ -10,10 +10,57 @@ from typing import Dict, Any, List, Tuple, Callable
 from src.nodes.factory import NodeFactory
 
 
-# TODO: [SRP] GraphCompiler delegates individual node code statements generation to NodeFactory.
-# TODO: [SLAP] generate_python_source orchestrates high-level code section generation (header, sensors map, node loop, motors output).
 class GraphCompiler:
     """Compiles a node graph topology dictionary into executable Python functions."""
+
+    @classmethod
+    def _topological_sort_nodes(cls, nodes: Dict[str, dict], links: List[Any]) -> List[Tuple[str, dict]]:
+        """
+        Sorts nodes topologically (producers before consumers) to guarantee correct dataflow execution order.
+        """
+        pin_to_producer: Dict[str, str] = {}
+        for ntag, ninfo in nodes.items():
+            for k, val in ninfo.items():
+                if (k.startswith("out_") or k == "out_attr") and isinstance(val, str):
+                    pin_to_producer[val] = ntag
+
+        pin_to_consumer: Dict[str, str] = {}
+        for ntag, ninfo in nodes.items():
+            for k, val in ninfo.items():
+                if (k.startswith("in_") or k in ("in_attr", "in_a", "in_b", "in_freq", "in_low", "in_high", "in_on", "in_off")) and isinstance(val, str):
+                    pin_to_consumer[val] = ntag
+
+        adj: Dict[str, set] = {ntag: set() for ntag in nodes}
+        in_degree: Dict[str, int] = {ntag: 0 for ntag in nodes}
+
+        for link in links:
+            if isinstance(link, (list, tuple)) and len(link) == 2:
+                src_pin, tgt_pin = link[0], link[1]
+                producer = pin_to_producer.get(src_pin)
+                consumer = pin_to_consumer.get(tgt_pin)
+                if producer and consumer and producer != consumer:
+                    if consumer not in adj[producer]:
+                        adj[producer].add(consumer)
+                        in_degree[consumer] += 1
+
+        from collections import deque
+        queue = deque([ntag for ntag, deg in in_degree.items() if deg == 0])
+        sorted_pairs: List[Tuple[str, dict]] = []
+
+        while queue:
+            ntag = queue.popleft()
+            sorted_pairs.append((ntag, nodes[ntag]))
+            for neighbor in adj[ntag]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+
+        # Append any remaining nodes (in case of cycles or disconnected components)
+        for ntag, ninfo in nodes.items():
+            if (ntag, ninfo) not in sorted_pairs:
+                sorted_pairs.append((ntag, ninfo))
+
+        return sorted_pairs
 
     @classmethod
     def generate_python_source(cls, graph_data: dict) -> str:
@@ -98,8 +145,9 @@ class GraphCompiler:
             ""
         ]
 
-        # Process Nodes via NodeFactory delegate
-        for ntag, ninfo in nodes.items():
+        # Process Nodes via NodeFactory delegate in topological order
+        sorted_nodes = cls._topological_sort_nodes(nodes, links)
+        for ntag, ninfo in sorted_nodes:
             ntype = ninfo.get("type", "")
             node_lines = NodeFactory.generate_code(ntype, ntag, ninfo, in_to_outs)
             lines.extend(node_lines)

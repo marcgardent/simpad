@@ -655,8 +655,8 @@ class SimPadDPGApp:
         else:
             self._t.append(now)
 
-        self._d_abs.append(max(sensors.ecu_abs_active, sensors.lock_intensity))
-        self._d_tc.append(max(sensors.ecu_tc_active, sensors.spin_intensity))
+        self._d_abs.append(sensors.ecu_abs_active)
+        self._d_tc.append(sensors.ecu_tc_active)
         self._d_over.append(sensors.oversteer_intensity)
         self._d_und.append(sensors.understeer_intensity)
         self._d_over_rev.append(sensors.overrev_intensity)

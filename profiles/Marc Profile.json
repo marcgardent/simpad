@@ -3,196 +3,198 @@
   "name": "Marc Profile",
   "preset": false,
   "version": 2,
-  "created": "2026-08-06T09:36:29",
+  "created": "2026-09-01T22:55:13",
   "graph_data": {
     "nodes": {
-      "dynamic_node_tf_4": {
+      "dynamic_node_tf_11": {
         "type": "transform",
         "pos": [
-          328,
+          370,
           40
         ],
-        "in_attr": "attr_in_tf_4",
-        "out_attr": "attr_out_tf_4",
+        "in_attr": "attr_in_tf_11",
+        "out_attr": "attr_out_tf_11",
         "gain": 1.7999999523162842,
         "gamma": 0.699999988079071,
         "thresh": 0.0,
         "val_in": 0.0,
         "label": "Transform & Curve #10"
       },
-      "dynamic_node_shape_5": {
+      "dynamic_node_shape_12": {
         "type": "shape",
         "pos": [
-          613,
+          680,
           40
         ],
-        "in_attr": "attr_in_shape_5",
-        "in_freq": "attr_in_shape_freq_5",
-        "out_attr": "attr_out_shape_5",
+        "in_attr": "attr_in_shape_12",
+        "in_freq": "attr_in_shape_freq_12",
+        "out_attr": "attr_out_shape_12",
         "shape": "Sine (Smooth)",
         "freq": 144.0,
         "duty": 1.0000001192092896,
         "val_in": 0.0,
         "label": "Waveform Shape #11"
       },
-      "dynamic_node_tf_6": {
+      "dynamic_node_tf_13": {
         "type": "transform",
         "pos": [
-          328,
-          375
+          370,
+          290
         ],
-        "in_attr": "attr_in_tf_6",
-        "out_attr": "attr_out_tf_6",
+        "in_attr": "attr_in_tf_13",
+        "out_attr": "attr_out_tf_13",
         "gain": 1.809999942779541,
         "gamma": 0.699999988079071,
         "thresh": 0.0,
         "val_in": 0.0,
         "label": "Transform & Curve #12"
       },
-      "dynamic_node_shape_7": {
+      "dynamic_node_shape_14": {
         "type": "shape",
         "pos": [
-          613,
-          409
+          680,
+          310
         ],
-        "in_attr": "attr_in_shape_7",
-        "in_freq": "attr_in_shape_freq_7",
-        "out_attr": "attr_out_shape_7",
+        "in_attr": "attr_in_shape_14",
+        "in_freq": "attr_in_shape_freq_14",
+        "out_attr": "attr_out_shape_14",
         "shape": "Sine (Smooth)",
         "freq": 144.0,
         "duty": 1.0000001192092896,
         "val_in": 0.0,
         "label": "Waveform Shape #13"
       },
-      "dynamic_node_sensor_engine_8": {
+      "dynamic_node_sensor_engine_15": {
         "type": "sensor_engine_regime",
         "pos": [
-          40,
-          668
+          -8,
+          1038
         ],
-        "out_over_rev": "attr_out_dyn_over_rev_8",
-        "out_under_rev": "attr_out_dyn_under_rev_8",
-        "out_rpm": "attr_out_dyn_rpm_8",
-        "out_gear": "attr_out_dyn_gear_8",
+        "out_over_rev": "attr_out_dyn_over_rev_15",
+        "out_under_rev": "attr_out_dyn_under_rev_15",
+        "out_rpm": "attr_out_dyn_rpm_15",
+        "out_gear": "attr_out_dyn_gear_15",
         "label": "Input: Engine Regime #14"
       },
-      "dynamic_node_xinput_9": {
+      "dynamic_node_xinput_16": {
         "type": "output_xinput",
         "pos": [
-          996,
-          1197
+          990,
+          40
         ],
-        "in_low": "attr_in_dyn_low_9",
-        "in_high": "attr_in_dyn_high_9",
+        "in_low": "attr_in_dyn_low_16",
+        "in_high": "attr_in_dyn_high_16",
         "label": "Output: XInput Vibration #16"
       },
-      "dynamic_node_tf_10": {
+      "dynamic_node_tf_17": {
         "type": "transform",
         "pos": [
-          328,
-          710
+          370,
+          540
         ],
-        "in_attr": "attr_in_tf_10",
-        "out_attr": "attr_out_tf_10",
+        "in_attr": "attr_in_tf_17",
+        "out_attr": "attr_out_tf_17",
         "gain": 1.0,
         "gamma": 0.25,
         "thresh": 0.0,
         "val_in": 0.0,
         "label": "Transform & Curve #17"
       },
-      "dynamic_node_tf_11": {
+      "dynamic_node_tf_18": {
         "type": "transform",
         "pos": [
-          328,
-          1045
+          370,
+          790
         ],
-        "in_attr": "attr_in_tf_11",
-        "out_attr": "attr_out_tf_11",
+        "in_attr": "attr_in_tf_18",
+        "out_attr": "attr_out_tf_18",
         "gain": 1.0,
         "gamma": 0.25,
         "thresh": 0.0,
         "val_in": 0.0,
         "label": "Transform & Curve #18"
       },
-      "dynamic_node_shape_12": {
+      "dynamic_node_shape_19": {
         "type": "shape",
         "pos": [
-          613,
-          778
+          680,
+          580
         ],
-        "in_attr": "attr_in_shape_12",
-        "in_freq": "attr_in_shape_freq_12",
-        "out_attr": "attr_out_shape_12",
+        "in_attr": "attr_in_shape_19",
+        "in_freq": "attr_in_shape_freq_19",
+        "out_attr": "attr_out_shape_19",
         "shape": "Sawtooth (Scrub)",
         "freq": 20.0,
         "duty": 1.0000001192092896,
         "val_in": 0.0,
         "label": "Waveform Shape #19"
       },
-      "dynamic_node_shape_13": {
+      "dynamic_node_shape_20": {
         "type": "shape",
         "pos": [
-          613,
-          1147
+          680,
+          850
         ],
-        "in_attr": "attr_in_shape_13",
-        "in_freq": "attr_in_shape_freq_13",
-        "out_attr": "attr_out_shape_13",
+        "in_attr": "attr_in_shape_20",
+        "in_freq": "attr_in_shape_freq_20",
+        "out_attr": "attr_out_shape_20",
         "shape": "Sine (Smooth)",
         "freq": 20.0,
         "duty": 1.0000001192092896,
         "val_in": 0.0,
         "label": "Waveform Shape #20"
+      },
+      "dynamic_node_sensor_electronics_21": {
+        "type": "sensor_electronics",
+        "pos": [
+          40,
+          838
+        ],
+        "out_abs": "attr_out_dyn_ecu_abs_21",
+        "out_tc": "attr_out_dyn_ecu_tc_21",
+        "label": "Input: Electronics #21"
       }
     },
     "links": [
       [
-        "attr_out_abs_l",
-        "attr_in_tf_4"
-      ],
-      [
-        "attr_out_tf_4",
-        "attr_in_shape_5"
-      ],
-      [
-        "attr_out_shape_5",
-        "attr_in_low"
-      ],
-      [
-        "attr_out_abs_r",
-        "attr_in_tf_6"
-      ],
-      [
-        "attr_out_tf_6",
-        "attr_in_shape_7"
-      ],
-      [
-        "attr_out_shape_7",
-        "attr_in_high"
-      ],
-      [
-        "attr_out_dyn_over_rev_8",
-        "attr_in_tf_10"
-      ],
-      [
-        "attr_out_tf_10",
+        "attr_out_tf_11",
         "attr_in_shape_12"
       ],
       [
-        "attr_out_dyn_under_rev_8",
+        "attr_out_tf_13",
+        "attr_in_shape_14"
+      ],
+      [
+        "attr_out_dyn_over_rev_15",
+        "attr_in_tf_17"
+      ],
+      [
+        "attr_out_tf_17",
+        "attr_in_shape_19"
+      ],
+      [
+        "attr_out_dyn_under_rev_15",
+        "attr_in_tf_18"
+      ],
+      [
+        "attr_out_tf_18",
+        "attr_in_shape_20"
+      ],
+      [
+        "attr_out_dyn_ecu_abs_21",
         "attr_in_tf_11"
       ],
       [
-        "attr_out_tf_11",
-        "attr_in_shape_13"
-      ],
-      [
-        "attr_out_shape_13",
-        "attr_in_dyn_low_9"
+        "attr_out_dyn_ecu_tc_21",
+        "attr_in_tf_13"
       ],
       [
         "attr_out_shape_12",
-        "attr_in_dyn_high_9"
+        "attr_in_dyn_low_16"
+      ],
+      [
+        "attr_out_shape_14",
+        "attr_in_dyn_high_16"
       ]
     ]
   }

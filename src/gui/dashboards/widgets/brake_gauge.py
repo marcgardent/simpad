@@ -1,6 +1,6 @@
 """
-Brake Gauge Widget — Left vertical brake intensity bar in compact canvas.
-Displays braking percentage and changes color to Purple (#a855f7) on wheel lockup (locking).
+Brake Gauge Widget — Left vertical brake pedal intensity bar in compact canvas.
+Displays pure driver brake percentage in Red (#ef4444 / [239, 68, 68]).
 """
 
 from typing import Dict, Any
@@ -11,8 +11,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class BrakeGaugeWidget(BaseHudWidget):
     """
-    Jauge de Frein (Côté Gauche du HUD compact).
-    Affiche l'intensité du freinage et change de couleur en cas de blocage / surfreinage (locking).
+    Jauge de Frein Pure (Centre-Gauche du HUD compact).
+    Affiche la course réelle de la pédale de frein en Rouge (#ef4444).
     """
 
     def __init__(self):
@@ -26,14 +26,7 @@ class BrakeGaugeWidget(BaseHudWidget):
         sensors: VehicleSensors,
         extra_data: Dict[str, Any],
     ) -> None:
-        if "brake" in extra_data:
-            raw_brake = float(extra_data["brake"])
-        elif sensors.unfiltered_brake > 0.0:
-            raw_brake = sensors.unfiltered_brake * 100.0
-        else:
-            raw_brake = sensors.lock_intensity * 100.0
-
-        is_locking = extra_data.get("overbrake", False) or (sensors.ecu_abs_active > 0.01) or (sensors.lock_intensity > 0.05)
+        raw_brake = float(extra_data.get("brake", sensors.unfiltered_brake * 100.0))
 
         # LERP smoothing
         self.display_brake = lerp(self.display_brake, raw_brake, 0.15)
@@ -42,9 +35,9 @@ class BrakeGaugeWidget(BaseHudWidget):
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        gauge_width = 32.0 * scale_x
+        gauge_width = 30.0 * scale_x
         gauge_height = 245.0 * scale_y
-        brake_x = center_x - (260.0 * scale_x)
+        brake_x = center_x - (250.0 * scale_x)
         gauge_y = 15.0 * scale_y
 
         # Background (Semi-transparent glass track)
@@ -57,15 +50,14 @@ class BrakeGaugeWidget(BaseHudWidget):
             parent=drawlist_tag,
         )
 
-        # Fill: Red (#ef4444) normally, turns Purple (#a855f7) on locking
+        # Fill: Pure Red (#ef4444)
         fill_height = (max(0.0, min(100.0, self.display_brake)) / 100.0) * gauge_height
         if fill_height > 0.5:
-            fill_color = [168, 85, 247, 255] if is_locking else [239, 68, 68, 255]
             fill_y_min = gauge_y + gauge_height - fill_height
             dpg.draw_rectangle(
                 pmin=[brake_x, fill_y_min],
                 pmax=[brake_x + gauge_width, gauge_y + gauge_height],
-                fill=fill_color,
+                fill=[239, 68, 68, 255],
                 color=[0, 0, 0, 0],
                 parent=drawlist_tag,
             )
