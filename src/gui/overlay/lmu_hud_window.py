@@ -139,11 +139,28 @@ class LmuHudQtWindow(QWidget):
     def update_telemetry(self, sensors: VehicleSensors, extra_data: Optional[Dict[str, Any]] = None) -> None:
         """Reçoit les données de télémétrie temps réel et déclenche le rafraîchissement."""
         self._sensors = sensors
+        speed_kmh = sensors.vehicle_speed * 3.6
+        throttle_pct = sensors.unfiltered_throttle * 100.0
+        brake_pct = sensors.unfiltered_brake * 100.0
+
+        try:
+            from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+            OverlayAnomalyLogger.get_instance().check_telemetry_anomaly(
+                speed_kmh=speed_kmh,
+                throttle_pct=throttle_pct,
+                brake_pct=brake_pct,
+                gear=sensors.gear,
+                in_realtime=sensors.in_realtime,
+                source="QtOverlayUpdate",
+            )
+        except Exception:
+            pass
+
         if extra_data:
             self._extra_data = dict(extra_data)
         else:
             self._extra_data = {
-                "speed": sensors.vehicle_speed * 3.6,
+                "speed": speed_kmh,
                 "gear": "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear)),
                 "expectedTime": sensors.delta_time_str,
                 "delta": sensors.delta_time_str,
@@ -152,8 +169,8 @@ class LmuHudQtWindow(QWidget):
                 "energyLaps": sensors.fuel_level,
                 "remainingLaps": sensors.remaining_laps,
                 "aero": sensors.aero_load * 100.0,
-                "brake": sensors.unfiltered_brake * 100.0,
-                "throttle": sensors.unfiltered_throttle * 100.0,
+                "brake": brake_pct,
+                "throttle": throttle_pct,
                 "abs": sensors.ecu_abs_active * 100.0,
                 "tc": max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0,
                 "overbrake": sensors.lock_intensity > 0.05,

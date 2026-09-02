@@ -37,8 +37,8 @@
             "notify_10m": false,
             "notify_5m": false,
             "notify_1m": false,
-            "notify_reg_open": true,
-            "notify_start": true,
+            "notify_reg_open": false,
+            "notify_start": false,
             "sound_key": "lmp3_fixed"
         },
         "lmgte_fixed": {
@@ -55,7 +55,7 @@
             "notify_15m": false,
             "notify_10m": false,
             "notify_5m": true,
-            "notify_1m": false,
+            "notify_1m": true,
             "notify_reg_open": true,
             "notify_start": true,
             "sound_key": "lmgte_fixed"
@@ -267,8 +267,8 @@
             "notify_10m": false,
             "notify_5m": false,
             "notify_1m": false,
-            "notify_reg_open": true,
-            "notify_start": true,
+            "notify_reg_open": false,
+            "notify_start": false,
             "sound_key": "lmp3_fixed"
         },
         "lmgte_fixed": {
@@ -285,7 +285,7 @@
             "notify_15m": false,
             "notify_10m": false,
             "notify_5m": true,
-            "notify_1m": false,
+            "notify_1m": true,
             "notify_reg_open": true,
             "notify_start": true,
             "sound_key": "lmgte_fixed"

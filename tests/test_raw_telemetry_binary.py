@@ -57,13 +57,14 @@ def _create_mock_telem_wheel(
     )
 
 
-def _create_mock_telem_info(speed_mps: float = 50.0, fuel: float = 45.0) -> TelemInfo:
+def _create_mock_telem_info(speed_mps: float = 50.0, fuel: float = 45.0, slot_id: int = 1) -> TelemInfo:
     wheels = tuple(_create_mock_telem_wheel() for _ in range(4))
     return TelemInfo(
+        slot_id=slot_id,
         delta_time=0.01,
         lap_number=3,
         lap_start_et=100.0,
-        vehicle_name="Ferrari 499P",
+        vehicle_name="Porsche 963 #5",
         track_name="Le Mans",
         pos=TelemVect3(100.0, 10.0, 200.0),
         local_vel=TelemVect3(0.0, 0.0, -speed_mps),
@@ -521,5 +522,69 @@ def test_lmu_parser_auto_realtime_recovery():
     assert snap.in_realtime is True
     sensors = snap.to_sensors()
     assert sensors.in_realtime is True
+
+
+def test_garage_stall_preserves_inactive_realtime():
+    """Vérifie que le statut garage reste inactif (in_realtime=False) même si la voiture a un rapport engagé (gear=1) à l'arrêt."""
+    from isimotor_rawudp_client import CompactScoring
+
+    # Détection de box / garage stall
+    scoring = CompactScoring(
+        in_realtime=True,
+        in_garage_stall=True,
+        sector=1,
+        total_laps=5,
+    )
+    snap_sc = LMUParser.process_compact_scoring(scoring)
+    assert snap_sc.in_realtime is False
+    assert LMUParser._in_garage_trap is True
+
+    # Réception d'un paquet TelemInfo dans le garage (vitesse 0, boîte en 1ère vitesse, gaz au repos)
+    telem_garage = _create_mock_telem_info(speed_mps=0.0)
+    snap_telem = LMUParser.process_telemetry(telem_garage)
+
+    assert snap_telem.in_realtime is False
+    sensors = snap_telem.to_sensors()
+    assert sensors.in_realtime is False
+
+
+def test_multicar_opponent_telemetry_isolation():
+    """Vérifie que les trames TelemInfo des véhicules adverses sont strictement ignorées dans une session multi-voitures."""
+    from isimotor_rawudp_client import FullScoringSession, VehicleScoring
+
+    veh_player = VehicleScoring(
+        id=3,
+        driver_name="Player Driver",
+        vehicle_name="Porsche 963 #5",
+        is_player=True,
+        control=0,
+    )
+    veh_opponent = VehicleScoring(
+        id=7,
+        driver_name="AI Opponent",
+        vehicle_name="Ferrari 499P #50",
+        is_player=False,
+        control=1,
+    )
+    session = FullScoringSession(
+        track_name="Spa",
+        vehicles=[veh_player, veh_opponent],
+    )
+    LMUParser.process_full_scoring(session)
+
+    # 1. Réception de la télémétrie d'un adversaire au garage (slot_id=7, frein=100%, vitesse=0)
+    telem_opp = _create_mock_telem_info(speed_mps=0.0, slot_id=7)
+    telem_opp.unfiltered_brake = 1.0
+    snap_opp = LMUParser.process_telemetry(telem_opp)
+    assert snap_opp is None  # Rejeté !
+
+    # 2. Réception de la télémétrie du joueur en piste (slot_id=3, vitesse=60 m/s, gaz=80%)
+    telem_player = _create_mock_telem_info(speed_mps=60.0, slot_id=3)
+    telem_player.unfiltered_throttle = 0.8
+    snap_player = LMUParser.process_telemetry(telem_player)
+    assert snap_player is not None  # Accepté !
+    assert snap_player.unfiltered_throttle == 0.8
+
+
 
 

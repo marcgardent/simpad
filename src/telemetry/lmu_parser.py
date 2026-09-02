@@ -190,6 +190,7 @@ class LMUParser:
     _last_sector2_delta: float = 0.0
     _last_sector3_delta: float = 0.0
     _last_lap_flag: int = 2
+    _player_slot_id: Optional[int] = None
 
     # Cached domain models from isimotor_rawudp_client
     _last_telem_info: Optional[TelemInfo] = None
@@ -293,8 +294,16 @@ class LMUParser:
                 cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
 
     @classmethod
-    def process_telemetry(cls, telem: TelemInfo) -> TelemetryData:
+    def process_telemetry(cls, telem: TelemInfo) -> Optional[TelemetryData]:
         """Traite un paquet binaire TelemInfo issu de isimotor_rawudp_client."""
+        if cls._last_full_scoring and len(getattr(cls._last_full_scoring, "vehicles", [])) > 1:
+            pv = cls._last_full_scoring.player_vehicle
+            if pv is not None:
+                slot_id = getattr(telem, "slot_id", 0)
+                if int(slot_id) != int(pv.id):
+                    # Filtrage strict multi-voitures : ce paquet provient d'un adversaire / IA
+                    return None
+
         cls._last_telem_info = telem
         cls._last_fuel = telem.fuel
 
@@ -337,10 +346,26 @@ class LMUParser:
         cls._last_sector2_delta = cls._delta_engine.sector2_delta
         cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
-        # Détection automatique de reprise en piste active
         speed = float(telem.speed_mps) if hasattr(telem, "speed_mps") else 0.0
-        if speed > 0.5 or int(telem.gear) > 0 or float(telem.unfiltered_throttle) > 0.05 or float(telem.unfiltered_brake) > 0.05:
+        is_strictly_in_garage_stall = False
+        if cls._last_compact_scoring and getattr(cls._last_compact_scoring, "in_garage_stall", False):
+            is_strictly_in_garage_stall = True
+        elif cls._last_full_scoring and cls._last_full_scoring.player_vehicle and getattr(cls._last_full_scoring.player_vehicle, "in_garage_stall", False):
+            is_strictly_in_garage_stall = True
+        elif cls._last_full_scoring and getattr(cls._last_full_scoring, "game_phase", 5) == 0 and speed < 1.0:
+            is_strictly_in_garage_stall = True
+
+        if is_strictly_in_garage_stall:
+            cls._in_garage_trap = True
+            cls._last_in_realtime = False
+        elif speed >= 3.0:
+            # Détection de reprise en piste active dès 10.8 km/h
             cls._in_garage_trap = False
+            cls._last_in_realtime = True
+        elif cls._in_garage_trap:
+            # Maintien en pause/garage si arrêt complet après sortie explicite
+            cls._last_in_realtime = False
+        else:
             cls._last_in_realtime = True
 
         raw_sec = int(telem.current_sector)
@@ -354,6 +379,15 @@ class LMUParser:
                 raw_lpv=cls._last_lpv,
                 raw_lgv=cls._last_lgv,
             )
+            from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+            OverlayAnomalyLogger.get_instance().check_telemetry_anomaly(
+                speed_kmh=speed * 3.6,
+                throttle_pct=cls._last_unfiltered_throttle * 100.0,
+                brake_pct=cls._last_unfiltered_brake * 100.0,
+                gear=cls._last_gear,
+                in_realtime=cls._last_in_realtime,
+                source="LMUParser.TelemInfo",
+            )
         except Exception:
             pass
         return snap
@@ -362,8 +396,10 @@ class LMUParser:
     def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
         """Traite un paquet binaire CompactScoring (SIMP Type 2)."""
         cls._last_compact_scoring = scoring
-        cls._in_garage_trap = bool(scoring.in_garage_stall)
-        cls._last_in_realtime = bool(scoring.in_realtime and not scoring.in_garage_stall)
+        current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
+        is_in_garage = bool(scoring.in_garage_stall) or (not bool(scoring.in_realtime) and current_speed < 3.0)
+        cls._in_garage_trap = is_in_garage
+        cls._last_in_realtime = not is_in_garage
 
         if 0 < scoring.max_laps < 1000:
             cls._last_total_laps = int(scoring.max_laps)
@@ -413,16 +449,17 @@ class LMUParser:
         player_veh = session.player_vehicle
         session_bests = cls._calculate_session_bests(session.vehicles)
 
-        is_in_realtime = bool(session.in_realtime)
-        cls._in_garage_trap = False
+        current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
+        is_in_garage = False
+        if getattr(session, "game_phase", 5) == 0 and current_speed < 3.0:
+            is_in_garage = True
+        elif not bool(session.in_realtime) and current_speed < 3.0:
+            is_in_garage = True
 
-        if 0 < session.max_laps < 1000:
-            cls._last_total_laps = int(session.max_laps)
-
-        if player_veh:
-            if player_veh.in_garage_stall or player_veh.control != 0:
-                is_in_realtime = False
-                cls._in_garage_trap = True
+        if player_veh and (getattr(player_veh, "is_player", False) or getattr(player_veh, "control", 1) == 0):
+            cls._player_slot_id = int(player_veh.id)
+            if bool(player_veh.in_garage_stall):
+                is_in_garage = True
 
             cls._last_laps_completed = int(player_veh.total_laps)
             cls._last_lap_flag = int(player_veh.count_lap_flag)
@@ -438,20 +475,36 @@ class LMUParser:
             raw_sec = int(player_veh.sector)
             cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
 
-        cls._last_in_realtime = is_in_realtime
+        cls._in_garage_trap = is_in_garage
+        cls._last_in_realtime = not is_in_garage
+
+        if 0 < session.max_laps < 1000:
+            cls._last_total_laps = int(session.max_laps)
+
         return cls._build_telemetry_snapshot()
 
     @classmethod
     def process_system_event(cls, event: SystemEvent) -> TelemetryData:
         """Traite un événement de session / cockpit SystemEvent (SIMP Type 3)."""
+        prev_rt = cls._last_in_realtime
         if getattr(event, "in_realtime", None) is True or getattr(event, "event_id", 0) in (1, 3):
             cls._in_garage_trap = False
             cls._last_in_realtime = True
-            return cls._build_telemetry_snapshot()
-        else:
+        elif getattr(event, "in_realtime", None) is False or getattr(event, "event_id", 0) in (2, 4):
             cls._in_garage_trap = True
             cls._last_in_realtime = False
-            return TelemetryData(in_realtime=False)
+
+        if prev_rt != cls._last_in_realtime:
+            try:
+                from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+                OverlayAnomalyLogger.get_instance().log_event(
+                    "SYSTEM_EVENT_REALTIME_TOGGLE",
+                    f"SystemEvent(event_id={getattr(event, 'event_id', 0)}) a basculé in_realtime de {prev_rt} à {cls._last_in_realtime}"
+                )
+            except Exception:
+                pass
+
+        return cls._build_telemetry_snapshot()
 
     @classmethod
     def process_packet(cls, pkt: Any) -> Optional[TelemetryData]:
@@ -466,6 +519,15 @@ class LMUParser:
             return cls.process_system_event(pkt)
         elif isinstance(pkt, ExtendedState):
             cls._last_extended_state = pkt
+            if hasattr(pkt, "in_realtime_fc"):
+                is_in_realtime = bool(pkt.in_realtime_fc)
+                current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
+                if not is_in_realtime and current_speed < 1.0:
+                    cls._in_garage_trap = True
+                    cls._last_in_realtime = False
+                elif current_speed >= 1.0:
+                    cls._in_garage_trap = False
+                    cls._last_in_realtime = True
             return cls._build_telemetry_snapshot()
         elif isinstance(pkt, WeatherControl):
             cls._last_weather = pkt

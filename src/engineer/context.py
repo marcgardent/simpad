@@ -24,99 +24,70 @@ except ImportError:
 from src.telemetry.lmu_parser import TelemetryData
 
 
+ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
+    "id": ["id", "mID", "m_id", "ID"],
+    "mID": ["id", "mID", "m_id", "ID"],
+    "driver_name": ["driver_name", "mDriverName", "driverName"],
+    "mDriverName": ["driver_name", "mDriverName", "driverName"],
+    "vehicle_name": ["vehicle_name", "mVehicleName", "vehicleName"],
+    "mVehicleName": ["vehicle_name", "mVehicleName", "vehicleName"],
+    "pit_state": ["pit_state", "mPitState", "pitState"],
+    "mPitState": ["pit_state", "mPitState", "pitState"],
+    "in_garage_stall": ["in_garage_stall", "mInGarageStall", "inGarageStall"],
+    "mInGarageStall": ["in_garage_stall", "mInGarageStall", "inGarageStall"],
+    "in_pits": ["in_pits", "mInPits", "inPits"],
+    "mInPits": ["in_pits", "mInPits", "inPits"],
+    "lap_dist": ["lap_dist", "mLapDist", "lapDist"],
+    "mLapDist": ["lap_dist", "mLapDist", "lapDist"],
+    "total_laps": ["total_laps", "mTotalLaps", "totalLaps"],
+    "mTotalLaps": ["total_laps", "mTotalLaps", "totalLaps"],
+    "count_lap_flag": ["count_lap_flag", "mCountLapFlag", "countLapFlag"],
+    "mCountLapFlag": ["count_lap_flag", "mCountLapFlag", "countLapFlag"],
+    "is_player": ["is_player", "mIsPlayer", "isPlayer"],
+    "mIsPlayer": ["is_player", "mIsPlayer", "isPlayer"],
+    "control": ["control", "mControl"],
+    "mControl": ["control", "mControl"],
+    "finish_status": ["finish_status", "mFinishStatus", "finishStatus"],
+    "mFinishStatus": ["finish_status", "mFinishStatus", "finishStatus"],
+    "speed": ["speed_mps", "speed", "mSpeed", "forward_speed_mps"],
+    "speed_mps": ["speed_mps", "speed", "mSpeed", "forward_speed_mps"],
+    "mSpeed": ["speed_mps", "speed", "mSpeed", "forward_speed_mps"],
+    "sector": ["sector", "mSector"],
+    "mSector": ["sector", "mSector"],
+    "pos": ["pos", "mPos"],
+    "mPos": ["pos", "mPos"],
+    "local_vel": ["local_vel", "mLocalVel", "localVel"],
+    "mLocalVel": ["local_vel", "mLocalVel", "localVel"],
+    "ori": ["ori", "mOri"],
+    "mOri": ["ori", "mOri"],
+}
+
+
 def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
     """
-    Récupère un attribut ou une clé de dictionnaire de façon universelle et sûre
-    pour un véhicule (VehicleScoring ou dict).
-    Gère les variantes de nommage (camelCase, snake_case, préfixe m).
+    Récupère un attribut ou une clé de dictionnaire de façon universelle, bidirectionnelle et sûre
+    pour un véhicule (VehicleScoring typé ou dictionnaire de télémétrie).
     """
     if veh is None:
         return default
 
+    candidates = ATTRIBUTE_CANDIDATES_MAP.get(key, [key])
+    if key not in candidates:
+        candidates = [key] + candidates
+
     # 1. Si c'est un dictionnaire
     if isinstance(veh, dict):
-        if key in veh:
-            return veh[key]
-        key_mapping_dict = {
-            "id": ["mID", "id", "m_id"],
-            "mID": ["mID", "id", "m_id"],
-            "driver_name": ["mDriverName", "driverName", "driver_name"],
-            "mDriverName": ["mDriverName", "driverName", "driver_name"],
-            "vehicle_name": ["mVehicleName", "vehicleName", "vehicle_name"],
-            "mVehicleName": ["mVehicleName", "vehicleName", "vehicle_name"],
-            "pit_state": ["mPitState", "pitState", "pit_state"],
-            "mPitState": ["mPitState", "pitState", "pit_state"],
-            "in_garage_stall": ["mInGarageStall", "inGarageStall", "in_garage_stall"],
-            "mInGarageStall": ["mInGarageStall", "inGarageStall", "in_garage_stall"],
-            "in_pits": ["mInPits", "inPits", "in_pits"],
-            "mInPits": ["mInPits", "inPits", "in_pits"],
-            "lap_dist": ["mLapDist", "lapDist", "lap_dist"],
-            "mLapDist": ["mLapDist", "lapDist", "lap_dist"],
-            "total_laps": ["mTotalLaps", "totalLaps", "total_laps"],
-            "mTotalLaps": ["mTotalLaps", "totalLaps", "total_laps"],
-            "count_lap_flag": ["mCountLapFlag", "countLapFlag", "count_lap_flag"],
-            "mCountLapFlag": ["mCountLapFlag", "countLapFlag", "count_lap_flag"],
-            "is_player": ["mIsPlayer", "isPlayer", "is_player"],
-            "mIsPlayer": ["mIsPlayer", "isPlayer", "is_player"],
-            "control": ["mControl", "control"],
-            "mControl": ["mControl", "control"],
-            "finish_status": ["mFinishStatus", "finishStatus", "finish_status"],
-            "mFinishStatus": ["mFinishStatus", "finishStatus", "finish_status"],
-            "speed": ["mSpeed", "speed", "speed_mps"],
-            "speed_mps": ["speed_mps", "mSpeed", "speed"],
-            "pos": ["mPos", "pos"],
-            "mPos": ["mPos", "pos"],
-            "local_vel": ["mLocalVel", "localVel", "local_vel"],
-            "mLocalVel": ["mLocalVel", "localVel", "local_vel"],
-        }
-        for candidate in key_mapping_dict.get(key, []):
-            if candidate in veh:
+        for candidate in candidates:
+            if candidate in veh and veh[candidate] is not None:
                 return veh[candidate]
         return default
 
-    # 2. Si c'est un objet (ex: VehicleScoring)
-    if hasattr(veh, key):
-        val = getattr(veh, key)
-        return val if val is not None else default
-
-    key_mapping_obj = {
-        "mID": "id",
-        "ID": "id",
-        "mDriverName": "driver_name",
-        "driverName": "driver_name",
-        "mVehicleName": "vehicle_name",
-        "vehicleName": "vehicle_name",
-        "mPitState": "pit_state",
-        "pitState": "pit_state",
-        "mInGarageStall": "in_garage_stall",
-        "inGarageStall": "in_garage_stall",
-        "mInPits": "in_pits",
-        "inPits": "in_pits",
-        "mLapDist": "lap_dist",
-        "lapDist": "lap_dist",
-        "mTotalLaps": "total_laps",
-        "totalLaps": "total_laps",
-        "mCountLapFlag": "count_lap_flag",
-        "countLapFlag": "count_lap_flag",
-        "mIsPlayer": "is_player",
-        "isPlayer": "is_player",
-        "mControl": "control",
-        "control": "control",
-        "mFinishStatus": "finish_status",
-        "finishStatus": "finish_status",
-        "mSpeed": "speed_mps",
-        "speed": "speed_mps",
-        "mSector": "sector",
-        "sector": "sector",
-        "mPos": "pos",
-        "pos": "pos",
-        "mLocalVel": "local_vel",
-        "localVel": "local_vel",
-    }
-    mapped = key_mapping_obj.get(key)
-    if mapped and hasattr(veh, mapped):
-        val = getattr(veh, mapped)
-        return val if val is not None else default
+    # 2. Si c'est un objet (ex: VehicleScoring de isimotor_rawudp_client)
+    for candidate in candidates:
+        if hasattr(veh, candidate):
+            val = getattr(veh, candidate)
+            if val is not None:
+                return val
 
     return default
 
@@ -376,11 +347,30 @@ class EngineerContext:
         return self.is_vehicle_in_pits(player)
 
     def is_player_in_garage(self) -> bool:
-        """Indique si le joueur est dans son box / garage."""
-        player = self.get_player_vehicle()
-        if not player:
+        """Indique si le joueur est dans son box / garage ou dans les menus."""
+        # 1. Si la télémétrie physique active confirme que nous sommes en temps réel en piste,
+        # on n'est PAS au garage (empêche tout faux positif lors de micro-transitions de paquets UDP)
+        if self.telemetry is not None and getattr(self.telemetry, "in_realtime", False):
+            player = self.get_player_vehicle()
+            if player and bool(get_vehicle_attr(player, "in_garage_stall", False)):
+                return True
             return False
-        return self.is_vehicle_in_garage(player)
+
+        # 2. Vérification au niveau de la session de scoring globale
+        if self.scoring is not None:
+            if getattr(self.scoring, "game_phase", 5) == 0:
+                return True
+            if hasattr(self.scoring, "in_realtime") and not bool(self.scoring.in_realtime):
+                return True
+            if bool(get_vehicle_attr(self.scoring, "in_garage_stall", False)):
+                return True
+
+        # 3. Vérification sur le véhicule joueur
+        player = self.get_player_vehicle()
+        if player:
+            return self.is_vehicle_in_garage(player)
+
+        return False
 
     @classmethod
     def is_vehicle_in_pits(cls, veh: Any) -> bool:

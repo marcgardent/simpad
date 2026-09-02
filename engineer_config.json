@@ -1,9 +1,22 @@
 {
-  "enabled": false,
+  "enabled": true,
   "roles": {
+    "fight_spotter": {
+      "enabled": false,
+      "priority": 120,
+      "car_length_m": 4.2,
+      "car_width_m": 1.9,
+      "gap_needed_for_clear_m": 1.5,
+      "clear_message_delay_sec": 0.35,
+      "repeat_hold_freq_sec": 3.0,
+      "min_speed_kmh": 35.0,
+      "max_closing_speed_kmh": 90.0,
+      "use_oval_logic": false,
+      "enable_three_wide": true
+    },
     "traffic_spotter": {
       "enabled": true,
-      "priority": 100,
+      "priority": 110,
       "enable_ref_lap_filter": true,
       "domain_speed_tolerance_kmh": 30.0,
       "speed_delta_min_kmh": 20.0,
@@ -16,7 +29,7 @@
     },
     "pitlane_spotter": {
       "enabled": true,
-      "priority": 90,
+      "priority": 100,
       "enable_unsafe_release": true,
       "unsafe_release_distance_m": 28.0,
       "unsafe_release_ttc_sec": 2.5,
@@ -27,7 +40,7 @@
     },
     "pace_notes": {
       "enabled": true,
-      "priority": 80,
+      "priority": 90,
       "enable_brake": false,
       "enable_turn_in": false,
       "enable_turn": false,
@@ -38,7 +51,7 @@
     },
     "traffic_jam": {
       "enabled": true,
-      "priority": 70,
+      "priority": 80,
       "enable_ref_lap_filter": true,
       "domain_speed_tolerance_kmh": 30.0,
       "slow_speed_threshold_kmh": 50.0,
@@ -47,11 +60,12 @@
     },
     "lap_validity": {
       "enabled": true,
-      "priority": 60,
+      "priority": 70,
       "busy_duration_sec": 1.8
     }
   },
   "order": [
+    "fight_spotter",
     "traffic_spotter",
     "pitlane_spotter",
     "pace_notes",

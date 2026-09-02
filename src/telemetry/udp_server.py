@@ -77,29 +77,72 @@ class UDPServer:
 
         def _handle_telem(telem: TelemInfo):
             snap = LMUParser.process_telemetry(telem)
-            with self._lock:
-                self._latest_data = snap
+            if snap is not None:
+                with self._lock:
+                    self._latest_data = snap
 
         def _handle_compact_scoring(scoring: CompactScoring):
             snap = LMUParser.process_compact_scoring(scoring)
             with self._lock:
-                self._latest_data = snap
+                if self._latest_data is not None:
+                    # Met à jour uniquement les champs chronométriques et de scoring sur le snapshot physique actif
+                    # sans jamais écraser les pédales, le régime moteur, le rapport engagé ni la vitesse
+                    self._latest_data.raw_scoring = scoring
+                    self._latest_data.delta_time = snap.delta_time
+                    self._latest_data.estimated_lap_time = snap.estimated_lap_time
+                    self._latest_data.estimated_lap_time_str = snap.estimated_lap_time_str
+                    self._latest_data.sector1_time = snap.sector1_time
+                    self._latest_data.sector1_status = snap.sector1_status
+                    self._latest_data.sector2_time = snap.sector2_time
+                    self._latest_data.sector2_status = snap.sector2_status
+                    self._latest_data.sector3_time = snap.sector3_time
+                    self._latest_data.sector3_status = snap.sector3_status
+                    self._latest_data.sector1_delta = snap.sector1_delta
+                    self._latest_data.sector2_delta = snap.sector2_delta
+                    self._latest_data.sector3_delta = snap.sector3_delta
+                    self._latest_data.current_sector = snap.current_sector
+                    self._latest_data.total_laps = snap.total_laps
+                    self._latest_data.laps_completed = snap.laps_completed
+                    self._latest_data.lap_flag = snap.lap_flag
+                else:
+                    self._latest_data = snap
 
         def _handle_full_scoring(session: FullScoringSession):
             snap = LMUParser.process_full_scoring(session)
             with self._lock:
-                self._latest_data = snap
+                if self._latest_data is not None:
+                    # Met à jour uniquement la session multi-voitures et les chronos sans perturber la physique
+                    self._latest_data.raw_scoring = session
+                    self._latest_data.delta_time = snap.delta_time
+                    self._latest_data.estimated_lap_time = snap.estimated_lap_time
+                    self._latest_data.estimated_lap_time_str = snap.estimated_lap_time_str
+                    self._latest_data.sector1_time = snap.sector1_time
+                    self._latest_data.sector1_status = snap.sector1_status
+                    self._latest_data.sector2_time = snap.sector2_time
+                    self._latest_data.sector2_status = snap.sector2_status
+                    self._latest_data.sector3_time = snap.sector3_time
+                    self._latest_data.sector3_status = snap.sector3_status
+                    self._latest_data.sector1_delta = snap.sector1_delta
+                    self._latest_data.sector2_delta = snap.sector2_delta
+                    self._latest_data.sector3_delta = snap.sector3_delta
+                    self._latest_data.current_sector = snap.current_sector
+                    self._latest_data.total_laps = snap.total_laps
+                    self._latest_data.laps_completed = snap.laps_completed
+                    self._latest_data.lap_flag = snap.lap_flag
+                else:
+                    self._latest_data = snap
 
         def _handle_system_event(event: SystemEvent):
             snap = LMUParser.process_system_event(event)
             with self._lock:
-                self._latest_data = snap
+                if self._latest_data is not None:
+                    self._latest_data.in_realtime = snap.in_realtime
+                else:
+                    self._latest_data = snap
 
         def _handle_packet(pkt: Any):
-            snap = LMUParser.process_packet(pkt)
-            if snap:
-                with self._lock:
-                    self._latest_data = snap
+            # Traitement interne du paquet (FFB, Weather, Graphics, ExtendedState) sans polluer le flux physique
+            LMUParser.process_packet(pkt)
 
         self._client.on_telemetry = _handle_telem
         self._client.on_scoring = _handle_compact_scoring
@@ -124,10 +167,16 @@ class UDPServer:
                 self._client._state.update(packet, timestamp)
                 self._client._dispatcher.dispatch(packet)
 
-    def get_latest_data(self, timeout: float = 1.0) -> Optional[TelemetryData]:
-        """Récupère les dernières données reçues de manière thread-safe."""
+    def get_latest_data(self, timeout: float = 1.2) -> Optional[TelemetryData]:
+        """
+        Récupère les dernières données reçues de manière thread-safe avec maintien (Zero-Order Hold).
+        Permet d'absorber les micro-drops de trames UDP (< 1.2s) sans propager d'état nul/reset.
+        """
         with self._lock:
-            return self._latest_data
+            if self._latest_data is not None:
+                if timeout <= 0 or (time.time() - self._last_packet_time) <= timeout:
+                    return self._latest_data
+            return None
 
     def get_latest_telemetry(self) -> Optional[Any]:
         """Retourne la dernière trame TelemInfo reçue."""

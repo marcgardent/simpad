@@ -72,7 +72,7 @@ class TestDashboardManager(unittest.TestCase):
         self.assertEqual(mgr.display_mode, "desktop")
 
     def test_dashboard_manager_auto_display_decision(self):
-        """Verify shared display decision logic across all overlays with checkbox filtering."""
+        """Verify shared display decision logic across all overlays."""
         mgr = DashboardManager()
 
         # Enable both for testing auto-display visibility
@@ -84,7 +84,7 @@ class TestDashboardManager(unittest.TestCase):
         self.assertEqual(mode, "desktop")
         self.assertEqual(mgr.display_mode, "desktop")
 
-        # LMU in foreground AND on track -> InGame mode (enabled overlays visible)
+        # LMU in foreground AND on track -> InGame mode (immediate transition)
         mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=True)
         self.assertEqual(mode, "ingame")
         self.assertEqual(mgr.display_mode, "ingame")
@@ -94,7 +94,7 @@ class TestDashboardManager(unittest.TestCase):
         mgr.set_dashboard_enabled("monitoringBoard", False)
         self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
 
-        # LMU in foreground BUT in menus/pause -> Pause mode (all overlays hidden)
+        # LMU in foreground BUT in menus/pause -> Pause mode immediately (all overlays hidden)
         mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=False)
         self.assertEqual(mode, "pause")
         self.assertEqual(mgr.display_mode, "pause")

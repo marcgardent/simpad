@@ -21,10 +21,13 @@ class DashboardManager:
     Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlay transparent Qt).
     """
 
-    def __init__(self):
+    def __init__(self, grace_period_sec: float = 1.5):
         self._dashboards: Dict[str, BaseDashboard] = {}
         self._enabled_dashboards: Dict[str, bool] = {}
         self._display_mode = "desktop"
+        self._pending_mode: Optional[str] = None
+        self._pending_mode_start: float = 0.0
+        self._grace_period_sec: float = grace_period_sec
         
         self._qt_app = QApplication.instance() or QApplication(sys.argv)
         self._qt_overlay = LmuHudQtWindow()
@@ -62,9 +65,9 @@ class DashboardManager:
                 if name == "lmuHudBoard":
                     self._qt_overlay.hide()
 
-    def update_auto_display_state(self, is_lmu_foreground: bool, on_track: bool) -> str:
+    def update_auto_display_state(self, is_lmu_foreground: bool, on_track: bool, now: Optional[float] = None) -> str:
         """
-        Décision d'affichage centralisée :
+        Décision d'affichage centralisée et réactive :
         - 'ingame'  : LMU actif au premier plan ET conduite en piste (on_track=True / in_realtime=True).
         - 'pause'   : LMU actif au premier plan MAIS dans les menus/garages/stands/pause (on_track=False).
         - 'desktop' : LMU non actif au premier plan.
@@ -79,7 +82,7 @@ class DashboardManager:
         if target_mode != self._display_mode:
             self.set_display_mode(target_mode)
 
-        return target_mode
+        return self._display_mode
 
     def set_display_mode(self, mode: str) -> None:
         """
@@ -91,7 +94,19 @@ class DashboardManager:
         if mode not in ("desktop", "ingame", "pause"):
             return
 
+        old_mode = self._display_mode
         self._display_mode = mode
+
+        try:
+            from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
+            OverlayAnomalyLogger.get_instance().log_display_mode_change(
+                old_mode=old_mode,
+                new_mode=mode,
+                reason="set_display_mode",
+            )
+        except Exception:
+            pass
+
         if mode == "ingame":
             self.show_all()
             if self.is_dashboard_enabled("lmuHudBoard"):
@@ -157,6 +172,11 @@ class DashboardManager:
 
     def update_telemetry(self, sensors: VehicleSensors) -> None:
         """Transmet la mise à jour des capteurs à tous les dashboards visibles."""
+        if not sensors.in_realtime:
+            if self._display_mode == "ingame":
+                self.set_display_mode("pause")
+            return
+
         if self._display_mode == "ingame" and self.is_dashboard_enabled("lmuHudBoard"):
             try:
                 self._qt_overlay.update_telemetry(sensors)

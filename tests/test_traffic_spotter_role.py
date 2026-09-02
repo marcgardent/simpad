@@ -390,3 +390,83 @@ def test_traffic_spotter_tracked_car_enters_pits_aborts():
     assert msg is None
     assert role.state == TrafficSpotterState.IDLE
     assert role.target_vehicle_id is None
+
+
+def test_traffic_spotter_with_rawudp_typed_models():
+    """Vérifie le fonctionnement de TrafficSpotterRole avec les modèles typés FullScoringSession et VehicleScoring."""
+    from isimotor_rawudp_client import VehicleScoring, FullScoringSession, TelemVect3
+
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficSpotterRole(audio_engine=mock_audio)
+
+    player = VehicleScoring(
+        id=1,
+        driver_name="Player Driver",
+        is_player=True,
+        control=0,
+        in_pits=False,
+        in_garage_stall=False,
+        lap_dist=1000.0,
+        local_vel=TelemVect3(0.0, 0.0, -50.0),
+        finish_status=0,
+    )
+    opp = VehicleScoring(
+        id=2,
+        driver_name="Fast Opponent",
+        is_player=False,
+        control=1,
+        in_pits=False,
+        in_garage_stall=False,
+        lap_dist=960.0,  # 40m derrière
+        local_vel=TelemVect3(0.0, 0.0, -60.0),  # +10 m/s plus rapide -> TTC = 4.0s
+        finish_status=0,
+    )
+    session = FullScoringSession(
+        session=10,
+        track_name="Le Mans",
+        lap_dist=5000.0,
+        num_vehicles=2,
+        vehicles=[player, opp],
+    )
+
+    # 1. Première détection -> Déclenchement "incoming"
+    msg = role.update(EngineerContext(scoring=session))
+    assert msg is not None
+    assert msg.phrase_key == "incoming"
+    assert role.state == TrafficSpotterState.APPROACHING
+    assert role.target_vehicle_id == 2
+
+
+def test_traffic_spotter_cooldown_prevents_incoming_loop():
+    """Vérifie que l'anti-chatter empêche 'incoming' de boucler indéfiniment lors d'oscillations de vitesse."""
+    played = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played.append((phrase_key, interrupt))
+
+    role = TrafficSpotterRole(audio_engine=mock_audio, ttc_trigger_sec=5.0)
+
+    # 1. Déclenchement initial à t=100s -> "incoming"
+    sc1 = make_scoring_packet(player_dist=500.0, player_speed_mps=50.0, opp_dist=460.0, opp_speed_mps=60.0)
+    msg1 = role.update(EngineerContext(scoring=sc1, timestamp=100.0))
+    assert msg1 is not None
+    assert msg1.phrase_key == "incoming"
+    assert len(played) == 1
+
+    # 2. Fluctuation de vitesse : l'adversaire ralentit légèrement à t=100.1s -> Abort
+    sc_slow = make_scoring_packet(player_dist=505.0, player_speed_mps=50.0, opp_dist=464.0, opp_speed_mps=50.5)
+    msg_slow = role.update(EngineerContext(scoring=sc_slow, timestamp=100.1))
+    assert msg_slow is None
+    assert role.state == TrafficSpotterState.IDLE
+
+    # 3. Au tick suivant t=100.2s, l'adversaire ré-accélère à 60 m/s
+    # Grâce au cooldown (6.0s), "incoming" ne doit PAS être re-émis en boucle !
+    sc_fast_again = make_scoring_packet(player_dist=510.0, player_speed_mps=50.0, opp_dist=470.0, opp_speed_mps=60.0)
+    msg_retrigger = role.update(EngineerContext(scoring=sc_fast_again, timestamp=100.2))
+    assert msg_retrigger is None
+    assert len(played) == 1  # Toujours 1 seul incoming joué
+

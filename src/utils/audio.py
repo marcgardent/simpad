@@ -210,6 +210,12 @@ class AudioAnnouncer:
         if interrupt:
             cls.stop_current()
             cls.clear_queue()
+        else:
+            # Anti-spam : Éviter d'empiler plusieurs fois la même annonce si elle attend déjà dans la file
+            with cls._lock:
+                for item in list(cls._audio_queue.queue):
+                    if item.get("key") == phrase_key:
+                        return
 
         cls._audio_queue.put({"key": phrase_key, "text": text})
 

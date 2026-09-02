@@ -8,6 +8,7 @@ from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotte
 from src.engineer.roles.traffic_jam import TrafficJamRole
 from src.engineer.roles.pace_notes import PaceNotesRole
 from src.engineer.roles.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
+from src.engineer.roles.fight_spotter import FightSpotterRole, SpotterSide, SpotterMessageType, FightSpotterState
 
 __all__ = [
     "LapValidityRole",
@@ -17,4 +18,8 @@ __all__ = [
     "PaceNotesRole",
     "PitlaneSpotterRole",
     "PitlaneSpotterState",
+    "FightSpotterRole",
+    "SpotterSide",
+    "SpotterMessageType",
+    "FightSpotterState",
 ]

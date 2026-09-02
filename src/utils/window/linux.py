@@ -20,6 +20,8 @@ class LinuxWindowManager(BaseWindowManager):
 
     def __init__(self):
         self._active_window_info: Tuple[str, str, int] = ("", "", 0)
+        self._cached_lmu_pids: Set[int] = set()
+        self._last_pid_scan_time: float = 0.0
         self._start_async_focus_listener()
 
     def _start_async_focus_listener(self) -> None:
@@ -171,7 +173,11 @@ class LinuxWindowManager(BaseWindowManager):
         return res_class.lower()
 
     def get_lmu_pids(self) -> Set[int]:
-        """Retourne l'ensemble des PIDs des processus associés à Le Mans Ultimate."""
+        """Retourne l'ensemble des PIDs des processus associés à Le Mans Ultimate (avec cache 1.5s)."""
+        now = time.time()
+        if (now - self._last_pid_scan_time) < 1.5 and self._cached_lmu_pids:
+            return self._cached_lmu_pids
+
         target_substrs = (
             "le mans ultimate.exe",
             "lemansultimate.exe",
@@ -202,6 +208,8 @@ class LinuxWindowManager(BaseWindowManager):
                         continue
         except Exception:
             pass
+        self._cached_lmu_pids = pids
+        self._last_pid_scan_time = now
         return pids
 
     def is_lmu_running(self) -> bool:

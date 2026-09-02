@@ -176,6 +176,7 @@ class VehicleSensors:
         ecu_rear_arb_max: int = 0,
         ecu_wiper_state: int = 0,
         ecu_lift_and_coast: float = 0.0,
+        vehicle_speed: Optional[float] = None,
     ) -> "VehicleSensors":
 
         ut_f = max(0.0, min(1.0, float(unfiltered_throttle)))
@@ -183,9 +184,24 @@ class VehicleSensors:
         ft_f = max(0.0, min(1.0, float(filtered_throttle))) if filtered_throttle is not None else ut_f
         fb_f = max(0.0, min(1.0, float(filtered_brake))) if filtered_brake is not None else ub_f
 
+        avg_speed = sum(abs(v) for v in long_ground_vels) / max(1, len(long_ground_vels))
+        avg_patch = sum(abs(v) for v in long_patch_vels) / max(1, len(long_patch_vels))
+        final_speed = float(vehicle_speed) if vehicle_speed is not None else avg_speed
+
+        travels = tuple(min(1.0, max(0.0, float(t))) for t in suspension_travels)
+        if len(travels) < 4:
+            travels = travels + (0.0,) * (4 - len(travels))
+
         if not in_realtime:
             return cls(
                 in_realtime=False,
+                vehicle_speed=final_speed,
+                engine_rpm=max(0.0, float(engine_rpm)),
+                engine_max_rpm=max(1000.0, float(engine_max_rpm)),
+                front_left_travel=travels[0],
+                front_right_travel=travels[1],
+                rear_left_travel=travels[2],
+                rear_right_travel=travels[3],
                 gear=gear,
                 unfiltered_throttle=ut_f,
                 unfiltered_brake=ub_f,
@@ -217,8 +233,6 @@ class VehicleSensors:
         lats = []
         signed_lats = []
 
-        avg_speed = sum(abs(v) for v in long_ground_vels) / max(1, len(long_ground_vels))
-        avg_patch = sum(abs(v) for v in long_patch_vels) / max(1, len(long_patch_vels))
         # Telemetry convention auto-detection:
         # If avg_patch is high (> 40% avg_speed), lpv is absolute wheel velocity (omega*R).
         # Otherwise, lpv is contact patch relative slip velocity (Delta-V).
@@ -306,7 +320,7 @@ class VehicleSensors:
             front_right_grip=grips[1],
             rear_left_grip=grips[2],
             rear_right_grip=grips[3],
-            vehicle_speed=avg_speed,
+            vehicle_speed=final_speed,
             unfiltered_throttle=ut_f,
             unfiltered_brake=ub_f,
             filtered_throttle=ft_f,
@@ -488,6 +502,7 @@ class VehicleSensors:
             filtered_throttle=filtered_throttle,
             filtered_brake=filtered_brake,
             fuel_level=fuel_level,
+            vehicle_speed=float(getattr(telem, "speed_mps", 0.0)),
             remaining_laps=remaining_laps,
             delta_time=delta_time,
             estimated_lap_time=estimated_lap_time,

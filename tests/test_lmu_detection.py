@@ -27,20 +27,38 @@ def test_lmu_scoring_garage_menu_trap():
     assert res.in_realtime is False, "Scoring packet in garage stall must evaluate in_realtime as False"
 
 
-def test_lmu_scoring_on_track():
-    """Verify that a FullScoringSession with active player driving evaluates in_realtime as True."""
+def test_lmu_scoring_game_phase_garage():
+    """Verify that FullScoringSession with game_phase=0 (Garage) evaluates in_realtime as False."""
     player = VehicleScoring(
         id=1,
         driver_name="Test Driver",
         is_player=True,
-        control=0,  # Human driver
+        control=0,
         in_garage_stall=False,
         in_pits=False,
     )
-    session = FullScoringSession(in_realtime=True, vehicles=[player])
+    session = FullScoringSession(game_phase=0, in_realtime=True, vehicles=[player])
     res = LMUParser.process_full_scoring(session)
     assert res is not None
-    assert res.in_realtime is True, "Active player driving packet must evaluate in_realtime as True"
+    assert res.in_realtime is False, "game_phase=0 must evaluate in_realtime as False (Garage)"
+
+
+def test_lmu_extended_state_garage_monitor():
+    """Verify that ExtendedState with in_realtime_fc=False evaluates in_realtime as False."""
+    from isimotor_rawudp_client import ExtendedState
+    ext = ExtendedState(in_realtime_fc=False)
+    res = LMUParser.process_packet(ext)
+    assert res is not None
+    assert res.in_realtime is False
+
+
+def test_lmu_system_event_exit_realtime():
+    """Verify that SystemEvent event_id=2 (ExitRealtime) evaluates in_realtime as False."""
+    from isimotor_rawudp_client import SystemEvent
+    evt = SystemEvent(event_id=2)
+    res = LMUParser.process_system_event(evt)
+    assert res is not None
+    assert res.in_realtime is False
 
 
 def test_lmu_sector3_detection():

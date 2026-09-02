@@ -85,6 +85,7 @@ class TrafficSpotterRole(BaseRole):
         self.phrase_mode = phrase_mode
         self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
         self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
+        self.incoming_cooldown_sec: float = 6.0
         self._custom_profile: Optional[ReferenceLapProfile] = None
 
         # Variables dynamiques de suivi
@@ -94,6 +95,9 @@ class TrafficSpotterRole(BaseRole):
         self.last_announced_sec: Optional[int] = None
         self._last_state_change_time: float = 0.0
         self._overlap_start_time: float = 0.0
+        self._last_incoming_time: float = 0.0
+        self._last_aborted_target_id: Optional[int] = None
+        self._last_aborted_time: float = 0.0
 
         # Données de diagnostic en direct
         self._live_ttc: float = float("inf")
@@ -253,8 +257,8 @@ class TrafficSpotterRole(BaseRole):
             speed_delta = opp_speed - player_speed
             speed_delta_kmh = speed_delta * 3.6
 
-            # TTC valide uniquement si l'adversaire est derrière et plus rapide
-            if dist_behind > 0.0 and speed_delta > self.speed_delta_min_mps:
+            # TTC valide physiquement si l'adversaire est derrière et se rapproche
+            if dist_behind > 0.0 and speed_delta > 0.5:
                 ttc = dist_behind / speed_delta
             else:
                 ttc = float("inf")
@@ -300,13 +304,18 @@ class TrafficSpotterRole(BaseRole):
             self._live_speed_delta_kmh = 0.0
 
             # Trouver le véhicule le plus menaçant (TTC le plus court <= seuil)
-            # avec filtre du tour de référence : au moins l'un des deux (moi ou l'autre) hors domaine
+            # avec filtre du tour de référence et anti-rebond temporel (cooldown)
             threats = [
                 m for m in metrics
                 if 0.0 < m["dist_behind"] <= self.max_scan_distance_m
                 and m["speed_delta_mps"] >= self.speed_delta_min_mps
                 and m["ttc"] <= self.ttc_trigger_sec
                 and m.get("domain_anomaly", True)
+                and (
+                    m["id"] != self._last_aborted_target_id
+                    or (now - self._last_aborted_time) >= self.incoming_cooldown_sec
+                    or m["ttc"] <= 3.0
+                )
             ]
 
             if threats:
@@ -319,6 +328,7 @@ class TrafficSpotterRole(BaseRole):
                 self.last_announced_sec = 5
                 self.state = TrafficSpotterState.APPROACHING
                 self._last_state_change_time = now
+                self._last_incoming_time = now
 
                 self._live_ttc = target["ttc"]
                 self._live_distance = target["dist_behind"]
@@ -344,11 +354,14 @@ class TrafficSpotterRole(BaseRole):
 
         if not target_metric:
             # Cible disparue (abandon, stands, déconnexion)
+            self._last_aborted_target_id = self.target_vehicle_id
+            self._last_aborted_time = now
             self.reset()
             return None
 
         dist_behind = target_metric["dist_behind"]
         ttc = target_metric["ttc"]
+        speed_delta_mps = target_metric["speed_delta_mps"]
         self._live_ttc = ttc
         self._live_distance = dist_behind
         self._live_speed_delta_kmh = target_metric["speed_delta_kmh"]
@@ -357,9 +370,12 @@ class TrafficSpotterRole(BaseRole):
         # 2. ÉTAT APPROACHING / COUNTDOWN
         # =========================================================================
         if self.state in (TrafficSpotterState.APPROACHING, TrafficSpotterState.COUNTDOWN):
-            # Annulation / Reset si l'adversaire ralentit ou s'écarte sans spammer
-            if ttc > self.abort_ttc_sec and dist_behind > 15.0:
-                logger.debug(f"[TrafficSpotter] Abort approach: TTC={ttc:.1f}s, Dist={dist_behind:.1f}m")
+            # Annulation / Reset si l'adversaire ralentit nettement ou s'écarte sans spammer
+            is_slowing_down = (speed_delta_mps <= 1.0) or (ttc > self.abort_ttc_sec)
+            if is_slowing_down and dist_behind > 15.0:
+                logger.debug(f"[TrafficSpotter] Abort approach: TTC={ttc:.1f}s, Dist={dist_behind:.1f}m, Delta={speed_delta_mps*3.6:.1f}km/h")
+                self._last_aborted_target_id = self.target_vehicle_id
+                self._last_aborted_time = now
                 self.reset()
                 return None
 
