@@ -21,9 +21,6 @@ from PySide6.QtWidgets import QApplication
 
 from src.gui.overlay.lmu_hud_window import LmuHudQtWindow
 from src.telemetry.udp_server import UDPServer
-from src.telemetry.sensors import VehicleSensors
-from src.utils.window_utils import get_lmu_window_status
-
 
 def run_overlay_app(port: int = 5000) -> None:
     """Lance le processus autonome d'overlay HUD PySide6."""

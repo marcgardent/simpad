@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QApplication
 
 from src.gui.dashboards.base import BaseDashboard
 from src.gui.dashboards.monitoring_board import MonitoringBoard
-from src.gui.dashboards.lmu_hud_board import LmuHudBoard
 from src.gui.overlay.lmu_hud_window import LmuHudQtWindow
 from src.telemetry.sensors import VehicleSensors
 
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 class DashboardManager:
     """
     Gestionnaire centralisé pour la création, le positionnement, la visibilité
-    et la mise à jour télémétrique des tableaux de bord (dashboards).
+    et la mise à jour télémétrique des tableaux de bord (dashboards) et de l'Overlay HUD Qt.
     Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlay transparent Qt).
     """
 
@@ -31,18 +30,26 @@ class DashboardManager:
         self._qt_overlay = LmuHudQtWindow()
         # Enregistrement des dashboards
         self.register_dashboard(MonitoringBoard(), enabled=False)
-        self.register_dashboard(LmuHudBoard(), enabled=True)
+        self._enabled_dashboards["lmuHudBoard"] = True
+
+    @property
+    def dashboard_names(self) -> List[str]:
+        """Retourne la liste des noms des dashboards enregistrés (incluant lmuHudBoard)."""
+        names = list(self._dashboards.keys())
+        if "lmuHudBoard" not in names:
+            names.append("lmuHudBoard")
+        return names
 
     @property
     def display_mode(self) -> str:
         return self._display_mode
 
     def is_dashboard_enabled(self, name: str) -> bool:
-        """Indique si un dashboard spécifique est activé."""
+        """Indique si un dashboard ou l'overlay spécifique est activé."""
         return self._enabled_dashboards.get(name, True)
 
     def set_dashboard_enabled(self, name: str, enabled: bool) -> None:
-        """Active ou désactive un dashboard spécifique via sa checkbox."""
+        """Active ou désactive un dashboard spécifique ou l'overlay HUD Qt via sa checkbox."""
         self._enabled_dashboards[name] = enabled
         print(f"[DashboardManager] Dashboard '{name}' activation définie à {enabled}", flush=True)
         if self._display_mode == "ingame":
@@ -171,8 +178,3 @@ class DashboardManager:
                     board.update_history_plots(t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high)
                 except Exception as e:
                     logger.debug(f"[DashboardManager] Erreur update_history_plots sur '{board.name}': {e}")
-
-    @property
-    def dashboard_names(self) -> List[str]:
-        """Retourne la liste des noms des dashboards enregistrés."""
-        return list(self._dashboards.keys())

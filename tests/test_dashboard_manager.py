@@ -7,7 +7,6 @@ import dearpygui.dearpygui as dpg
 from src.utils.window_utils import get_3x3_grid_rect, get_screen_dimensions
 from src.gui.dashboards.manager import DashboardManager
 from src.gui.dashboards.monitoring_board import MonitoringBoard
-from src.gui.dashboards.lmu_hud_board import LmuHudBoard
 from src.telemetry.sensors import VehicleSensors
 
 
@@ -51,9 +50,8 @@ class TestDashboardManager(unittest.TestCase):
         self.assertIsNotNone(board_mon)
         self.assertIsInstance(board_mon, MonitoringBoard)
 
-        board_hud = mgr.get_dashboard("lmuHudBoard")
-        self.assertIsNotNone(board_hud)
-        self.assertIsInstance(board_hud, LmuHudBoard)
+        # Verify _qt_overlay is instantiated
+        self.assertIsNotNone(mgr._qt_overlay)
 
         # Test update_telemetry without errors
         sensors = VehicleSensors(front_left_lock=0.2, rear_left_spin=0.1)
@@ -90,20 +88,17 @@ class TestDashboardManager(unittest.TestCase):
         mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=True)
         self.assertEqual(mode, "ingame")
         self.assertEqual(mgr.display_mode, "ingame")
-        self.assertTrue(mgr.get_dashboard("lmuHudBoard").is_visible)
         self.assertTrue(mgr.get_dashboard("monitoringBoard").is_visible)
 
         # Disable monitoringBoard checkbox -> should hide monitoringBoard
         mgr.set_dashboard_enabled("monitoringBoard", False)
         self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
-        self.assertTrue(mgr.get_dashboard("lmuHudBoard").is_visible)
 
         # LMU in foreground BUT in menus/pause -> Pause mode (all overlays hidden)
         mode = mgr.update_auto_display_state(is_lmu_foreground=True, on_track=False)
         self.assertEqual(mode, "pause")
         self.assertEqual(mgr.display_mode, "pause")
         self.assertFalse(mgr.get_dashboard("monitoringBoard").is_visible)
-        self.assertFalse(mgr.get_dashboard("lmuHudBoard").is_visible)
 
     def test_gamepad_status_indicator_update(self):
         """Verify that _update_status_indicators correctly updates lbl_pad_status."""
