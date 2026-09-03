@@ -219,6 +219,11 @@ class DeltaEngine:
     def last_lap_profile(self) -> Optional[ReferenceLapProfile]:
         return self._last_lap_profile
 
+    @property
+    def ref_lap_time(self) -> float:
+        """Temps au tour de la référence active (secondes)."""
+        return self._ref_lap_time
+
     def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
         """Getter pour le profil de référence."""
         return self._current_profile

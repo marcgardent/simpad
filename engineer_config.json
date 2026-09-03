@@ -1,9 +1,23 @@
 {
   "enabled": true,
   "roles": {
+    "traffic_spotter": {
+      "enabled": true,
+      "priority": 120,
+      "enable_ref_lap_filter": true,
+      "domain_speed_tolerance_kmh": 30.0,
+      "speed_delta_min_kmh": 20.0,
+      "ttc_trigger_sec": 5.0,
+      "target_memory_sec": 6.0,
+      "overlap_dist_threshold_m": 4.0,
+      "clear_dist_threshold_m": 10.0,
+      "max_scan_distance_m": 250.0,
+      "abort_ttc_sec": 6.0,
+      "phrase_mode": "alongside"
+    },
     "fight_spotter": {
       "enabled": false,
-      "priority": 120,
+      "priority": 110,
       "car_length_m": 4.2,
       "car_width_m": 1.9,
       "gap_needed_for_clear_m": 1.5,
@@ -13,19 +27,6 @@
       "max_closing_speed_kmh": 90.0,
       "use_oval_logic": false,
       "enable_three_wide": true
-    },
-    "traffic_spotter": {
-      "enabled": true,
-      "priority": 110,
-      "enable_ref_lap_filter": true,
-      "domain_speed_tolerance_kmh": 30.0,
-      "speed_delta_min_kmh": 20.0,
-      "ttc_trigger_sec": 5.0,
-      "overlap_dist_threshold_m": 4.0,
-      "clear_dist_threshold_m": 10.0,
-      "max_scan_distance_m": 250.0,
-      "abort_ttc_sec": 6.0,
-      "phrase_mode": "alongside"
     },
     "pitlane_spotter": {
       "enabled": true,
@@ -65,8 +66,8 @@
     }
   },
   "order": [
-    "fight_spotter",
     "traffic_spotter",
+    "fight_spotter",
     "pitlane_spotter",
     "pace_notes",
     "traffic_jam",

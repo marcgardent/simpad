@@ -163,6 +163,53 @@ class TestTelemetryTab(unittest.TestCase):
         val_s3 = dpg.get_value("shade_telem_s3")
         self.assertEqual(val_s3[0], [1400.0, 2000.0])
 
+    def test_reference_lap_time_header_display(self):
+        """Vérifie que l'en-tête de l'UI affiche le temps au tour correspondant à la référence."""
+        with dpg.window(label="Test Window 2"):
+            self.tab.build_tab(parent_app=None)
+
+        self.tab._profile.lap_time = 92.450  # 1 min 32.450s
+        self.tab._update_header_stats()
+
+        lap_time_val = dpg.get_value("lbl_telem_lap_time")
+        self.assertEqual(lap_time_val, "1:32.450")
+
+        # Test sub-minute lap time
+        self.tab._profile.lap_time = 58.125
+        self.tab._update_header_stats()
+        self.assertEqual(dpg.get_value("lbl_telem_lap_time"), "58.125s")
+
+    def test_refresh_profiles_list_and_selection_with_lap_times(self):
+        """Vérifie que la liste déroulante affiche le temps au tour des profils et permet la sélection."""
+        import json
+        with dpg.window(label="Test Window 3"):
+            self.tab.build_tab(parent_app=None)
+
+        # Créer un fichier de profil factice avec lap_time
+        dummy_file = Path(self.temp_dir) / "ref_spa_ferrari.json"
+        with open(dummy_file, "w", encoding="utf-8") as fp:
+            json.dump({
+                "track_name": "Spa",
+                "vehicle_name": "Ferrari",
+                "lap_time": 138.750,
+                "track_length": 7004.0,
+                "num_points": 7005,
+                "spatial_step": 1.0,
+                "t_grid": [0.0, 138.750],
+            }, fp)
+
+        self.tab._available_files = [dummy_file]
+        self.tab._profile_file_map = {
+            f"ref_spa_ferrari.json [2:18.750]": dummy_file,
+            "ref_spa_ferrari.json": dummy_file,
+        }
+
+        # Sélectionner via le libellé formaté
+        self.tab._cb_select_profile_file(None, "ref_spa_ferrari.json [2:18.750]")
+        self.assertIsNotNone(self.tab._profile)
+        self.assertEqual(self.tab._profile.lap_time, 138.750)
+        self.assertEqual(dpg.get_value("lbl_telem_lap_time"), "2:18.750")
+
 
 if __name__ == "__main__":
     unittest.main()

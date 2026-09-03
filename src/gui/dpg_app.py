@@ -318,11 +318,15 @@ class SimPadDPGApp:
                     items=["All-Time Best (Disque)", "Session Best", "Stint Best", "Last Lap"],
                     default_value=init_mode_label,
                     tag="combo_delta_ref_mode",
-                    width=220,
+                    width=210,
                     callback=self._cb_change_delta_ref_mode,
                 )
 
-                dpg.add_spacer(width=20)
+                dpg.add_spacer(width=15)
+                dpg.add_text("Réf Active:", color=[180, 180, 180, 255])
+                dpg.add_text("--:--.---", tag="lbl_active_ref_lap_time", color=[0, 210, 255, 255])
+
+                dpg.add_spacer(width=15)
                 dpg.add_text("Gel Ligne (s) :", color=[255, 200, 0, 255])
                 dpg.add_slider_float(
                     tag="slider_delta_freeze_dur",
@@ -330,11 +334,11 @@ class SimPadDPGApp:
                     min_value=0.0,
                     max_value=10.0,
                     format="%.1fs",
-                    width=130,
+                    width=110,
                     callback=self._cb_change_delta_freeze_dur,
                 )
 
-                dpg.add_spacer(width=20)
+                dpg.add_spacer(width=15)
                 dpg.add_text("Lissage EMA :", color=[255, 200, 0, 255])
                 dpg.add_slider_int(
                     tag="slider_delta_ema_samples",
@@ -342,7 +346,7 @@ class SimPadDPGApp:
                     min_value=0,
                     max_value=10,
                     format="%d pts",
-                    width=110,
+                    width=90,
                     callback=self._cb_change_delta_ema_samples,
                 )
 
@@ -558,13 +562,17 @@ class SimPadDPGApp:
 
         # Refresh Delta Engine Reference Times Readouts
         delta_eng = getattr(LMUParser, "_delta_engine", None)
-        if delta_eng and dpg.does_item_exist("lbl_ref_all_time"):
+        if delta_eng:
             fmt = lambda t: f"{int(t//60)}:{t%60:06.3f}" if (0.0 < t < 99999.0) else "--:--.---"
-            dpg.set_value("lbl_ref_all_time", fmt(delta_eng._all_time_best_lap_time))
-            dpg.set_value("lbl_ref_session", fmt(delta_eng._session_best_lap_time))
-            dpg.set_value("lbl_ref_stint", fmt(delta_eng._stint_best_lap_time))
-            dpg.set_value("lbl_ref_last_lap", fmt(delta_eng._last_lap_time))
-            dpg.set_value("lbl_ref_estimated", delta_eng.estimated_lap_time_str)
+            if dpg.does_item_exist("lbl_ref_all_time"):
+                dpg.set_value("lbl_ref_all_time", fmt(delta_eng._all_time_best_lap_time))
+                dpg.set_value("lbl_ref_session", fmt(delta_eng._session_best_lap_time))
+                dpg.set_value("lbl_ref_stint", fmt(delta_eng._stint_best_lap_time))
+                dpg.set_value("lbl_ref_last_lap", fmt(delta_eng._last_lap_time))
+                dpg.set_value("lbl_ref_estimated", delta_eng.estimated_lap_time_str)
+            if dpg.does_item_exist("lbl_active_ref_lap_time"):
+                active_t = delta_eng.ref_lap_time
+                dpg.set_value("lbl_active_ref_lap_time", fmt(active_t))
 
     def _process_telemetry_frame(self, data: TelemetryData):
         sensors = data.to_sensors()

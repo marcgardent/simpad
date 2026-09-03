@@ -66,6 +66,8 @@ class TrafficSpotterRole(BaseRole):
         phrase_mode: str = "alongside",  # "alongside" ou "overlap" ou "car"
         enable_ref_lap_filter: bool = True,
         domain_speed_tolerance_kmh: float = 30.0,
+        target_memory_sec: float = 6.0,
+        incoming_cooldown_sec: Optional[float] = None,
     ):
         super().__init__(
             role_id=role_id,
@@ -85,7 +87,10 @@ class TrafficSpotterRole(BaseRole):
         self.phrase_mode = phrase_mode
         self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
         self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
-        self.incoming_cooldown_sec: float = 6.0
+        if incoming_cooldown_sec is not None:
+            self.target_memory_sec = float(incoming_cooldown_sec)
+        else:
+            self.target_memory_sec = float(target_memory_sec)
         self._custom_profile: Optional[ReferenceLapProfile] = None
 
         # Variables dynamiques de suivi
@@ -99,10 +104,54 @@ class TrafficSpotterRole(BaseRole):
         self._last_aborted_target_id: Optional[int] = None
         self._last_aborted_time: float = 0.0
 
+        # Mémoire et anti-rebond par véhicule (débouncing renforcé N secondes)
+        self._target_history: Dict[int, Dict[str, Any]] = {}
+        self._last_spotted_target_id: Optional[int] = None
+        self._last_spotted_stage: Optional[int] = None
+        self._last_spotted_time: float = 0.0
+
         # Données de diagnostic en direct
         self._live_ttc: float = float("inf")
         self._live_distance: float = 0.0
         self._live_speed_delta_kmh: float = 0.0
+
+    @property
+    def incoming_cooldown_sec(self) -> float:
+        """Alias de compatibilité pour target_memory_sec."""
+        return self.target_memory_sec
+
+    @incoming_cooldown_sec.setter
+    def incoming_cooldown_sec(self, value: float) -> None:
+        self.target_memory_sec = float(value)
+
+    def _record_target_stage(self, vehicle_id: int, stage: int, now: float) -> None:
+        """Enregistre le stade d'annonce atteint par un véhicule pour éviter les répétitions."""
+        self._target_history[vehicle_id] = {
+            "last_stage": stage,
+            "last_time": now,
+        }
+        self._last_spotted_target_id = vehicle_id
+        self._last_spotted_stage = stage
+        self._last_spotted_time = now
+
+    def _get_target_memory(self, vehicle_id: int, now: float) -> Optional[Dict[str, Any]]:
+        """Récupère la mémoire d'un véhicule si elle n'a pas expiré (target_memory_sec)."""
+        entry = self._target_history.get(vehicle_id)
+        if not entry:
+            return None
+        if (now - entry["last_time"]) > self.target_memory_sec:
+            self._target_history.pop(vehicle_id, None)
+            return None
+        return entry
+
+    def _prune_target_history(self, now: float) -> None:
+        """Nettoie les entrées d'historique expirées (> target_memory_sec)."""
+        expired = [
+            vid for vid, entry in self._target_history.items()
+            if (now - entry["last_time"]) > self.target_memory_sec
+        ]
+        for vid in expired:
+            del self._target_history[vid]
 
     def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
         """Injecte manuellement un profil de tour de référence."""
@@ -173,6 +222,16 @@ class TrafficSpotterRole(BaseRole):
                 description="Temps avant collision (Time-To-Collision) déclenchant le spotter",
             ),
             FloatRangeParam(
+                name="target_memory_sec",
+                label="Mémoire / Anti-rebond Cible",
+                min_val=1.0,
+                max_val=30.0,
+                step=0.5,
+                unit="s",
+                default=6.0,
+                description="Durée de mémorisation de la dernière cible pour éviter les annonces répétées non progressives",
+            ),
+            FloatRangeParam(
                 name="overlap_dist_threshold_m",
                 label="Distance Seuil Overlap",
                 min_val=1.0,
@@ -227,6 +286,9 @@ class TrafficSpotterRole(BaseRole):
                 self.reset()
             return None
 
+        now = context.timestamp if (context and context.timestamp is not None) else time.time()
+        self._prune_target_history(now)
+
         player_speed = context.get_player_speed_mps()
         track_length = context.get_track_length()
         opponents = context.get_track_opponents()
@@ -235,7 +297,7 @@ class TrafficSpotterRole(BaseRole):
         opponent_metrics = self._calculate_opponent_metrics(context, player_veh, player_speed, opponents, track_length)
 
         # Exécution de la FSM
-        return self._run_state_machine(opponent_metrics)
+        return self._run_state_machine(opponent_metrics, now=now)
 
     def _calculate_opponent_metrics(
         self,
@@ -291,9 +353,10 @@ class TrafficSpotterRole(BaseRole):
             })
         return metrics
 
-    def _run_state_machine(self, metrics: List[Dict[str, Any]]) -> Optional[EngineerMessage]:
+    def _run_state_machine(self, metrics: List[Dict[str, Any]], now: Optional[float] = None) -> Optional[EngineerMessage]:
         """Exécute les transitions de la FSM selon les métriques calculées."""
-        now = time.time()
+        if now is None:
+            now = time.time()
 
         # =========================================================================
         # 1. ÉTAT IDLE / TRACK CLEAR
@@ -304,46 +367,86 @@ class TrafficSpotterRole(BaseRole):
             self._live_speed_delta_kmh = 0.0
 
             # Trouver le véhicule le plus menaçant (TTC le plus court <= seuil)
-            # avec filtre du tour de référence et anti-rebond temporel (cooldown)
+            # avec filtre du tour de référence
             threats = [
                 m for m in metrics
                 if 0.0 < m["dist_behind"] <= self.max_scan_distance_m
                 and m["speed_delta_mps"] >= self.speed_delta_min_mps
                 and m["ttc"] <= self.ttc_trigger_sec
                 and m.get("domain_anomaly", True)
-                and (
-                    m["id"] != self._last_aborted_target_id
-                    or (now - self._last_aborted_time) >= self.incoming_cooldown_sec
-                    or m["ttc"] <= 3.0
-                )
             ]
 
             if threats:
                 threats.sort(key=lambda m: m["ttc"])
                 target = threats[0]
+                target_id = target["id"]
 
-                self.target_vehicle_id = target["id"]
+                self.target_vehicle_id = target_id
                 self.target_driver_name = target["driver_name"]
                 self.target_vehicle_name = target["vehicle_name"]
-                self.last_announced_sec = 5
-                self.state = TrafficSpotterState.APPROACHING
                 self._last_state_change_time = now
-                self._last_incoming_time = now
 
                 self._live_ttc = target["ttc"]
                 self._live_distance = target["dist_behind"]
                 self._live_speed_delta_kmh = target["speed_delta_kmh"]
 
-                # Annonce initiale : "incoming" ou "traffic_5"
-                phrase = "incoming" if self.phrase_mode in ("alongside", "incoming") else "traffic_5"
-                msg = EngineerMessage(
-                    phrase_key=phrase,
-                    priority=self.priority,
-                    interrupt=False,
-                    role_id=self.role_id,
-                )
-                self.emit_sound(phrase, interrupt=False)
-                return msg
+                # Vérifier dans l'historique si ce véhicule a déjà été annoncé dans la fenêtre target_memory_sec
+                hist = self._get_target_memory(target_id, now)
+                last_stage = hist.get("last_stage") if hist else None
+
+                if last_stage is None:
+                    # Première détection pour cette cible -> Entrée standard en APPROACHING ("incoming")
+                    self.state = TrafficSpotterState.APPROACHING
+                    self.last_announced_sec = 5
+                    self._record_target_stage(target_id, 5, now)
+                    self._last_incoming_time = now
+
+                    phrase = "incoming" if self.phrase_mode in ("alongside", "incoming") else "traffic_5"
+                    msg = EngineerMessage(
+                        phrase_key=phrase,
+                        priority=self.priority,
+                        interrupt=False,
+                        role_id=self.role_id,
+                    )
+                    self.emit_sound(phrase, interrupt=False)
+                    return msg
+                else:
+                    # Véhicule déjà en mémoire dans les N dernières secondes
+                    # Déterminer si le véhicule a progressé vers un stade plus proche
+                    if target["ttc"] <= 1.0:
+                        current_stage = 1
+                    elif target["ttc"] <= 2.0:
+                        current_stage = 2
+                    elif target["ttc"] <= 3.0:
+                        current_stage = 3
+                    else:
+                        current_stage = 5
+
+                    if current_stage < last_stage:
+                        # Progression constatée -> annonce directe du nouveau stade
+                        self._record_target_stage(target_id, current_stage, now)
+                        self.last_announced_sec = current_stage
+
+                        if current_stage <= 3:
+                            self.state = TrafficSpotterState.COUNTDOWN
+                            phrase = self.NUM_PHRASE_MAP.get(current_stage, "one")
+                        else:
+                            self.state = TrafficSpotterState.APPROACHING
+                            phrase = "incoming" if self.phrase_mode in ("alongside", "incoming") else "traffic_5"
+
+                        msg = EngineerMessage(
+                            phrase_key=phrase,
+                            priority=self.priority,
+                            interrupt=False,
+                            role_id=self.role_id,
+                        )
+                        self.emit_sound(phrase, interrupt=False)
+                        return msg
+                    else:
+                        # Pas de progression : reprise du suivi en silence sans répéter "incoming" ou le décompte
+                        self.state = TrafficSpotterState.APPROACHING if last_stage > 3 else TrafficSpotterState.COUNTDOWN
+                        self.last_announced_sec = last_stage
+                        return None
 
             return None
 
@@ -356,7 +459,7 @@ class TrafficSpotterRole(BaseRole):
             # Cible disparue (abandon, stands, déconnexion)
             self._last_aborted_target_id = self.target_vehicle_id
             self._last_aborted_time = now
-            self.reset()
+            self._reset_active_tracking()
             return None
 
         dist_behind = target_metric["dist_behind"]
@@ -376,7 +479,7 @@ class TrafficSpotterRole(BaseRole):
                 logger.debug(f"[TrafficSpotter] Abort approach: TTC={ttc:.1f}s, Dist={dist_behind:.1f}m, Delta={speed_delta_mps*3.6:.1f}km/h")
                 self._last_aborted_target_id = self.target_vehicle_id
                 self._last_aborted_time = now
-                self.reset()
+                self._reset_active_tracking()
                 return None
 
             # Détection Overlap / Biais bord à bord
@@ -389,15 +492,26 @@ class TrafficSpotterRole(BaseRole):
                 self._overlap_start_time = now
                 self._last_state_change_time = now
 
-                overlap_phrase = self.phrase_mode if self.phrase_mode in ("alongside", "overlap", "car") else "alongside"
-                msg = EngineerMessage(
-                    phrase_key=overlap_phrase,
-                    priority=self.priority,
-                    interrupt=True,
-                    role_id=self.role_id,
-                )
-                self.emit_sound(overlap_phrase, interrupt=True)
-                return msg
+                target_id = self.target_vehicle_id
+                hist = self._get_target_memory(target_id, now) if target_id is not None else None
+                last_stage = hist.get("last_stage") if hist else None
+
+                # STAGE_OVERLAP = 0
+                if last_stage is None or 0 < last_stage:
+                    if target_id is not None:
+                        self._record_target_stage(target_id, 0, now)
+                    self.last_announced_sec = 0
+
+                    overlap_phrase = self.phrase_mode if self.phrase_mode in ("alongside", "overlap", "car") else "alongside"
+                    msg = EngineerMessage(
+                        phrase_key=overlap_phrase,
+                        priority=self.priority,
+                        interrupt=True,
+                        role_id=self.role_id,
+                    )
+                    self.emit_sound(overlap_phrase, interrupt=True)
+                    return msg
+                return None
 
             # Décompte temporel (3s, 2s, 1s)
             for sec in (3, 2, 1):
@@ -406,15 +520,23 @@ class TrafficSpotterRole(BaseRole):
                     self.last_announced_sec = sec
                     self._last_state_change_time = now
 
-                    num_phrase = self.NUM_PHRASE_MAP.get(sec, "one")
-                    msg = EngineerMessage(
-                        phrase_key=num_phrase,
-                        priority=self.priority,
-                        interrupt=False,
-                        role_id=self.role_id,
-                    )
-                    self.emit_sound(num_phrase, interrupt=False)
-                    return msg
+                    target_id = self.target_vehicle_id
+                    hist = self._get_target_memory(target_id, now) if target_id is not None else None
+                    last_stage = hist.get("last_stage") if hist else None
+
+                    if last_stage is None or sec < last_stage:
+                        if target_id is not None:
+                            self._record_target_stage(target_id, sec, now)
+
+                        num_phrase = self.NUM_PHRASE_MAP.get(sec, "one")
+                        msg = EngineerMessage(
+                            phrase_key=num_phrase,
+                            priority=self.priority,
+                            interrupt=False,
+                            role_id=self.role_id,
+                        )
+                        self.emit_sound(num_phrase, interrupt=False)
+                        return msg
 
             return None
 
@@ -427,11 +549,13 @@ class TrafficSpotterRole(BaseRole):
 
             # Sécurité timeout si overlap bloqué > 15s (voiture accidentée ou disparue)
             if (now - self._overlap_start_time) > 15.0:
-                self.reset()
+                self._reset_active_tracking()
                 return None
 
             # Condition CLEAR : La voiture est passée devant (distance < -10m)
             if dist_behind <= -self.clear_dist_threshold_m:
+                passed_target_id = self.target_vehicle_id
+
                 # Vérifier si une autre voiture arrive derrière immédiatement
                 other_threats = [
                     m for m in metrics
@@ -441,13 +565,20 @@ class TrafficSpotterRole(BaseRole):
                 ]
 
                 if other_threats:
+                    if passed_target_id is not None:
+                        self._record_target_stage(passed_target_id, -1, now)
+
                     # Enchaînement direct sur la prochaine voiture sans dire Clear
                     other_threats.sort(key=lambda m: m["ttc"])
                     next_target = other_threats[0]
-                    self.target_vehicle_id = next_target["id"]
+                    next_id = next_target["id"]
+
+                    self.target_vehicle_id = next_id
                     self.target_driver_name = next_target["driver_name"]
                     self.target_vehicle_name = next_target["vehicle_name"]
-                    self.last_announced_sec = 4
+
+                    hist_next = self._get_target_memory(next_id, now)
+                    self.last_announced_sec = hist_next.get("last_stage") if hist_next else 4
                     self.state = TrafficSpotterState.APPROACHING
                     self._last_state_change_time = now
                     return None
@@ -456,15 +587,27 @@ class TrafficSpotterRole(BaseRole):
                 self.state = TrafficSpotterState.CLEAR
                 self._last_state_change_time = now
 
-                clear_phrase = "clear" if self.phrase_mode != "car" else "car_clear"
-                msg = EngineerMessage(
-                    phrase_key=clear_phrase,
-                    priority=self.priority,
-                    interrupt=True,
-                    role_id=self.role_id,
-                )
-                self.emit_sound(clear_phrase, interrupt=True)
-                return msg
+                hist = self._get_target_memory(passed_target_id, now) if passed_target_id is not None else None
+                last_stage = hist.get("last_stage") if hist else None
+
+                if passed_target_id is not None:
+                    self._record_target_stage(passed_target_id, -1, now)
+
+                # STAGE_CLEAR = -1
+                if last_stage is None or -1 < last_stage:
+                    self.last_announced_sec = -1
+
+                    clear_phrase = "clear" if self.phrase_mode != "car" else "car_clear"
+                    msg = EngineerMessage(
+                        phrase_key=clear_phrase,
+                        priority=self.priority,
+                        interrupt=True,
+                        role_id=self.role_id,
+                    )
+                    self.emit_sound(clear_phrase, interrupt=True)
+                    return msg
+
+                return None
 
             return None
 
@@ -472,12 +615,13 @@ class TrafficSpotterRole(BaseRole):
         # 4. ÉTAT CLEAR -> RETOUR IMMÉDIAT À IDLE
         # =========================================================================
         elif self.state == TrafficSpotterState.CLEAR:
-            self.reset()
+            self._reset_active_tracking()
             return None
 
         return None
 
-    def reset(self) -> None:
+    def _reset_active_tracking(self) -> None:
+        """Réinitialise les variables de suivi FSM sans effacer la mémoire d'anti-rebond."""
         self.state = TrafficSpotterState.IDLE
         self.target_vehicle_id = None
         self.target_driver_name = ""
@@ -488,6 +632,17 @@ class TrafficSpotterRole(BaseRole):
         self._live_ttc = float("inf")
         self._live_distance = 0.0
         self._live_speed_delta_kmh = 0.0
+
+    def reset(self, clear_history: bool = True) -> None:
+        """Réinitialise l'état complet du rôle et optionnellement la mémoire."""
+        self._reset_active_tracking()
+        if clear_history:
+            self._target_history.clear()
+            self._last_spotted_target_id = None
+            self._last_spotted_stage = None
+            self._last_spotted_time = 0.0
+            self._last_aborted_target_id = None
+            self._last_aborted_time = 0.0
 
     def get_config(self) -> Dict[str, Any]:
         cfg = super().get_config()
@@ -501,6 +656,7 @@ class TrafficSpotterRole(BaseRole):
             "phrase_mode": self.phrase_mode,
             "enable_ref_lap_filter": self.enable_ref_lap_filter,
             "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
+            "target_memory_sec": self.target_memory_sec,
         })
         return cfg
 
@@ -524,6 +680,10 @@ class TrafficSpotterRole(BaseRole):
             self.enable_ref_lap_filter = bool(config["enable_ref_lap_filter"])
         if "domain_speed_tolerance_kmh" in config:
             self.domain_speed_tolerance_kmh = float(config["domain_speed_tolerance_kmh"])
+        if "target_memory_sec" in config:
+            self.target_memory_sec = float(config["target_memory_sec"])
+        elif "incoming_cooldown_sec" in config:
+            self.target_memory_sec = float(config["incoming_cooldown_sec"])
 
     def get_state_summary(self) -> Dict[str, Any]:
         summary = super().get_state_summary()
@@ -545,6 +705,8 @@ class TrafficSpotterRole(BaseRole):
             "last_announced_sec": self.last_announced_sec,
             "enable_ref_lap_filter": self.enable_ref_lap_filter,
             "domain_speed_tolerance_kmh": self.domain_speed_tolerance_kmh,
+            "target_memory_sec": self.target_memory_sec,
             "is_busy": self.is_busy(),
         })
         return summary
+

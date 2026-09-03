@@ -1,0 +1,42 @@
+{
+  "track_name": "Autodromo Nazionale Monza",
+  "vehicle_class": "GTE",
+  "annotations": [
+    {
+      "id": "dbf7e8f5",
+      "type": "gear",
+      "distance": 762.41,
+      "gear": 1
+    },
+    {
+      "id": "d26beb1b",
+      "type": "gear",
+      "distance": 1981.91,
+      "gear": 2
+    },
+    {
+      "id": "9c9bbcfd",
+      "type": "gear",
+      "distance": 2412.84,
+      "gear": 3
+    },
+    {
+      "id": "d9cf2232",
+      "type": "gear",
+      "distance": 2786.19,
+      "gear": 3
+    },
+    {
+      "id": "1f2e7c7b",
+      "type": "gear",
+      "distance": 3784.13,
+      "gear": 3
+    },
+    {
+      "id": "5575cd43",
+      "type": "gear",
+      "distance": 4982.7,
+      "gear": 3
+    }
+  ]
+}

@@ -773,12 +773,42 @@ class TelemetryTab:
 
     # ── Chargement, Sauvegarde Automatique & Profils ─────────────────────────
     def _refresh_profiles_list(self) -> None:
-        """Scanne le dossier profiles/ref_laps et remplit la liste déroulante (sans les .marks.json)."""
+        """Scanne le dossier profiles/ref_laps et remplit la liste déroulante avec les temps au tour."""
         DEFAULT_REF_LAPS_DIR.mkdir(parents=True, exist_ok=True)
         files = [f for f in DEFAULT_REF_LAPS_DIR.glob("*.json") if not f.name.endswith(".marks.json")]
         self._available_files = files
+        self._profile_file_map: Dict[str, Optional[Path]] = {}
 
-        items = ["(Live Session Reference Lap)"] + [f.name for f in files]
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        live_time_str = ""
+        if delta_eng and 0.0 < delta_eng.ref_lap_time < 90000.0:
+            lt = delta_eng.ref_lap_time
+            mins = int(lt // 60)
+            secs = lt % 60.0
+            live_time_str = f" [{mins}:{secs:06.3f}]" if mins > 0 else f" [{secs:.3f}s]"
+
+        live_label = f"(Live Session Reference Lap){live_time_str}"
+        items = [live_label]
+        self._profile_file_map[live_label] = None
+        self._profile_file_map["(Live Session Reference Lap)"] = None
+
+        for f in sorted(files, key=lambda x: x.name):
+            lap_t_str = ""
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    meta = json.load(fp)
+                    lt = float(meta.get("lap_time", 0.0))
+                    if 0.0 < lt < 90000.0:
+                        mins = int(lt // 60)
+                        secs = lt % 60.0
+                        lap_t_str = f" [{mins}:{secs:06.3f}]" if mins > 0 else f" [{secs:.3f}s]"
+            except Exception:
+                pass
+            item_lbl = f"{f.name}{lap_t_str}"
+            items.append(item_lbl)
+            self._profile_file_map[item_lbl] = f
+            self._profile_file_map[f.name] = f
+
         if dpg.does_item_exist("combo_ref_profile_files"):
             dpg.configure_item("combo_ref_profile_files", items=items)
 
@@ -787,24 +817,34 @@ class TelemetryTab:
 
     def _cb_select_profile_file(self, sender, app_data):
         """Charge le profil sélectionné depuis le disque ou la session active."""
-        if app_data == "(Live Session Reference Lap)":
+        if not app_data:
+            return
+
+        target_file = getattr(self, "_profile_file_map", {}).get(app_data)
+        if target_file is None:
+            for k, v in getattr(self, "_profile_file_map", {}).items():
+                if app_data == k or app_data.startswith(k) or (isinstance(k, str) and k.startswith(app_data)):
+                    target_file = v
+                    break
+
+        if target_file is None or app_data.startswith("(Live Session Reference Lap)"):
             self._load_active_profile()
             return
 
-        for f in self._available_files:
-            if f.name == app_data:
-                loaded = ReferenceLapProfile.load_from_file(f)
-                if loaded:
-                    self._profile = loaded
-                    self._last_loaded_file = f
-                    self._sync_profile_to_engine()
-                    self._update_all_ui()
-                break
+        loaded = ReferenceLapProfile.load_from_file(target_file)
+        if loaded:
+            self._profile = loaded
+            self._last_loaded_file = target_file
+            self._sync_profile_to_engine()
+            self._update_all_ui()
 
     def _load_active_profile(self) -> None:
         """Charge le profil de référence en mémoire depuis le DeltaEngine."""
         delta_eng = getattr(LMUParser, "_delta_engine", None)
-        active_prof = (delta_eng.all_time_best_profile or delta_eng.current_profile) if delta_eng else None
+        active_prof = delta_eng.get_reference_profile() if delta_eng else None
+        if not active_prof and delta_eng:
+            active_prof = delta_eng.all_time_best_profile or delta_eng.current_profile
+
         if active_prof:
             self._profile = active_prof
         elif delta_eng and delta_eng._ref_t_grid:
@@ -814,7 +854,7 @@ class TelemetryTab:
                 track_name=delta_eng._track_name,
                 vehicle_name=delta_eng._vehicle_name,
                 vehicle_class=delta_eng._vehicle_class,
-                lap_time=delta_eng._ref_lap_time,
+                lap_time=delta_eng.ref_lap_time,
                 track_length=delta_eng._track_length,
                 spatial_step=delta_eng._ref_spatial_step,
                 num_points=num_pts,
@@ -835,11 +875,15 @@ class TelemetryTab:
 
     def _update_header_stats(self) -> None:
         """Met à jour les statistiques de l'en-tête (Temps au tour, Longueur, Boucles S1/S2, Nombre de marqueurs)."""
-        if not self._profile:
-            return
+        delta_eng = getattr(LMUParser, "_delta_engine", None)
+
+        lt = 0.0
+        if self._profile and 0.0 < self._profile.lap_time < 90000.0:
+            lt = self._profile.lap_time
+        elif delta_eng and 0.0 < delta_eng.ref_lap_time < 90000.0:
+            lt = delta_eng.ref_lap_time
 
         if dpg.does_item_exist("lbl_telem_lap_time"):
-            lt = self._profile.lap_time
             if 0.0 < lt < 90000.0:
                 mins = int(lt // 60)
                 secs = lt % 60.0
@@ -848,12 +892,12 @@ class TelemetryTab:
                 dpg.set_value("lbl_telem_lap_time", "--")
 
         if dpg.does_item_exist("lbl_telem_track_len"):
-            tl = self._profile.track_length
+            tl = self._profile.track_length if self._profile else (delta_eng.track_length if delta_eng else 0.0)
             dpg.set_value("lbl_telem_track_len", f"{tl:.0f} m" if tl > 0 else "--")
 
         if dpg.does_item_exist("lbl_telem_s1_loop"):
-            s1 = self._profile.sector_1_dist if self._profile else 0.0
-            t1 = self._profile.sector_1_time if self._profile else 0.0
+            s1 = self._profile.sector_1_dist if self._profile else (delta_eng.sector_1_dist if delta_eng else 0.0)
+            t1 = self._profile.sector_1_time if self._profile else (delta_eng.sector_1_time if delta_eng else 0.0)
             if s1 > 0.0:
                 lbl_s1 = f"{s1:.0f} m" + (f" ({t1:.2f}s)" if t1 > 0.0 else "")
                 dpg.set_value("lbl_telem_s1_loop", lbl_s1)
@@ -861,8 +905,8 @@ class TelemetryTab:
                 dpg.set_value("lbl_telem_s1_loop", "--")
 
         if dpg.does_item_exist("lbl_telem_s2_loop"):
-            s2 = self._profile.sector_2_dist if self._profile else 0.0
-            t2 = self._profile.sector_2_time if self._profile else 0.0
+            s2 = self._profile.sector_2_dist if self._profile else (delta_eng.sector_2_dist if delta_eng else 0.0)
+            t2 = self._profile.sector_2_time if self._profile else (delta_eng.sector_2_time if delta_eng else 0.0)
             if s2 > 0.0:
                 lbl_s2 = f"{s2:.0f} m" + (f" ({t2:.2f}s)" if t2 > 0.0 else "")
                 dpg.set_value("lbl_telem_s2_loop", lbl_s2)
@@ -870,7 +914,8 @@ class TelemetryTab:
                 dpg.set_value("lbl_telem_s2_loop", "--")
 
         if dpg.does_item_exist("lbl_telem_num_markers"):
-            dpg.set_value("lbl_telem_num_markers", str(len(self._profile.annotations)))
+            num_marks = len(self._profile.annotations) if (self._profile and self._profile.annotations) else 0
+            dpg.set_value("lbl_telem_num_markers", str(num_marks))
 
     def _render_curves(self) -> None:
         """Injecte les séries de points mètre par mètre dans le tracé DPG."""
@@ -970,11 +1015,18 @@ class TelemetryTab:
         if (now - self._last_ui_tick) >= 1.0:
             self._last_ui_tick = now
             delta_eng = getattr(LMUParser, "_delta_engine", None)
-            active_prof = (delta_eng.all_time_best_profile or delta_eng.current_profile) if delta_eng else None
+            active_prof = delta_eng.get_reference_profile() if delta_eng else None
+            if not active_prof and delta_eng:
+                active_prof = delta_eng.all_time_best_profile or delta_eng.current_profile
             if active_prof:
-                if self._profile is None or active_prof.lap_time != self._profile.lap_time:
+                if (
+                    self._profile is None
+                    or active_prof.lap_time != self._profile.lap_time
+                    or active_prof.track_name != self._profile.track_name
+                ):
                     self._profile = active_prof
                     self._update_all_ui()
+            self._update_header_stats()
 
     def _update_live_car_position(self) -> None:
         """Met à jour le curseur bleu ciel de la voiture si le circuit en cours correspond."""
