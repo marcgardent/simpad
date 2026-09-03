@@ -162,9 +162,12 @@ class LmuHudQtWindow(QWidget):
             self._extra_data = {
                 "speed": speed_kmh,
                 "gear": "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear)),
-                "expectedTime": sensors.delta_time_str,
+                "expectedTime": sensors.last_lap_time_str if sensors.is_lap_freeze_active else sensors.delta_time_str,
                 "delta": sensors.delta_time_str,
                 "estimatedLapTime": sensors.estimated_lap_time_str,
+                "lastLapTime": sensors.last_lap_time_str,
+                "lastLapStatus": sensors.last_lap_status,
+                "isLapFreezeActive": sensors.is_lap_freeze_active,
                 "sectors": sensors.sectors_list,
                 "energyLaps": sensors.fuel_level,
                 "remainingLaps": sensors.remaining_laps,

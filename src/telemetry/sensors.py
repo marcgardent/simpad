@@ -92,6 +92,10 @@ class VehicleSensors:
     lap_flag: int = 2
     has_delta_reference: bool = False
     is_pit_lap: bool = False
+    last_lap_time: float = 0.0
+    last_lap_time_str: str = "--:--.---"
+    last_lap_status: str = "default"
+    is_lap_freeze_active: bool = False
 
     # État en piste et rapport engagé
     in_realtime: bool = True
@@ -155,6 +159,10 @@ class VehicleSensors:
         lap_flag: int = 2,
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
+        last_lap_time: float = 0.0,
+        last_lap_time_str: str = "--:--.---",
+        last_lap_status: str = "default",
+        is_lap_freeze_active: bool = False,
         grip_fractions: Optional[Tuple[float, float, float, float]] = None,
         ecu_abs_active_raw: Optional[bool] = None,
         ecu_tc_active_raw: Optional[bool] = None,
@@ -344,6 +352,10 @@ class VehicleSensors:
             lap_flag=lap_flag,
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
+            last_lap_time=last_lap_time,
+            last_lap_time_str=last_lap_time_str,
+            last_lap_status=last_lap_status,
+            is_lap_freeze_active=is_lap_freeze_active,
             in_realtime=True,
             gear=gear,
             ecu_abs_active_raw=ecu_abs_active_raw,
@@ -390,6 +402,10 @@ class VehicleSensors:
         lap_flag: int = 2,
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
+        last_lap_time: float = 0.0,
+        last_lap_time_str: str = "--:--.---",
+        last_lap_status: str = "default",
+        is_lap_freeze_active: bool = False,
         in_realtime: bool = True,
     ) -> "VehicleSensors":
         """Instancie un objet VehicleSensors directement depuis un paquet binaire TelemInfo de isimotor_rawudp_client."""
@@ -521,6 +537,10 @@ class VehicleSensors:
             lap_flag=lap_flag,
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
+            last_lap_time=last_lap_time,
+            last_lap_time_str=last_lap_time_str,
+            last_lap_status=last_lap_status,
+            is_lap_freeze_active=is_lap_freeze_active,
             grip_fractions=raw_grips,
             ecu_abs_active_raw=ecu_abs_raw,
             ecu_tc_active_raw=ecu_tc_raw,

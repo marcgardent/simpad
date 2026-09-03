@@ -2,7 +2,7 @@
 
 from src.telemetry.sensors import VehicleSensors
 from src.telemetry.lmu_parser import LMUParser, TelemetryData, format_time_sec
-from src.telemetry.delta_engine import DeltaEngine, DeltaReferenceMode
+from src.telemetry.delta_engine import DeltaEngine, DeltaReferenceMode, format_lap_time
 from src.telemetry.udp_server import UDPServer
 
 try:
@@ -32,4 +32,5 @@ __all__ = [
     "DeltaReferenceMode",
     "UDPServer",
     "format_time_sec",
+    "format_lap_time",
 ]

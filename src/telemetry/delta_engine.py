@@ -54,6 +54,15 @@ def log_delta_debug(msg: str) -> None:
         pass
 
 
+def format_lap_time(seconds: float) -> str:
+    """Formatte les secondes en représentation au tour MM:ss.mmm (ex: '01:32.450')."""
+    if seconds <= 0.0 or seconds >= 999900.0:
+        return "--:--.---"
+    minutes = int(seconds // 60)
+    rem_sec = seconds % 60.0
+    return f"{minutes:02d}:{rem_sec:06.3f}"
+
+
 class DeltaReferenceMode(str, Enum):
     """Modes de référence chrono pour le calcul des deltas."""
     ALL_TIME_BEST = "all_time_best"  # Meilleur tour absolu enregistré sur disque
@@ -139,9 +148,12 @@ class DeltaEngine:
         self._player_s2_dist: float = 0.0
         self._last_checkpoint_idx: int = -1
 
-        # Gel du Delta au passage de ligne
+        # Gel du Delta et du Temps au Tour au passage de ligne
         self._frozen_final_delta: float = 0.0
         self._freeze_delta_until: float = 0.0
+        self._last_completed_lap_time: float = 0.0
+        self._last_completed_lap_status: str = "default"
+        self._freeze_lap_until: float = 0.0
 
         # Lissage EMA
         self._ema_live_delta: float = 0.0
@@ -311,10 +323,38 @@ class DeltaEngine:
                 f"[LAP_LINE_CROSS] lap_completed={laps_comp} (was {self._last_laps_completed}), "
                 f"last_lap_time={last_lap_time:.3f}s, flag={lap_flag}, in_pits={in_pits}, in_garage={in_garage}"
             )
-            # Capture et gel du delta final avant réinitialisation
+
+            # Évaluation du statut couleur du tour complété
+            prev_session_best = self._session_best_lap_time
+            prev_all_time_best = self._all_time_best_lap_time
+            prev_ref_time = self._ref_lap_time
+
+            if lap_flag != 2 or in_pits or in_garage:
+                lap_status = "invalid"
+            elif last_lap_time > 0.0:
+                if last_lap_time <= (prev_session_best + 0.001) or last_lap_time <= (prev_all_time_best + 0.001):
+                    lap_status = "purple"
+                elif prev_ref_time < 999900.0 and last_lap_time < prev_ref_time:
+                    lap_status = "green"
+                elif prev_ref_time < 999900.0 and last_lap_time >= prev_ref_time:
+                    lap_status = "yellow"
+                else:
+                    lap_status = "purple" if (prev_session_best >= 999900.0) else "green"
+            else:
+                lap_status = "default"
+
+            self._last_completed_lap_time = last_lap_time
+            self._last_completed_lap_status = lap_status
+
+            # Capture et gel du delta final et du temps au tour avant réinitialisation
             self._frozen_final_delta = self._live_delta
             if self._freeze_duration > 0.0:
-                self._freeze_delta_until = time.time() + self._freeze_duration
+                freeze_until = time.time() + self._freeze_duration
+                self._freeze_delta_until = freeze_until
+                self._freeze_lap_until = freeze_until
+            else:
+                self._freeze_delta_until = 0.0
+                self._freeze_lap_until = 0.0
 
             self._finalize_completed_lap(
                 lap_time=last_lap_time,
@@ -996,6 +1036,28 @@ class DeltaEngine:
         return self._live_delta
 
     @property
+    def is_lap_freeze_active(self) -> bool:
+        """Retourne True si l'affichage du temps au tour est gelé après passage de ligne."""
+        return time.time() < self._freeze_lap_until and self._last_completed_lap_time > 0.0
+
+    @property
+    def last_completed_lap_time(self) -> float:
+        """Retourne le temps en secondes du dernier tour complété."""
+        return self._last_completed_lap_time
+
+    @property
+    def last_completed_lap_time_str(self) -> str:
+        """Retourne le temps du dernier tour complété formaté en 'MM:ss.mmm'."""
+        if self._last_completed_lap_time > 0.0:
+            return format_lap_time(self._last_completed_lap_time)
+        return "--:--.---"
+
+    @property
+    def last_completed_lap_status(self) -> str:
+        """Retourne le statut couleur du dernier tour ('purple', 'green', 'yellow', 'invalid', 'default')."""
+        return self._last_completed_lap_status
+
+    @property
     def estimated_lap_time(self) -> float:
         """Projection du temps au tour final (ref_lap_time + live_delta)."""
         if self.has_reference and self._ref_lap_time < 999999.0:
@@ -1004,12 +1066,10 @@ class DeltaEngine:
 
     @property
     def estimated_lap_time_str(self) -> str:
-        """Projection du chrono formatée 'M:SS.mmm'."""
+        """Projection du chrono formatée 'MM:ss.mmm'."""
         est = self.estimated_lap_time
         if est > 0.0:
-            m = int(est // 60)
-            s = est % 60
-            return f"{m}:{s:06.3f}"
+            return format_lap_time(est)
         return "--:--.---"
 
     @property

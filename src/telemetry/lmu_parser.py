@@ -22,7 +22,7 @@ from isimotor_rawudp_client import (
 )
 
 from src.telemetry.sensors import VehicleSensors
-from src.telemetry.delta_engine import DeltaEngine
+from src.telemetry.delta_engine import DeltaEngine, format_lap_time
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,10 @@ class TelemetryData:
     lap_flag: int = 2
     has_delta_reference: bool = False
     is_pit_lap: bool = False
+    last_lap_time: float = 0.0
+    last_lap_time_str: str = "--:--.---"
+    last_lap_status: str = "default"
+    is_lap_freeze_active: bool = False
     grip_fractions: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
     raw_telemetry: Optional[TelemInfo] = None
@@ -103,6 +107,10 @@ class TelemetryData:
                 lap_flag=self.lap_flag,
                 has_delta_reference=self.has_delta_reference,
                 is_pit_lap=self.is_pit_lap,
+                last_lap_time=self.last_lap_time,
+                last_lap_time_str=self.last_lap_time_str,
+                last_lap_status=self.last_lap_status,
+                is_lap_freeze_active=self.is_lap_freeze_active,
                 in_realtime=self.in_realtime,
             )
 
@@ -141,6 +149,10 @@ class TelemetryData:
             lap_flag=self.lap_flag,
             has_delta_reference=self.has_delta_reference,
             is_pit_lap=self.is_pit_lap,
+            last_lap_time=self.last_lap_time,
+            last_lap_time_str=self.last_lap_time_str,
+            last_lap_status=self.last_lap_status,
+            is_lap_freeze_active=self.is_lap_freeze_active,
             grip_fractions=self.grip_fractions,
         )
 
@@ -610,6 +622,10 @@ class LMUParser:
             lap_flag=cls._last_lap_flag,
             has_delta_reference=cls._delta_engine.has_reference,
             is_pit_lap=cls._delta_engine.is_pit_lap,
+            last_lap_time=cls._delta_engine.last_completed_lap_time,
+            last_lap_time_str=cls._delta_engine.last_completed_lap_time_str,
+            last_lap_status=cls._delta_engine.last_completed_lap_status,
+            is_lap_freeze_active=cls._delta_engine.is_lap_freeze_active,
             grip_fractions=cls._last_grips,
             raw_scoring=cls.get_latest_scoring(),
             raw_telemetry=cls._last_telem_info,

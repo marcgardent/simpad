@@ -145,6 +145,47 @@ class TestQtHudOverlay(unittest.TestCase):
         self.assertGreater(fill_s.green(), fill_s.red())
         self.assertGreater(fill_s.blue(), fill_s.red())
 
+    def test_format_lap_time_mm_ss_mmm(self):
+        """Verify format_lap_time formats lap time strictly as MM:ss.mmm."""
+        from src.telemetry.delta_engine import format_lap_time
+        self.assertEqual(format_lap_time(92.45), "01:32.450")
+        self.assertEqual(format_lap_time(125.008), "02:05.008")
+        self.assertEqual(format_lap_time(58.123), "00:58.123")
+        self.assertEqual(format_lap_time(0.0), "--:--.---")
+        self.assertEqual(format_lap_time(-1.0), "--:--.---")
+
+    def test_delta_timer_widget_rendering(self):
+        """Verify QtDeltaTimerWidget handles both live delta and frozen lap time modes."""
+        from PySide6.QtGui import QImage, QPainter
+        widget = QtDeltaTimerWidget()
+
+        img = QImage(800, 600, QImage.Format.Format_ARGB32)
+        painter = QPainter(img)
+
+        # 1. Live delta mode
+        sensors_live = VehicleSensors(
+            delta_time=-0.150,
+            has_delta_reference=True,
+            lap_flag=2,
+            is_lap_freeze_active=False,
+        )
+        widget.paint(painter, 800.0, 600.0, sensors_live, {})
+
+        # 2. Frozen lap time mode (Finish line crossing: 01:32.450 Purple)
+        sensors_frozen = VehicleSensors(
+            last_lap_time=92.45,
+            last_lap_time_str="01:32.450",
+            last_lap_status="purple",
+            is_lap_freeze_active=True,
+            lap_flag=2,
+        )
+        widget.paint(painter, 800.0, 600.0, sensors_frozen, {
+            "lastLapTime": "01:32.450",
+            "lastLapStatus": "purple",
+            "isLapFreezeActive": True,
+        })
+        painter.end()
+
 
 if __name__ == "__main__":
     unittest.main()

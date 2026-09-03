@@ -346,10 +346,10 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._calculate_delta(500.0, 28.5)
         self.assertAlmostEqual(self.engine.live_delta, -1.5)
         self.assertAlmostEqual(self.engine.estimated_lap_time, 58.5)
-        self.assertEqual(self.engine.estimated_lap_time_str, "0:58.500")
+        self.assertEqual(self.engine.estimated_lap_time_str, "00:58.500")
 
     def test_finish_line_delta_freeze(self):
-        """Verify delta is frozen upon crossing the finish line for driver HUD visibility."""
+        """Verify delta and lap time are frozen upon crossing the finish line for driver HUD visibility."""
         self.engine._track_name = "TestTrack"
         self.engine._track_length = 1000.0
         self.engine._ref_lap_time = 50.0
@@ -357,12 +357,13 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
         self.engine._ref_num_points = 1001
         self.engine.freeze_duration = 2.0  # 2 seconds freeze
+        self.engine._last_laps_completed = 0
 
         # End of flying lap: dist = 999m, time_into = 48.0s -> Delta = -1.95s
         self.engine._calculate_delta(999.0, 48.0)
         self.assertLess(self.engine.live_delta, 0.0)
 
-        # Cross finish line
+        # Cross finish line (first clean lap 48.0s -> faster than 50.0s ref -> purple/green)
         self.engine._handle_lap_transition(
             laps_comp=1,
             last_lap_time=48.0,
@@ -376,6 +377,11 @@ class TestDeltaEngine(unittest.TestCase):
 
         # display_delta must be frozen at the final delta of lap 1!
         self.assertAlmostEqual(self.engine.display_delta, self.engine._frozen_final_delta, delta=0.01)
+        # Lap time and status must be frozen!
+        self.assertTrue(self.engine.is_lap_freeze_active)
+        self.assertEqual(self.engine.last_completed_lap_time, 48.0)
+        self.assertEqual(self.engine.last_completed_lap_time_str, "00:48.000")
+        self.assertIn(self.engine.last_completed_lap_status, ("purple", "green"))
 
     def test_ema_smoothing_filter(self):
         """Verify exponential moving average smoothing filter on live delta."""
@@ -463,7 +469,7 @@ class TestDeltaEngine(unittest.TestCase):
         # Delta must be +35.0s!
         self.assertAlmostEqual(self.engine.live_delta, 35.0)
         self.assertAlmostEqual(self.engine.estimated_lap_time, 85.0)
-        self.assertEqual(self.engine.estimated_lap_time_str, "1:25.000")
+        self.assertEqual(self.engine.estimated_lap_time_str, "01:25.000")
 
     def test_scoring_elapsed_time_crawl_and_stop(self):
         """Verify that update_scoring and update_physics use real clock elapsed time (mCurrentET - mLapStartET)."""
@@ -532,6 +538,52 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._current_lap_samples = [(2000.0 + i * 10.0, 50.0 + i * 0.5, 20.0, 1.0, 0.0, 0.0) for i in range(100)]
         self.engine._finalize_completed_lap(lap_time=110.0, lap_flag=2, in_garage=False, in_pits=False)
         self.assertEqual(self.engine._all_time_best_lap_time, 120.0)
+
+    def test_format_lap_time(self):
+        """Verify format_lap_time formats in MM:ss.mmm."""
+        from src.telemetry.delta_engine import format_lap_time
+        self.assertEqual(format_lap_time(92.45), "01:32.450")
+        self.assertEqual(format_lap_time(125.008), "02:05.008")
+        self.assertEqual(format_lap_time(58.123), "00:58.123")
+        self.assertEqual(format_lap_time(0.0), "--:--.---")
+        self.assertEqual(format_lap_time(-1.0), "--:--.---")
+        self.assertEqual(format_lap_time(999999.0), "--:--.---")
+
+    def test_lap_transition_status_colors(self):
+        """Verify status colors: purple for session best, green for personal improvement, yellow for slower, grey for invalid."""
+        self.engine._track_name = "TestTrack"
+        self.engine._track_length = 1000.0
+        self.engine.freeze_duration = 3.5
+
+        # Initial state: session best = 90.0s, reference = 92.0s
+        self.engine._session_best_lap_time = 90.0
+        self.engine._all_time_best_lap_time = 90.0
+        self.engine._ref_lap_time = 92.0
+        self.engine._last_laps_completed = 1
+
+        # Case 1: Driver runs 89.5s -> New Session / All-time Best -> Purple
+        self.engine._handle_lap_transition(laps_comp=2, last_lap_time=89.5, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "purple")
+        self.assertEqual(self.engine.last_completed_lap_time_str, "01:29.500")
+        self.assertTrue(self.engine.is_lap_freeze_active)
+
+        # Case 2: Session best is 89.5s, active ref is 91.0s. Driver runs 90.2s -> Personal Improvement -> Green
+        self.engine._session_best_lap_time = 89.5
+        self.engine._ref_lap_time = 91.0
+        self.engine._handle_lap_transition(laps_comp=3, last_lap_time=90.2, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "green")
+        self.assertEqual(self.engine.last_completed_lap_time_str, "01:30.200")
+
+        # Case 3: Active ref is 90.2s. Driver runs 91.8s -> Slower / No improvement -> Yellow
+        self.engine._session_best_lap_time = 89.5
+        self.engine._ref_lap_time = 90.2
+        self.engine._handle_lap_transition(laps_comp=4, last_lap_time=91.8, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "yellow")
+        self.assertEqual(self.engine.last_completed_lap_time_str, "01:31.800")
+
+        # Case 4: Driver runs 88.0s but cut track (lap_flag = 0) -> Invalid / Grey
+        self.engine._handle_lap_transition(laps_comp=5, last_lap_time=88.0, lap_flag=0, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "invalid")
 
 
 if __name__ == "__main__":
