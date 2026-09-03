@@ -143,6 +143,8 @@ class TestReferenceProfile(unittest.TestCase):
             self.assertEqual(loaded.lap_time, self.profile.lap_time)
             self.assertEqual(len(loaded.gear_grid), len(self.profile.gear_grid))
             self.assertEqual(loaded.gear_grid, self.profile.gear_grid)
+            self.assertEqual(loaded.sector_1_dist, self.profile.sector_1_dist)
+            self.assertEqual(loaded.sector_2_dist, self.profile.sector_2_dist)
             self.assertEqual(len(loaded.annotations), 2)
             self.assertEqual(loaded.annotations[0].type, AnnotationType.BRAKE)
             self.assertEqual(loaded.annotations[1].type, AnnotationType.GEAR)
@@ -174,6 +176,55 @@ class TestReferenceProfile(unittest.TestCase):
             # 3. Different track (Le Mans) -> MUST NOT return Spa or Monza marks! (Must be None)
             res_lemans = find_marks_filepath_for_track("Circuit de la Sarthe", vehicle_class="LMGT3", base_dir=tmp)
             self.assertIsNone(res_lemans)
+
+    def test_sector_loops_persistence(self):
+        """Test saving and loading sector 1 and sector 2 timing loop positions."""
+        prof = ReferenceLapProfile(
+            track_name="Monza",
+            lap_time=105.5,
+            track_length=5793.0,
+            spatial_step=1.0,
+            num_points=10,
+            t_grid=[0.0] * 10,
+            speed_grid=[50.0] * 10,
+            gear_grid=[3] * 10,
+            sector_1_dist=1850.5,
+            sector_2_dist=3920.0,
+            sector_1_time=32.45,
+            sector_2_time=68.90,
+        )
+        d = prof.telemetry_to_dict()
+        self.assertEqual(d["sector_1_dist"], 1850.5)
+        self.assertEqual(d["sector_2_dist"], 3920.0)
+        self.assertEqual(d["sector_1_time"], 32.45)
+        self.assertEqual(d["sector_2_time"], 68.90)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = Path(tmpdir) / "ref_monza_test.json"
+            prof.save_telemetry_to_file(file_path)
+            loaded = ReferenceLapProfile.load_from_file(file_path)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.sector_1_dist, 1850.5)
+            self.assertEqual(loaded.sector_2_dist, 3920.0)
+            self.assertEqual(loaded.sector_1_time, 32.45)
+            self.assertEqual(loaded.sector_2_time, 68.90)
+            self.assertEqual(loaded.gear_grid, [3] * 10)
+
+    def test_get_sector_at_dist(self):
+        """Test determining sector (1, 2, 3) along the track."""
+        prof = ReferenceLapProfile(
+            track_name="Monza",
+            track_length=5000.0,
+            sector_1_dist=1500.0,
+            sector_2_dist=3500.0,
+        )
+        self.assertEqual(prof.get_sector_at_dist(500.0), 1)
+        self.assertEqual(prof.get_sector_at_dist(1499.0), 1)
+        self.assertEqual(prof.get_sector_at_dist(1500.0), 2)
+        self.assertEqual(prof.get_sector_at_dist(2500.0), 2)
+        self.assertEqual(prof.get_sector_at_dist(3499.0), 2)
+        self.assertEqual(prof.get_sector_at_dist(3500.0), 3)
+        self.assertEqual(prof.get_sector_at_dist(4800.0), 3)
 
 
 if __name__ == "__main__":

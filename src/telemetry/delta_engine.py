@@ -886,6 +886,20 @@ class DeltaEngine:
                 temp_prof.load_marks_from_file(disk_marks_path)
                 existing_annotations = temp_prof.annotations
 
+        # Déterminer les positions des boucles de chrono S1 et S2
+        s1_dist = self._player_s1_dist if self._player_s1_dist > 0.0 else (
+            self._current_profile.sector_1_dist if (self._current_profile and self._current_profile.sector_1_dist > 0.0) else 0.0
+        )
+        s2_dist = self._player_s2_dist if self._player_s2_dist > 0.0 else (
+            self._current_profile.sector_2_dist if (self._current_profile and self._current_profile.sector_2_dist > 0.0) else 0.0
+        )
+        s1_time = self._player_s1_time if self._player_s1_time > 0.0 else (
+            self._current_profile.sector_1_time if (self._current_profile and self._current_profile.sector_1_time > 0.0) else 0.0
+        )
+        s2_time = self._player_s2_time if self._player_s2_time > 0.0 else (
+            self._current_profile.sector_2_time if (self._current_profile and self._current_profile.sector_2_time > 0.0) else 0.0
+        )
+
         # Construction du profil complet du tour complété
         effective_len = self._track_length if self._track_length > 0.0 else clean_samples[-1][0]
         profile = ReferenceLapProfile(
@@ -902,6 +916,10 @@ class DeltaEngine:
             throttle_grid=throttle_grid,
             brake_grid=brake_grid,
             steering_grid=steering_grid,
+            sector_1_dist=s1_dist,
+            sector_2_dist=s2_dist,
+            sector_1_time=s1_time,
+            sector_2_time=s2_time,
             annotations=existing_annotations,
         )
 
@@ -1083,6 +1101,20 @@ class DeltaEngine:
     @property
     def sector3_delta(self) -> float:
         return self._sector3_delta
+
+    @property
+    def sector_1_dist(self) -> float:
+        """Position en mètres de la boucle de chrono Secteur 1."""
+        if self._current_profile and self._current_profile.sector_1_dist > 0.0:
+            return self._current_profile.sector_1_dist
+        return self._player_s1_dist
+
+    @property
+    def sector_2_dist(self) -> float:
+        """Position en mètres de la boucle de chrono Secteur 2."""
+        if self._current_profile and self._current_profile.sector_2_dist > 0.0:
+            return self._current_profile.sector_2_dist
+        return self._player_s2_dist
 
     @property
     def has_reference(self) -> bool:

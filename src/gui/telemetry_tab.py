@@ -81,6 +81,14 @@ class TelemetryTab:
                 dpg.add_text("--", tag="lbl_telem_track_len", color=[241, 196, 15, 255])
 
                 dpg.add_spacer(width=15)
+                dpg.add_text("S1 Loop:", color=[180, 180, 180, 255])
+                dpg.add_text("--", tag="lbl_telem_s1_loop", color=[0, 210, 255, 255])
+
+                dpg.add_spacer(width=15)
+                dpg.add_text("S2 Loop:", color=[180, 180, 180, 255])
+                dpg.add_text("--", tag="lbl_telem_s2_loop", color=[180, 100, 255, 255])
+
+                dpg.add_spacer(width=15)
                 dpg.add_text("Markers:", color=[180, 180, 180, 255])
                 dpg.add_text("0", tag="lbl_telem_num_markers", color=[255, 200, 0, 255])
 
@@ -156,6 +164,8 @@ class TelemetryTab:
                     dpg.add_spacer(width=15)
                     dpg.add_text("Cursor:", color=[180, 180, 180, 255])
                     dpg.add_text("0.0 m", tag="lbl_hud_cursor_dist", color=[255, 255, 255, 255])
+                    dpg.add_text("| Sector:", color=[180, 180, 180, 255])
+                    dpg.add_text("S1", tag="lbl_hud_cursor_sector", color=[0, 210, 255, 255])
                     dpg.add_text("| Live Car:", color=[180, 180, 180, 255])
                     dpg.add_text("--", tag="lbl_hud_live_car_dist", color=[0, 220, 255, 255])
                     dpg.add_text("| Speed:", color=[180, 180, 180, 255])
@@ -181,15 +191,45 @@ class TelemetryTab:
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis, label="Track Distance (m)", tag="axis_telem_dist")
 
-                    # Axe Y Principal : Vitesse (km/h) & Pédales (0-100%)
+                    # Axe Y Principal (Gauche) : Vitesse (km/h) & Pédales (0-100%)
                     with dpg.plot_axis(dpg.mvYAxis, label="Speed (km/h) / Inputs (%)", tag="axis_telem_y_inputs"):
                         dpg.set_axis_limits("axis_telem_y_inputs", -105, 360)
 
+                        # Zones de fond colorées par secteur (affichées quand S1/S2 sont enregistrés)
+                        dpg.add_shade_series([], [], y2=[], label="Sector 1", tag="shade_telem_s1", show=False)
+                        dpg.add_shade_series([], [], y2=[], label="Sector 2", tag="shade_telem_s2", show=False)
+                        dpg.add_shade_series([], [], y2=[], label="Sector 3", tag="shade_telem_s3", show=False)
+
                         dpg.add_line_series([], [], label="Speed (km/h)", tag="series_telem_speed")
-                        dpg.add_line_series([], [], label="Gear", tag="series_telem_gear")
                         dpg.add_line_series([], [], label="Throttle (%)", tag="series_telem_throttle")
                         dpg.add_line_series([], [], label="Brake (%)", tag="series_telem_brake")
                         dpg.add_line_series([], [], label="Steering (%)", tag="series_telem_steering")
+
+                    # Axe Y Secondaire (Droite) : Rapports de boîte Gear (N, 1..8)
+                    with dpg.plot_axis(dpg.mvYAxis2, label="Gear", tag="axis_telem_y_gear"):
+                        dpg.set_axis_limits("axis_telem_y_gear", 0, 8.5)
+                        dpg.set_axis_ticks("axis_telem_y_gear", (('N', 0), ('1', 1), ('2', 2), ('3', 3), ('4', 4), ('5', 5), ('6', 6), ('7', 7), ('8', 8)))
+                        dpg.add_stair_series([], [], label="Gear", tag="series_telem_gear")
+
+                    # Marqueurs de boucle de chrono Secteur 1 et Secteur 2
+                    dpg.add_drag_line(
+                        label="S1 Loop",
+                        tag="dragline_telem_s1_loop",
+                        vertical=True,
+                        default_value=-999.0,
+                        color=[0, 210, 255, 230],
+                        thickness=2.0,
+                        show=False,
+                    )
+                    dpg.add_drag_line(
+                        label="S2 Loop",
+                        tag="dragline_telem_s2_loop",
+                        vertical=True,
+                        default_value=-999.0,
+                        color=[180, 100, 255, 230],
+                        thickness=2.0,
+                        show=False,
+                    )
 
                     # Ligne verticale interactive pour le curseur blanc d'édition
                     dpg.add_drag_line(
@@ -238,6 +278,32 @@ class TelemetryTab:
                     dpg.add_table_column(label="Dist (m)", width_fixed=True, init_width_or_weight=70)
                     dpg.add_table_column(label="Audio", width_fixed=True, init_width_or_weight=65)
                     dpg.add_table_column(label="Action", width_fixed=True, init_width_or_weight=65)
+
+        # Thèmes de fond pour les zones de secteurs S1, S2, S3
+        if not dpg.does_item_exist("theme_telem_shade_s1"):
+            with dpg.theme(tag="theme_telem_shade_s1"):
+                with dpg.theme_component(dpg.mvShadeSeries):
+                    dpg.add_theme_color(dpg.mvPlotCol_Fill, (0, 180, 255, 30), category=dpg.mvThemeCat_Plots)
+                    dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 0, 0, 0), category=dpg.mvThemeCat_Plots)
+
+        if not dpg.does_item_exist("theme_telem_shade_s2"):
+            with dpg.theme(tag="theme_telem_shade_s2"):
+                with dpg.theme_component(dpg.mvShadeSeries):
+                    dpg.add_theme_color(dpg.mvPlotCol_Fill, (175, 95, 245, 30), category=dpg.mvThemeCat_Plots)
+                    dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 0, 0, 0), category=dpg.mvThemeCat_Plots)
+
+        if not dpg.does_item_exist("theme_telem_shade_s3"):
+            with dpg.theme(tag="theme_telem_shade_s3"):
+                with dpg.theme_component(dpg.mvShadeSeries):
+                    dpg.add_theme_color(dpg.mvPlotCol_Fill, (255, 175, 0, 25), category=dpg.mvThemeCat_Plots)
+                    dpg.add_theme_color(dpg.mvPlotCol_Line, (0, 0, 0, 0), category=dpg.mvThemeCat_Plots)
+
+        if dpg.does_item_exist("shade_telem_s1") and dpg.does_item_exist("theme_telem_shade_s1"):
+            dpg.bind_item_theme("shade_telem_s1", "theme_telem_shade_s1")
+        if dpg.does_item_exist("shade_telem_s2") and dpg.does_item_exist("theme_telem_shade_s2"):
+            dpg.bind_item_theme("shade_telem_s2", "theme_telem_shade_s2")
+        if dpg.does_item_exist("shade_telem_s3") and dpg.does_item_exist("theme_telem_shade_s3"):
+            dpg.bind_item_theme("shade_telem_s3", "theme_telem_shade_s3")
 
         # Enregistrement des gestionnaires d'événements clavier et souris
         self._setup_key_and_mouse_handlers()
@@ -346,6 +412,16 @@ class TelemetryTab:
         d_val = self._cursor_distance
         if dpg.does_item_exist("lbl_hud_cursor_dist"):
             dpg.set_value("lbl_hud_cursor_dist", f"{d_val:.1f} m")
+
+        if dpg.does_item_exist("lbl_hud_cursor_sector"):
+            if self._profile:
+                sec_num = self._profile.get_sector_at_dist(d_val)
+                sec_str = f"S{sec_num}"
+                sec_color = [0, 210, 255, 255] if sec_num == 1 else ([180, 100, 255, 255] if sec_num == 2 else [241, 196, 15, 255])
+                dpg.set_value("lbl_hud_cursor_sector", sec_str)
+                dpg.configure_item("lbl_hud_cursor_sector", color=sec_color)
+            else:
+                dpg.set_value("lbl_hud_cursor_sector", "S1")
 
         if self._profile:
             vals = self._profile.get_value_at_dist(d_val)
@@ -568,7 +644,35 @@ class TelemetryTab:
         if not dpg.does_item_exist("plot_telemetry_studio"):
             return
 
-        # Supprimer les anciennes lignes de repères
+        # 1. Rendu des repères de boucles de chronométrage Secteur 1 et Secteur 2
+        s1_dist = self._profile.sector_1_dist if self._profile else 0.0
+        s2_dist = self._profile.sector_2_dist if self._profile else 0.0
+
+        if dpg.does_item_exist("dragline_telem_s1_loop"):
+            if s1_dist > 0.0:
+                t1_str = f" ({self._profile.sector_1_time:.2f}s)" if (self._profile and self._profile.sector_1_time > 0.0) else ""
+                dpg.configure_item(
+                    "dragline_telem_s1_loop",
+                    show=True,
+                    default_value=s1_dist,
+                    label=f"S1 Loop ({s1_dist:.0f}m{t1_str})",
+                )
+            else:
+                dpg.configure_item("dragline_telem_s1_loop", show=False)
+
+        if dpg.does_item_exist("dragline_telem_s2_loop"):
+            if s2_dist > 0.0:
+                t2_str = f" ({self._profile.sector_2_time:.2f}s)" if (self._profile and self._profile.sector_2_time > 0.0) else ""
+                dpg.configure_item(
+                    "dragline_telem_s2_loop",
+                    show=True,
+                    default_value=s2_dist,
+                    label=f"S2 Loop ({s2_dist:.0f}m{t2_str})",
+                )
+            else:
+                dpg.configure_item("dragline_telem_s2_loop", show=False)
+
+        # 2. Supprimer les anciennes lignes d'annotations utilisateur
         for tag in list(self._annotation_drag_tags.values()):
             if dpg.does_item_exist(tag):
                 dpg.delete_item(tag)
@@ -715,6 +819,8 @@ class TelemetryTab:
                 spatial_step=delta_eng._ref_spatial_step,
                 num_points=num_pts,
                 t_grid=delta_eng._ref_t_grid or [],
+                sector_1_dist=delta_eng.sector_1_dist,
+                sector_2_dist=delta_eng.sector_2_dist,
             )
             self._sync_profile_to_engine()
         self._update_all_ui()
@@ -728,7 +834,7 @@ class TelemetryTab:
         self._update_cursor_hud_readouts()
 
     def _update_header_stats(self) -> None:
-        """Met à jour les statistiques de l'en-tête (Temps au tour, Longueur, Nombre de marqueurs)."""
+        """Met à jour les statistiques de l'en-tête (Temps au tour, Longueur, Boucles S1/S2, Nombre de marqueurs)."""
         if not self._profile:
             return
 
@@ -745,6 +851,24 @@ class TelemetryTab:
             tl = self._profile.track_length
             dpg.set_value("lbl_telem_track_len", f"{tl:.0f} m" if tl > 0 else "--")
 
+        if dpg.does_item_exist("lbl_telem_s1_loop"):
+            s1 = self._profile.sector_1_dist if self._profile else 0.0
+            t1 = self._profile.sector_1_time if self._profile else 0.0
+            if s1 > 0.0:
+                lbl_s1 = f"{s1:.0f} m" + (f" ({t1:.2f}s)" if t1 > 0.0 else "")
+                dpg.set_value("lbl_telem_s1_loop", lbl_s1)
+            else:
+                dpg.set_value("lbl_telem_s1_loop", "--")
+
+        if dpg.does_item_exist("lbl_telem_s2_loop"):
+            s2 = self._profile.sector_2_dist if self._profile else 0.0
+            t2 = self._profile.sector_2_time if self._profile else 0.0
+            if s2 > 0.0:
+                lbl_s2 = f"{s2:.0f} m" + (f" ({t2:.2f}s)" if t2 > 0.0 else "")
+                dpg.set_value("lbl_telem_s2_loop", lbl_s2)
+            else:
+                dpg.set_value("lbl_telem_s2_loop", "--")
+
         if dpg.does_item_exist("lbl_telem_num_markers"):
             dpg.set_value("lbl_telem_num_markers", str(len(self._profile.annotations)))
 
@@ -756,6 +880,37 @@ class TelemetryTab:
         num_pts = self._profile.num_points
         step = self._profile.spatial_step
         x_dist = [i * step for i in range(num_pts)]
+
+        # 0. Zones de fond colorées par secteur (affichées quand les boucles S1 et S2 sont enregistrées)
+        s1_dist = self._profile.sector_1_dist if self._profile else 0.0
+        s2_dist = self._profile.sector_2_dist if self._profile else 0.0
+        max_x = x_dist[-1] if x_dist else (self._profile.track_length if self._profile else 0.0)
+        y_min = -105.0
+        y_max = 360.0
+
+        if s1_dist > 0.0:
+            if dpg.does_item_exist("shade_telem_s1"):
+                dpg.configure_item("shade_telem_s1", show=True)
+                dpg.set_value("shade_telem_s1", [[0.0, s1_dist], [y_min, y_min], [y_max, y_max]])
+        else:
+            if dpg.does_item_exist("shade_telem_s1"):
+                dpg.configure_item("shade_telem_s1", show=False)
+
+        if s1_dist > 0.0 and s2_dist > s1_dist:
+            if dpg.does_item_exist("shade_telem_s2"):
+                dpg.configure_item("shade_telem_s2", show=True)
+                dpg.set_value("shade_telem_s2", [[s1_dist, s2_dist], [y_min, y_min], [y_max, y_max]])
+        else:
+            if dpg.does_item_exist("shade_telem_s2"):
+                dpg.configure_item("shade_telem_s2", show=False)
+
+        if s2_dist > 0.0 and max_x > s2_dist:
+            if dpg.does_item_exist("shade_telem_s3"):
+                dpg.configure_item("shade_telem_s3", show=True)
+                dpg.set_value("shade_telem_s3", [[s2_dist, max_x], [y_min, y_min], [y_max, y_max]])
+        else:
+            if dpg.does_item_exist("shade_telem_s3"):
+                dpg.configure_item("shade_telem_s3", show=False)
 
         # 1. Vitesse en km/h
         if self._profile.speed_grid and len(self._profile.speed_grid) == num_pts:

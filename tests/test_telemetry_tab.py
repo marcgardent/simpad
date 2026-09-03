@@ -15,12 +15,15 @@ from src.telemetry.reference_profile import (
     TrackAnnotation,
     AnnotationType,
 )
+from src.telemetry.lmu_parser import LMUParser
 
 
 class TestTelemetryTab(unittest.TestCase):
     def setUp(self):
         dpg.create_context()
         self.temp_dir = tempfile.mkdtemp()
+        if hasattr(LMUParser, "_delta_engine") and LMUParser._delta_engine:
+            LMUParser._delta_engine.reset_session()
         self.tab = TelemetryTab()
         self.tab._profile = ReferenceLapProfile(
             track_name="TestCircuit",
@@ -37,6 +40,8 @@ class TestTelemetryTab(unittest.TestCase):
         self.tab._profile.set_marks_filepath(Path(self.temp_dir) / "test.marks.json")
 
     def tearDown(self):
+        if hasattr(LMUParser, "_delta_engine") and LMUParser._delta_engine:
+            LMUParser._delta_engine.reset_session()
         dpg.destroy_context()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -105,6 +110,58 @@ class TestTelemetryTab(unittest.TestCase):
         self.tab._last_known_car_dist = 500.0
         self.tab._cb_sync_cursor_to_car()
         self.assertEqual(self.tab._cursor_distance, 1234.5)
+
+    def test_sector_loops_and_gear_rendering(self):
+        """Test UI elements for sector 1/2 timing loops and gear telemetry."""
+        self.tab._profile.sector_1_dist = 650.0
+        self.tab._profile.sector_2_dist = 1400.0
+        self.tab._profile.sector_1_time = 32.5
+        self.tab._profile.sector_2_time = 71.2
+        self.tab._profile.gear_grid = [1 if i < 500 else (2 if i < 1000 else 3) for i in range(2001)]
+
+        with dpg.window(label="Test Window"):
+            self.tab.build_tab(parent_app=None)
+
+        # Check items exist
+        self.assertTrue(dpg.does_item_exist("lbl_telem_s1_loop"))
+        self.assertTrue(dpg.does_item_exist("lbl_telem_s2_loop"))
+        self.assertTrue(dpg.does_item_exist("lbl_hud_cursor_sector"))
+        self.assertTrue(dpg.does_item_exist("dragline_telem_s1_loop"))
+        self.assertTrue(dpg.does_item_exist("dragline_telem_s2_loop"))
+        self.assertTrue(dpg.does_item_exist("series_telem_gear"))
+        self.assertTrue(dpg.does_item_exist("shade_telem_s1"))
+        self.assertTrue(dpg.does_item_exist("shade_telem_s2"))
+        self.assertTrue(dpg.does_item_exist("shade_telem_s3"))
+
+        # Update and verify stats and markers
+        self.tab._update_header_stats()
+        self.assertIn("650", dpg.get_value("lbl_telem_s1_loop"))
+        self.assertIn("1400", dpg.get_value("lbl_telem_s2_loop"))
+
+        # Verify cursor sector HUD
+        self.tab.set_cursor_distance(300.0)
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_sector"), "S1")
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_gear"), "1")
+
+        self.tab.set_cursor_distance(800.0)
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_sector"), "S2")
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_gear"), "2")
+
+        self.tab.set_cursor_distance(1600.0)
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_sector"), "S3")
+        self.assertEqual(dpg.get_value("lbl_hud_cursor_gear"), "3")
+
+        # Verify curves and shaded zones rendering
+        self.tab._render_curves()
+        self.assertTrue(dpg.is_item_shown("shade_telem_s1"))
+        self.assertTrue(dpg.is_item_shown("shade_telem_s2"))
+        self.assertTrue(dpg.is_item_shown("shade_telem_s3"))
+        val_s1 = dpg.get_value("shade_telem_s1")
+        self.assertEqual(val_s1[0], [0.0, 650.0])
+        val_s2 = dpg.get_value("shade_telem_s2")
+        self.assertEqual(val_s2[0], [650.0, 1400.0])
+        val_s3 = dpg.get_value("shade_telem_s3")
+        self.assertEqual(val_s3[0], [1400.0, 2000.0])
 
 
 if __name__ == "__main__":

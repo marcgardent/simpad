@@ -232,8 +232,32 @@ class ReferenceLapProfile:
     brake_grid: List[float] = field(default_factory=list)        # Frein [0.0 - 1.0]
     steering_grid: List[float] = field(default_factory=list)     # Volant [-1.0 - 1.0]
     gear_grid: List[int] = field(default_factory=list)           # Rapport de boîte (0=N, -1=R, 1..8)
+    sector_1_dist: float = 0.0                                   # Position de la boucle chrono Secteur 1 en mètres
+    sector_2_dist: float = 0.0                                   # Position de la boucle chrono Secteur 2 en mètres
+    sector_1_time: float = 0.0                                   # Temps au passage de la boucle 1 (s)
+    sector_2_time: float = 0.0                                   # Temps au passage de la boucle 2 (s)
     annotations: List[TrackAnnotation] = field(default_factory=list)
     _marks_filepath: Optional[Path] = None
+
+    def get_sector_at_dist(self, distance: float) -> int:
+        """
+        Retourne le secteur (1, 2 ou 3) à une distance donnée en mètres le long du circuit.
+        Utilise les boucles de chronométrage réelles enregistrées lors du tour de référence.
+        """
+        if self.sector_1_dist > 0.0 and distance < self.sector_1_dist:
+            return 1
+        if self.sector_2_dist > 0.0 and distance < self.sector_2_dist:
+            return 2
+        if self.sector_2_dist > 0.0:
+            return 3
+        # Repli si les boucles exactes ne sont pas encore définies
+        if self.track_length > 0.0:
+            if distance < (self.track_length / 3.0):
+                return 1
+            if distance < (self.track_length * 2.0 / 3.0):
+                return 2
+            return 3
+        return 1
 
     def get_turn_number(self, annotation_id: str) -> Optional[int]:
         """
@@ -426,6 +450,10 @@ class ReferenceLapProfile:
             "track_length": float(self.track_length),
             "spatial_step": float(self.spatial_step),
             "num_points": int(self.num_points),
+            "sector_1_dist": round(float(self.sector_1_dist), 2),
+            "sector_2_dist": round(float(self.sector_2_dist), 2),
+            "sector_1_time": round(float(self.sector_1_time), 4),
+            "sector_2_time": round(float(self.sector_2_time), 4),
             "t_grid": [round(x, 4) for x in self.t_grid],
             "speed_grid": [round(x, 3) for x in self.speed_grid],
             "gear_grid": [int(x) for x in self.gear_grid],
@@ -507,9 +535,16 @@ class ReferenceLapProfile:
 
             speed_grid = [float(x) for x in data.get("speed_grid", [])]
             gear_grid = [int(x) for x in data.get("gear_grid", [])]
+            if not gear_grid and num_pts > 0:
+                gear_grid = [0] * num_pts
             throttle_grid = [float(x) for x in data.get("throttle_grid", [])]
             brake_grid = [float(x) for x in data.get("brake_grid", [])]
             steering_grid = [float(x) for x in data.get("steering_grid", [])]
+
+            sector_1_dist = float(data.get("sector_1_dist", 0.0))
+            sector_2_dist = float(data.get("sector_2_dist", 0.0))
+            sector_1_time = float(data.get("sector_1_time", 0.0))
+            sector_2_time = float(data.get("sector_2_time", 0.0))
 
             profile = cls(
                 track_name=str(data.get("track_name", "")),
@@ -525,6 +560,10 @@ class ReferenceLapProfile:
                 throttle_grid=throttle_grid,
                 brake_grid=brake_grid,
                 steering_grid=steering_grid,
+                sector_1_dist=sector_1_dist,
+                sector_2_dist=sector_2_dist,
+                sector_1_time=sector_1_time,
+                sector_2_time=sector_2_time,
                 annotations=[],
             )
 
