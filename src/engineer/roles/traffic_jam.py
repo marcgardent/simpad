@@ -138,6 +138,31 @@ class TrafficJamRole(BaseRole):
             ),
         ]
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.FULL_SCORING,
+                    preferred_hz=10,
+                    required=True,
+                    reason="Positions et vitesses scalaires des adversaires devant sur la trajectoire",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.COMPACT_SCORING,
+                    preferred_hz=10,
+                    required=False,
+                    reason="Spline de piste et calcul de distance relative devant",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        return {
+            "car": "Car",
+        }
+
     def is_busy(self) -> bool:
         """Occupé si une alerte de trafic ralenti est active."""
         return self._is_active_alert

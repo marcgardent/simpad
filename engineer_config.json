@@ -16,7 +16,7 @@
       "phrase_mode": "alongside"
     },
     "fight_spotter": {
-      "enabled": false,
+      "enabled": true,
       "priority": 110,
       "car_length_m": 4.2,
       "car_width_m": 1.9,
@@ -30,7 +30,7 @@
     },
     "pitlane_spotter": {
       "enabled": true,
-      "priority": 100,
+      "priority": 95,
       "enable_unsafe_release": true,
       "unsafe_release_distance_m": 28.0,
       "unsafe_release_ttc_sec": 2.5,
@@ -41,10 +41,10 @@
     },
     "pace_notes": {
       "enabled": true,
-      "priority": 90,
-      "enable_brake": false,
-      "enable_turn_in": false,
-      "enable_turn": false,
+      "priority": 80,
+      "enable_brake": true,
+      "enable_turn_in": true,
+      "enable_turn": true,
       "enable_gear": true,
       "anticipation_time_sec": 0.8,
       "min_lead_distance_m": 15.0,
@@ -52,7 +52,7 @@
     },
     "traffic_jam": {
       "enabled": true,
-      "priority": 80,
+      "priority": 75,
       "enable_ref_lap_filter": true,
       "domain_speed_tolerance_kmh": 30.0,
       "slow_speed_threshold_kmh": 50.0,
@@ -61,7 +61,7 @@
     },
     "lap_validity": {
       "enabled": true,
-      "priority": 70,
+      "priority": 50,
       "busy_duration_sec": 1.8,
       "announce_investigation": true,
       "announce_cleared": true,

@@ -849,6 +849,45 @@ class FightSpotterRole(BaseRole):
         elif name == "enable_three_wide":
             self.fsm.enable_three_wide = bool(self.enable_three_wide)
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.TELEMETRY,
+                    preferred_hz=100,
+                    required=True,
+                    reason="Orientation lacet (yaw) et cinématique locale ultra-précise du joueur",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.FULL_SCORING,
+                    preferred_hz=10,
+                    required=True,
+                    reason="Positions mondiales 3D et vecteurs vitesse de l'ensemble du plateau",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        return {
+            "car_left": "Car left",
+            "car_right": "Car right",
+            "clear_left": "Clear left",
+            "clear_right": "Clear right",
+            "clear_all_round": "Clear all round",
+            "three_wide": "Three wide",
+            "three_wide_left": "Three wide on the left",
+            "three_wide_right": "Three wide on the right",
+            "car_inside": "Car inside",
+            "car_outside": "Car outside",
+            "clear_inside": "Clear inside",
+            "clear_outside": "Clear outside",
+            "three_wide_inside": "Three wide on the inside",
+            "three_wide_outside": "Three wide on the outside",
+            "still_there": "Still there",
+        }
+
     def is_busy(self) -> bool:
         """
         Indique si le Spotter est actuellement engagé dans une situation critique

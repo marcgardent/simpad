@@ -7,10 +7,16 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass, field
 import time
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.engineer.context import EngineerContext
+
+try:
+    from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
+except ImportError:
+    ChannelRequirement = Any
+    TelemetryChannel = Any
 
 
 class RoleStatus(str, Enum):
@@ -32,9 +38,12 @@ class EngineerMessage:
 
 class BaseRole(ABC):
     """
-    Classe abstraite de base pour tous les rôles de l'ingénieur de course.
-    Chaque rôle a une responsabilité unique (Clean/Dirty lap, Traffic spotter, etc.),
-    une priorité configurable, et indique s'il est IDLE ou BUSY.
+    Classe abstraite de base pour tous les sous-plugins / rôles de l'ingénieur de course.
+    Chaque rôle :
+    - a une responsabilité unique (Clean/Dirty lap, Traffic spotter, etc.),
+    - déclare ses besoins d'abonnement télémétrie (ChannelRequirement),
+    - déclare les sons/phrases vocales nécessaires à son fonctionnement,
+    - a une priorité configurable et indique son état IDLE ou BUSY.
     """
 
     def __init__(
@@ -72,6 +81,20 @@ class BaseRole(ABC):
         Retourne un message s'il doit être prononcé, ou None.
         """
         pass
+
+    def get_channel_requirements(self) -> List[Any]:
+        """
+        Déclare les canaux de télémétrie et fréquences préférées requises par ce sous-plugin / rôle.
+        Le plugin principal RaceEngineer agrège les besoins de tous ses sous-plugins.
+        """
+        return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        """
+        Déclare le catalogue des sons / phrases vocales requis par ce sous-plugin (phrase_key -> texte à synthétiser).
+        Le plugin principal RaceEngineer agrège les sons et gère leur génération/vérification.
+        """
+        return {}
 
     def reset(self) -> None:
         """Réinitialise l'état interne du rôle."""

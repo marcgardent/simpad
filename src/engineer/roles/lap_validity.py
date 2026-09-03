@@ -110,6 +110,39 @@ class LapValidityRole(BaseRole):
             ),
         ]
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.TELEMETRY,
+                    preferred_hz=100,
+                    required=True,
+                    reason="Surveillance en temps réel des drapeaux de tour (mCountLapFlag) et infractions limites de piste",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.COMPACT_SCORING,
+                    preferred_hz=10,
+                    required=False,
+                    reason="Détection du franchissement de la ligne de chronométrage et secteurs",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        return {
+            "clean_lap": "Clean lap",
+            "dirty_lap": "Dirty lap",
+            "give_time_back": "Cut track, give time back",
+            "under_investigation": "Under investigation, lift",
+            "incident_cleared": "Incident cleared",
+            "time_cleared": "Time given back, cleared",
+            "no_penalty": "No penalty",
+            "lap_deleted": "Lap deleted",
+            "penalty_applied": "Penalty applied",
+        }
+
     def is_busy(self) -> bool:
         """Est occupé brièvement pendant la durée d'énonciation du message audio."""
         return (time.time() - self._last_event_time) < self.busy_duration_sec

@@ -263,6 +263,47 @@ class TrafficSpotterRole(BaseRole):
             ),
         ]
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.TELEMETRY,
+                    preferred_hz=100,
+                    required=True,
+                    reason="Vitesse longitudinale joueur et calcul de la distance relative",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.FULL_SCORING,
+                    preferred_hz=10,
+                    required=True,
+                    reason="Positions et vitesses scalaires des véhicules en approche (TTC)",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.COMPACT_SCORING,
+                    preferred_hz=10,
+                    required=False,
+                    reason="Longueur du circuit et spline pour calcul de distance arrière",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        return {
+            "incoming": "Incoming",
+            "traffic_5": "Traffic five",
+            "alongside": "Alongside",
+            "overlap": "Overlap",
+            "clear": "Clear",
+            "car_clear": "Car clear",
+            "one": "One",
+            "two": "Two",
+            "three": "Three",
+            "four": "Four",
+            "five": "Five",
+        }
+
     def is_busy(self) -> bool:
         """Le rôle est occupé dès qu'il suit activement une voiture (hors IDLE)."""
         return self.state != TrafficSpotterState.IDLE

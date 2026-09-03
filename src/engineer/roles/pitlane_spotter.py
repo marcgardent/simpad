@@ -148,6 +148,33 @@ class PitlaneSpotterRole(BaseRole):
             ),
         ]
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.TELEMETRY,
+                    preferred_hz=100,
+                    required=True,
+                    reason="Vitesse joueur et état stand (in_garage_stall / pit_state)",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.FULL_SCORING,
+                    preferred_hz=10,
+                    required=True,
+                    reason="Positions 3D et vitesses des adversaires dans la pitlane et fast lane",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        return {
+            "car": "Car",
+            "alongside": "Alongside",
+            "clear": "Clear",
+        }
+
     def is_busy(self) -> bool:
         """Est occupé si un danger d'unsafe release ou une alerte trafic est active."""
         return self.state in (

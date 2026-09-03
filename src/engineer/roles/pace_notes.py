@@ -180,6 +180,37 @@ class PaceNotesRole(BaseRole):
 
         return None
 
+    def get_channel_requirements(self) -> List[Any]:
+        try:
+            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+            return [
+                ChannelRequirement(
+                    channel=TelemetryChannel.TELEMETRY,
+                    preferred_hz=100,
+                    required=True,
+                    reason="Distance sur le tour (lap_dist) et vitesse instantanée pour anticipation des repères",
+                ),
+                ChannelRequirement(
+                    channel=TelemetryChannel.COMPACT_SCORING,
+                    preferred_hz=10,
+                    required=False,
+                    reason="Longueur du tour et validation de circuit",
+                ),
+            ]
+        except ImportError:
+            return []
+
+    def get_sound_requirements(self) -> Dict[str, str]:
+        sounds = {
+            "brake": "Brake",
+            "turn": "Turn",
+        }
+        for i in range(1, 31):
+            sounds[f"turn_{i}"] = f"Turn {i}"
+        for i in range(1, 9):
+            sounds[f"gear_{i}"] = f"Gear {i}"
+        return sounds
+
     def reset(self) -> None:
         """Réinitialise les marqueurs déclenchés et l'état du rôle."""
         self._triggered_ann_ids.clear()

@@ -150,6 +150,108 @@ class RaceEngineer:
         """Retourne la liste des rôles actuellement occupés."""
         return [r for r in self._roles if r.enabled and r.is_busy()]
 
+    # =========================================================================
+    # Aggregation of Sub-Plugin Requirements (Channels & Sounds)
+    # =========================================================================
+
+    def get_channel_requirements(self) -> List[Any]:
+        """
+        Agrège tous les besoins de canaux de télémétrie déclarés par les sous-plugins actifs.
+        Fusionne les canaux identiques en sélectionnant la fréquence maximale requise.
+        """
+        try:
+            from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
+        except ImportError:
+            return []
+
+        channel_map: Dict[TelemetryChannel, Dict[str, Any]] = {}
+
+        for role in self._roles:
+            if not role.enabled:
+                continue
+
+            reqs = role.get_channel_requirements()
+            for req in reqs:
+                ch = req.channel
+                if ch not in channel_map:
+                    channel_map[ch] = {
+                        "preferred_hz": req.preferred_hz,
+                        "required": req.required,
+                        "reasons": [f"[{role.name}] {req.reason}"] if req.reason else [f"[{role.name}]"],
+                    }
+                else:
+                    channel_map[ch]["preferred_hz"] = max(channel_map[ch]["preferred_hz"], req.preferred_hz)
+                    channel_map[ch]["required"] = channel_map[ch]["required"] or req.required
+                    if req.reason:
+                        channel_map[ch]["reasons"].append(f"[{role.name}] {req.reason}")
+
+        aggregated: List[ChannelRequirement] = []
+        for ch, data in channel_map.items():
+            aggregated.append(
+                ChannelRequirement(
+                    channel=ch,
+                    preferred_hz=data["preferred_hz"],
+                    required=data["required"],
+                    reason="; ".join(data["reasons"]),
+                )
+            )
+        return aggregated
+
+    def get_all_sound_requirements(self, only_enabled: bool = False) -> Dict[str, str]:
+        """
+        Agrège l'ensemble des phrases vocales requises par les sous-plugins.
+        Retourne un dictionnaire {phrase_key: texte_a_synthetiser}.
+        """
+        aggregated_sounds: Dict[str, str] = {}
+        for role in self._roles:
+            if only_enabled and not role.enabled:
+                continue
+            role_sounds = role.get_sound_requirements()
+            for key, text in role_sounds.items():
+                if key not in aggregated_sounds:
+                    aggregated_sounds[key] = text
+        return aggregated_sounds
+
+    def get_missing_sounds(self, sound_dir: Optional[Path] = None, only_enabled: bool = False) -> Dict[str, str]:
+        """
+        Vérifie sur le disque la présence des fichiers .wav requis par les sous-plugins
+        et retourne le dictionnaire des phrases manquantes à générer.
+        """
+        from src.utils.audio_baker import DEFAULT_SOUND_DIR
+        target_dir = Path(sound_dir or DEFAULT_SOUND_DIR)
+        all_required = self.get_all_sound_requirements(only_enabled=only_enabled)
+        missing: Dict[str, str] = {}
+        for key, text in all_required.items():
+            wav_file = target_dir / f"{key}.wav"
+            if not wav_file.exists():
+                missing[key] = text
+        return missing
+
+    def generate_missing_sounds(
+        self,
+        sound_dir: Optional[Path] = None,
+        model_path: Optional[Path] = None,
+        force: bool = False,
+    ) -> Tuple[int, int]:
+        """
+        Génère via Piper TTS tous les fichiers audio manquants déclarés par les sous-plugins.
+        Retourne un tuple (nb_generes, nb_deja_presents).
+        """
+        try:
+            from src.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
+            target_dir = Path(sound_dir or DEFAULT_SOUND_DIR)
+            model = Path(model_path or DEFAULT_MODEL_PATH)
+            required_phrases = self.get_all_sound_requirements(only_enabled=False)
+            return AudioBaker.bake_batch(
+                phrases=required_phrases,
+                output_dir=target_dir,
+                model_path=model,
+                force=force,
+            )
+        except Exception as e:
+            logger.error(f"[RaceEngineer] Échec de la génération audio TTS : {e}", exc_info=True)
+            return 0, 0
+
     def _get_active_reference_profile(self) -> Optional[Any]:
         """Résout le profil de tour de référence actif depuis le ReferenceLapManager du Core."""
         try:
