@@ -230,7 +230,7 @@ def test_race_engineer_manager_in_qualifying():
 
     # Seul le message d'invalidation de tour doit être émis, aucun message de trafic
     phrase_keys = [m.phrase_key for m in messages]
-    assert "dirty_lap" in phrase_keys
+    assert any(k in phrase_keys for k in ("dirty_lap", "lap_deleted"))
     assert "car" not in phrase_keys
     assert "alongside" not in phrase_keys
     assert "three" not in phrase_keys

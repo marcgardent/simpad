@@ -60,6 +60,8 @@ ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
     "mLocalVel": ["local_vel", "mLocalVel", "localVel"],
     "ori": ["ori", "mOri"],
     "mOri": ["ori", "mOri"],
+    "track_cut_state": ["track_cut_state", "track_limits_steps", "mTrackCutState", "mIncidentState", "incident_state", "cut_state", "investigation_state"],
+    "track_limits_steps": ["track_limits_steps", "track_cut_state"],
 }
 
 
@@ -80,6 +82,12 @@ def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
         for candidate in candidates:
             if candidate in veh and veh[candidate] is not None:
                 return veh[candidate]
+        # Recherche imbriquée dans "lmu"
+        lmu_dict = veh.get("lmu")
+        if isinstance(lmu_dict, dict):
+            for candidate in candidates:
+                if candidate in lmu_dict and lmu_dict[candidate] is not None:
+                    return lmu_dict[candidate]
         return default
 
     # 2. Si c'est un objet (ex: VehicleScoring de isimotor_rawudp_client)
@@ -88,6 +96,15 @@ def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
             val = getattr(veh, candidate)
             if val is not None:
                 return val
+
+    # Recherche dans l'extension typée lmu (LMUVehicleScoringExtension / LMUTelemetryExtension)
+    if hasattr(veh, "lmu") and getattr(veh, "lmu") is not None:
+        lmu_obj = getattr(veh, "lmu")
+        for candidate in candidates:
+            if hasattr(lmu_obj, candidate):
+                val = getattr(lmu_obj, candidate)
+                if val is not None:
+                    return val
 
     return default
 

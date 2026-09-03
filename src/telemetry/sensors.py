@@ -90,6 +90,7 @@ class VehicleSensors:
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
+    track_cut_state: Optional[Union[str, int]] = "green"
     has_delta_reference: bool = False
     is_pit_lap: bool = False
     last_lap_time: float = 0.0
@@ -157,6 +158,7 @@ class VehicleSensors:
         sector2_delta: float = 0.0,
         sector3_delta: float = 0.0,
         lap_flag: int = 2,
+        track_cut_state: Optional[Union[str, int]] = "green",
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
         last_lap_time: float = 0.0,
@@ -232,6 +234,7 @@ class VehicleSensors:
                 sector2_delta=sector2_delta,
                 sector3_delta=sector3_delta,
                 lap_flag=lap_flag,
+                track_cut_state=track_cut_state,
                 has_delta_reference=has_delta_reference,
                 is_pit_lap=is_pit_lap,
             )
@@ -350,6 +353,7 @@ class VehicleSensors:
             sector2_delta=sector2_delta,
             sector3_delta=sector3_delta,
             lap_flag=lap_flag,
+            track_cut_state=track_cut_state,
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
             last_lap_time=last_lap_time,
@@ -400,6 +404,7 @@ class VehicleSensors:
         sector2_delta: float = 0.0,
         sector3_delta: float = 0.0,
         lap_flag: int = 2,
+        track_cut_state: Optional[Union[str, int]] = "green",
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
         last_lap_time: float = 0.0,
@@ -535,6 +540,7 @@ class VehicleSensors:
             sector2_delta=sector2_delta,
             sector3_delta=sector3_delta,
             lap_flag=lap_flag,
+            track_cut_state=track_cut_state,
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
             last_lap_time=last_lap_time,

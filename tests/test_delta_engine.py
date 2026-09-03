@@ -28,6 +28,8 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertFalse(self.engine.has_reference)
         self.assertEqual(self.engine.live_delta, 0.0)
         self.assertEqual(self.engine.sector1_delta, 0.0)
+        self.assertEqual(self.engine.sector_1_time, 0.0)
+        self.assertEqual(self.engine.sector_2_time, 0.0)
 
     def test_invalid_lap_rejection(self):
         """Verify that invalid laps (mCountLapFlag != 2) or pit laps are rejected."""
@@ -103,8 +105,12 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertTrue(saved_file.exists())
         self.assertAlmostEqual(self.engine.sector_1_dist, 340.0, delta=10.0)
         self.assertAlmostEqual(self.engine.sector_2_dist, 670.0, delta=10.0)
+        self.assertGreater(self.engine.sector_1_time, 0.0)
+        self.assertGreater(self.engine.sector_2_time, 0.0)
         self.assertAlmostEqual(self.engine.all_time_best_profile.sector_1_dist, 340.0, delta=10.0)
         self.assertAlmostEqual(self.engine.all_time_best_profile.sector_2_dist, 670.0, delta=10.0)
+        self.assertAlmostEqual(self.engine.all_time_best_profile.sector_1_time, self.engine.sector_1_time)
+        self.assertAlmostEqual(self.engine.all_time_best_profile.sector_2_time, self.engine.sector_2_time)
 
         # 2. Drive Lap 2 faster (45 seconds pace -> delta should be negative / gain)
         # At dist 500m (halfway), ref_time was 25.0s. If current t_into is 22.5s, delta should be -2.5s

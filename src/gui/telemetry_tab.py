@@ -211,25 +211,7 @@ class TelemetryTab:
                         dpg.set_axis_ticks("axis_telem_y_gear", (('N', 0), ('1', 1), ('2', 2), ('3', 3), ('4', 4), ('5', 5), ('6', 6), ('7', 7), ('8', 8)))
                         dpg.add_stair_series([], [], label="Gear", tag="series_telem_gear")
 
-                    # Marqueurs de boucle de chrono Secteur 1 et Secteur 2
-                    dpg.add_drag_line(
-                        label="S1 Loop",
-                        tag="dragline_telem_s1_loop",
-                        vertical=True,
-                        default_value=-999.0,
-                        color=[0, 210, 255, 230],
-                        thickness=2.0,
-                        show=False,
-                    )
-                    dpg.add_drag_line(
-                        label="S2 Loop",
-                        tag="dragline_telem_s2_loop",
-                        vertical=True,
-                        default_value=-999.0,
-                        color=[180, 100, 255, 230],
-                        thickness=2.0,
-                        show=False,
-                    )
+
 
                     # Ligne verticale interactive pour le curseur blanc d'édition
                     dpg.add_drag_line(
@@ -640,39 +622,11 @@ class TelemetryTab:
         return [200, 200, 200, 255]
 
     def _render_markers_on_plot(self) -> None:
-        """Recrée toutes les lignes interactives (drag lines) sur le graphique DPG."""
+        """Recrée toutes les lignes interactives (drag lines) d'annotations sur le graphique DPG."""
         if not dpg.does_item_exist("plot_telemetry_studio"):
             return
 
-        # 1. Rendu des repères de boucles de chronométrage Secteur 1 et Secteur 2
-        s1_dist = self._profile.sector_1_dist if self._profile else 0.0
-        s2_dist = self._profile.sector_2_dist if self._profile else 0.0
-
-        if dpg.does_item_exist("dragline_telem_s1_loop"):
-            if s1_dist > 0.0:
-                t1_str = f" ({self._profile.sector_1_time:.2f}s)" if (self._profile and self._profile.sector_1_time > 0.0) else ""
-                dpg.configure_item(
-                    "dragline_telem_s1_loop",
-                    show=True,
-                    default_value=s1_dist,
-                    label=f"S1 Loop ({s1_dist:.0f}m{t1_str})",
-                )
-            else:
-                dpg.configure_item("dragline_telem_s1_loop", show=False)
-
-        if dpg.does_item_exist("dragline_telem_s2_loop"):
-            if s2_dist > 0.0:
-                t2_str = f" ({self._profile.sector_2_time:.2f}s)" if (self._profile and self._profile.sector_2_time > 0.0) else ""
-                dpg.configure_item(
-                    "dragline_telem_s2_loop",
-                    show=True,
-                    default_value=s2_dist,
-                    label=f"S2 Loop ({s2_dist:.0f}m{t2_str})",
-                )
-            else:
-                dpg.configure_item("dragline_telem_s2_loop", show=False)
-
-        # 2. Supprimer les anciennes lignes d'annotations utilisateur
+        # 1. Supprimer les anciennes lignes d'annotations utilisateur
         for tag in list(self._annotation_drag_tags.values()):
             if dpg.does_item_exist(tag):
                 dpg.delete_item(tag)
@@ -861,6 +815,8 @@ class TelemetryTab:
                 t_grid=delta_eng._ref_t_grid or [],
                 sector_1_dist=delta_eng.sector_1_dist,
                 sector_2_dist=delta_eng.sector_2_dist,
+                sector_1_time=delta_eng.sector_1_time,
+                sector_2_time=delta_eng.sector_2_time,
             )
             self._sync_profile_to_engine()
         self._update_all_ui()

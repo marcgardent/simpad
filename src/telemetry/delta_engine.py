@@ -1122,6 +1122,20 @@ class DeltaEngine:
         return self._player_s2_dist
 
     @property
+    def sector_1_time(self) -> float:
+        """Temps en secondes au passage de la boucle Secteur 1."""
+        if self._current_profile and self._current_profile.sector_1_time > 0.0:
+            return self._current_profile.sector_1_time
+        return self._player_s1_time
+
+    @property
+    def sector_2_time(self) -> float:
+        """Temps en secondes au passage de la boucle Secteur 2."""
+        if self._current_profile and self._current_profile.sector_2_time > 0.0:
+            return self._current_profile.sector_2_time
+        return self._player_s2_time
+
+    @property
     def has_reference(self) -> bool:
         return self._ref_t_grid is not None and self._ref_num_points > 0
 

@@ -104,6 +104,7 @@ class UDPServer:
                     self._latest_data.total_laps = snap.total_laps
                     self._latest_data.laps_completed = snap.laps_completed
                     self._latest_data.lap_flag = snap.lap_flag
+                    self._latest_data.track_cut_state = snap.track_cut_state
                 else:
                     self._latest_data = snap
 
@@ -129,6 +130,7 @@ class UDPServer:
                     self._latest_data.total_laps = snap.total_laps
                     self._latest_data.laps_completed = snap.laps_completed
                     self._latest_data.lap_flag = snap.lap_flag
+                    self._latest_data.track_cut_state = snap.track_cut_state
                 else:
                     self._latest_data = snap
 

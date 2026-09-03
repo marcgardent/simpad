@@ -62,7 +62,11 @@
     "lap_validity": {
       "enabled": true,
       "priority": 70,
-      "busy_duration_sec": 1.8
+      "busy_duration_sec": 1.8,
+      "announce_investigation": true,
+      "announce_cleared": true,
+      "announce_penalty": true,
+      "use_actionable_prompt": true
     }
   },
   "order": [

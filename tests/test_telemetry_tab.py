@@ -126,8 +126,6 @@ class TestTelemetryTab(unittest.TestCase):
         self.assertTrue(dpg.does_item_exist("lbl_telem_s1_loop"))
         self.assertTrue(dpg.does_item_exist("lbl_telem_s2_loop"))
         self.assertTrue(dpg.does_item_exist("lbl_hud_cursor_sector"))
-        self.assertTrue(dpg.does_item_exist("dragline_telem_s1_loop"))
-        self.assertTrue(dpg.does_item_exist("dragline_telem_s2_loop"))
         self.assertTrue(dpg.does_item_exist("series_telem_gear"))
         self.assertTrue(dpg.does_item_exist("shade_telem_s1"))
         self.assertTrue(dpg.does_item_exist("shade_telem_s2"))
@@ -209,6 +207,18 @@ class TestTelemetryTab(unittest.TestCase):
         self.assertIsNotNone(self.tab._profile)
         self.assertEqual(self.tab._profile.lap_time, 138.750)
         self.assertEqual(dpg.get_value("lbl_telem_lap_time"), "2:18.750")
+
+    def test_build_tab_without_initial_profile(self):
+        """Vérifie que la construction de l'onglet sans profil actif préalable (démarrage SimPad) ne lève pas d'exception."""
+        tab = TelemetryTab()
+        self.assertIsNone(tab._profile)
+        with dpg.window(label="Test Window Startup"):
+            tab.build_tab(parent_app=None)
+        # Verify default UI labels when no profile is active
+        self.assertEqual(dpg.get_value("lbl_telem_lap_time"), "--")
+        self.assertEqual(dpg.get_value("lbl_telem_track_len"), "--")
+        self.assertEqual(dpg.get_value("lbl_telem_s1_loop"), "--")
+        self.assertEqual(dpg.get_value("lbl_telem_s2_loop"), "--")
 
 
 if __name__ == "__main__":

@@ -246,6 +246,55 @@ class AudioAnnouncer:
         cls._play_file("dirty_lap")
 
     @classmethod
+    def play_give_time_back(cls, interrupt: bool = True) -> None:
+        """Déclenche l'alerte d'action immédiate : Cut track, give time back (give_time_back.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: GIVE TIME BACK")
+        print("[AUDIO] Playing announcement: GIVE TIME BACK", flush=True)
+        cls._play_file("give_time_back", interrupt=interrupt)
+
+    @classmethod
+    def play_under_investigation(cls, interrupt: bool = True) -> None:
+        """Déclenche l'alerte d'investigation : Under investigation (under_investigation.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: UNDER INVESTIGATION")
+        print("[AUDIO] Playing announcement: UNDER INVESTIGATION", flush=True)
+        cls._play_file("under_investigation", interrupt=interrupt)
+
+    @classmethod
+    def play_incident_cleared(cls) -> None:
+        """Déclenche l'annonce de blanchiment : Incident cleared (incident_cleared.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: INCIDENT CLEARED")
+        print("[AUDIO] Playing announcement: INCIDENT CLEARED", flush=True)
+        cls._play_file("incident_cleared")
+
+    @classmethod
+    def play_time_cleared(cls) -> None:
+        """Déclenche l'annonce de temps rendu : Time given back, cleared (time_cleared.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: TIME CLEARED")
+        print("[AUDIO] Playing announcement: TIME CLEARED", flush=True)
+        cls._play_file("time_cleared")
+
+    @classmethod
+    def play_no_penalty(cls) -> None:
+        """Déclenche l'annonce d'absence de pénalité : No penalty (no_penalty.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: NO PENALTY")
+        print("[AUDIO] Playing announcement: NO PENALTY", flush=True)
+        cls._play_file("no_penalty")
+
+    @classmethod
+    def play_lap_deleted(cls) -> None:
+        """Déclenche l'annonce d'invalidation de tour : Lap deleted (lap_deleted.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: LAP DELETED")
+        print("[AUDIO] Playing announcement: LAP DELETED", flush=True)
+        cls._play_file("lap_deleted")
+
+    @classmethod
+    def play_penalty_applied(cls) -> None:
+        """Déclenche l'annonce de pénalité : Penalty applied (penalty_applied.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: PENALTY APPLIED")
+        print("[AUDIO] Playing announcement: PENALTY APPLIED", flush=True)
+        cls._play_file("penalty_applied")
+
+    @classmethod
     def play_lap(cls) -> None:
         """Déclenche le son : Lap (lap.wav)."""
         cls._play_file("lap")
