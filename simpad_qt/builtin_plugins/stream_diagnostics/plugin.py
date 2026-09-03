@@ -48,7 +48,7 @@ class StreamDiagnosticsWidget(QWidget):
 
         # UI Refresh timer at 15 Hz for smooth stats rendering
         self._timer = QTimer(self)
-        self._timer.setInterval(66)
+        self._timer.setInterval(250)  # 4 Hz refresh rate
         self._timer.timeout.connect(self._refresh_ui)
         self._timer.start()
 
@@ -159,7 +159,7 @@ class StreamDiagnosticsWidget(QWidget):
         self.btn_pause.setText("▶️ Resume" if self._is_paused else "⏸️ Freeze")
 
     def _refresh_ui(self) -> None:
-        if self._is_paused:
+        if not self.isVisible() or self._is_paused:
             return
 
         now = time.time()

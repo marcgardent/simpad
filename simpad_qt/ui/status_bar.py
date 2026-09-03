@@ -96,11 +96,15 @@ class SimPadCoreStatusBar(QStatusBar):
         self.addPermanentWidget(self.badge_overlay)
 
     def _style_badge(self, label: QLabel, text: str, bg: str, fg: str, border: str) -> None:
-        label.setText(text)
-        label.setStyleSheet(
-            f"background-color: {bg}; color: {fg}; border: 1px solid {border}; "
-            f"border-radius: 4px; padding: 2px 8px; font-weight: 600; font-size: 11px;"
-        )
+        if label.text() != text:
+            label.setText(text)
+        style_key = f"{bg}_{fg}_{border}"
+        if getattr(label, "_current_style_key", None) != style_key:
+            setattr(label, "_current_style_key", style_key)
+            label.setStyleSheet(
+                f"background-color: {bg}; color: {fg}; border: 1px solid {border}; "
+                f"border-radius: 4px; padding: 2px 8px; font-weight: 600; font-size: 11px;"
+            )
 
     def _on_game_status_changed(self, status: GameStatus) -> None:
         self.overlay_state_machine.update_game_status(status)

@@ -73,9 +73,9 @@ class OverlayStateMachine(QObject):
         self._latest_sensors = VehicleSensors()
         self._last_telemetry_timestamp: float = 0.0
 
-        # Ultra-fast monitor timer to detect telemetry stream stop (e.g. exit to main menu) (50ms)
+        # Watchdog monitor timer to detect telemetry stream stop (e.g. exit to main menu) (200ms / 5 Hz)
         self._monitor_timer = QTimer(self)
-        self._monitor_timer.setInterval(50)
+        self._monitor_timer.setInterval(200)
         self._monitor_timer.timeout.connect(self._evaluate_state)
         self._monitor_timer.start()
 

@@ -32,6 +32,7 @@ class AppSettings:
 class SimPadQtConfig:
     """Root configuration data structure."""
     app: AppSettings = field(default_factory=AppSettings)
+    plugins_enabled: Dict[str, bool] = field(default_factory=dict)
     plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
@@ -59,8 +60,17 @@ class ConfigManager:
                     app_settings = AppSettings(**{
                         k: v for k, v in app_dict.items() if k in AppSettings.__dataclass_fields__
                     })
+                    plugins_enabled_dict = raw_data.get("plugins_enabled", {})
+                    if not isinstance(plugins_enabled_dict, dict):
+                        plugins_enabled_dict = {}
                     plugins_dict = raw_data.get("plugins", {})
-                    self.config = SimPadQtConfig(app=app_settings, plugins=plugins_dict)
+                    if not isinstance(plugins_dict, dict):
+                        plugins_dict = {}
+                    self.config = SimPadQtConfig(
+                        app=app_settings,
+                        plugins_enabled=plugins_enabled_dict,
+                        plugins=plugins_dict,
+                    )
             logger.info(f"Successfully loaded strongly-typed config from '{self.config_file}'")
         except Exception as e:
             logger.error(f"Error loading config file '{self.config_file}': {e}")
@@ -75,6 +85,16 @@ class ConfigManager:
             logger.debug(f"Saved config to '{self.config_file}'")
         except Exception as e:
             logger.error(f"Error saving config to '{self.config_file}': {e}")
+
+    def is_plugin_enabled(self, plugin_id: str, default: bool = True) -> bool:
+        """Check whether a plugin is enabled in persisted configuration."""
+        return self.config.plugins_enabled.get(plugin_id, default)
+
+    def set_plugin_enabled(self, plugin_id: str, enabled: bool, auto_save: bool = True) -> None:
+        """Set and persist the enabled state of a plugin."""
+        self.config.plugins_enabled[plugin_id] = bool(enabled)
+        if auto_save:
+            self.save()
 
     def get_plugin_config_as(self, plugin_id: str, dataclass_cls: Type[T]) -> T:
         """Instantiate a strongly-typed dataclass from persisted plugin configuration."""

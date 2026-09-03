@@ -81,9 +81,9 @@ class TelemetryBus(QObject):
             ch: deque() for ch in TelemetryChannel
         }
 
-        # Metrics calculation timer (10 Hz)
+        # Metrics calculation timer (2 Hz / 500ms)
         self._metrics_timer = QTimer(self)
-        self._metrics_timer.setInterval(100)
+        self._metrics_timer.setInterval(500)
         self._metrics_timer.timeout.connect(self._recalculate_metrics)
         self._metrics_timer.start()
 

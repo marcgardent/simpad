@@ -713,3 +713,85 @@ def test_official_cockpit_hud_tab_and_preview(qapp, tmp_path):
     assert "KM/H" in tab.lbl_speed_gear.text()
     assert "THR: 75%" in tab.lbl_pedals.text()
 
+
+def test_plugin_activation_persistence(qapp, tmp_path):
+    """Test that plugin activation/disablement is saved to configuration and restored on reload."""
+    cfg_file = tmp_path / "config_persistence.json"
+    cfg_mgr = ConfigManager(config_file=cfg_file)
+
+    # 1. By default, unconfigured plugin is enabled
+    assert cfg_mgr.is_plugin_enabled("test.dummy") is True
+
+    # 2. Register plugin in PluginManager -> starts ENABLED by default
+    pm = PluginManager(cfg_mgr)
+    plugin = DummyTestPlugin()
+    pm.register_plugin(plugin)
+    assert plugin.state == PluginState.ENABLED
+
+    # 3. Disable plugin via PluginManager -> updates state and persists in config file
+    pm.disable_plugin("test.dummy")
+    assert plugin.state == PluginState.DISABLED
+    assert cfg_mgr.is_plugin_enabled("test.dummy") is False
+
+    # 4. Create fresh ConfigManager from saved JSON file and verify persisted state
+    cfg_mgr_reloaded = ConfigManager(config_file=cfg_file)
+    assert cfg_mgr_reloaded.is_plugin_enabled("test.dummy") is False
+
+    # 5. Create fresh PluginManager with reloaded config and register plugin -> must load as DISABLED
+    pm2 = PluginManager(cfg_mgr_reloaded)
+    plugin2 = DummyTestPlugin()
+    pm2.register_plugin(plugin2)
+    assert plugin2.state == PluginState.DISABLED
+    assert len(pm2.get_tab_providers()) == 0
+
+    # 6. Re-enable plugin via PluginManager -> persists True
+    pm2.enable_plugin("test.dummy")
+    assert plugin2.state == PluginState.ENABLED
+    assert cfg_mgr_reloaded.is_plugin_enabled("test.dummy") is True
+    assert len(pm2.get_tab_providers()) == 1
+
+    # 7. Reload again to verify re-enabled persistence
+    cfg_mgr_reloaded2 = ConfigManager(config_file=cfg_file)
+    assert cfg_mgr_reloaded2.is_plugin_enabled("test.dummy") is True
+
+
+def test_plugin_context_activation_methods(tmp_path):
+    """Test PluginContext is_enabled and set_enabled methods."""
+    cfg_file = tmp_path / "config_ctx.json"
+    cfg_mgr = ConfigManager(config_file=cfg_file)
+    ctx = PluginContext("test.my_plugin", cfg_mgr)
+
+    assert ctx.is_enabled() is True
+    ctx.set_enabled(False)
+    assert ctx.is_enabled() is False
+    assert cfg_mgr.is_plugin_enabled("test.my_plugin") is False
+
+    ctx.set_enabled(True)
+    assert ctx.is_enabled() is True
+    assert cfg_mgr.is_plugin_enabled("test.my_plugin") is True
+
+
+def test_plugin_manager_widget_toggle_persists_config(qapp, tmp_path):
+    """Test that toggling plugin in PluginManagerWidget persists state to config file."""
+    from simpad_qt.ui.plugin_manager_widget import PluginManagerWidget
+
+    cfg_file = tmp_path / "config_ui.json"
+    cfg_mgr = ConfigManager(config_file=cfg_file)
+    pm = PluginManager(cfg_mgr)
+    plugin = DummyTestPlugin()
+    pm.register_plugin(plugin)
+
+    widget = PluginManagerWidget(pm)
+    assert plugin.state == PluginState.ENABLED
+
+    # Trigger toggle in UI
+    widget._toggle_plugin("test.dummy")
+    assert plugin.state == PluginState.DISABLED
+    assert cfg_mgr.is_plugin_enabled("test.dummy") is False
+
+    # Toggle back
+    widget._toggle_plugin("test.dummy")
+    assert plugin.state == PluginState.ENABLED
+    assert cfg_mgr.is_plugin_enabled("test.dummy") is True
+
+

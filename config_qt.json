@@ -9,5 +9,9 @@
     "delta_freeze_duration": 3.5,
     "delta_ema_samples": 0
   },
+  "plugins_enabled": {
+    "simpad.builtin.gear_speed_hud": false,
+    "simpad.builtin.pedal_monitor": false
+  },
   "plugins": {}
 }

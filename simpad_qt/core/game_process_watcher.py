@@ -8,7 +8,8 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-from PySide6.QtCore import QObject, Signal, QTimer
+import threading
+from PySide6.QtCore import QObject, Signal
 
 from src.utils.window_utils import (
     get_lmu_window_status,
@@ -40,19 +41,23 @@ class GameStatus:
 
 class GameProcessWatcher(QObject):
     """
-    Background timer-based watcher for game process and window focus transitions.
-    Emits signals on state changes for the host status bar and overlay manager.
+    Background worker thread-based watcher for game process and window focus transitions.
+    Executes all /proc and subprocess inspections off the main GUI thread to eliminate UI stutter.
     """
 
     status_changed = Signal(object)  # GameStatus
 
     def __init__(self, poll_interval_ms: int = 500, parent: Optional[QObject] = None):
         super().__init__(parent)
+        self._poll_interval = max(0.1, poll_interval_ms / 1000.0)
         self._current_status = GameStatus(
             state=GameFocusState.NOT_RUNNING,
             is_running=False,
             is_foreground=False,
         )
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._wake_event = threading.Event()
 
         try:
             from src.utils.window_utils import get_window_manager
@@ -61,31 +66,45 @@ class GameProcessWatcher(QObject):
         except Exception:
             self._wm = None
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(poll_interval_ms)
-        self._timer.timeout.connect(self._poll_status)
-
     @property
     def current_status(self) -> GameStatus:
         return self._current_status
 
     def _on_wm_focus_event(self) -> None:
         """Reactive 0ms callback triggered by native window manager focus events."""
-        self._poll_status()
+        self._wake_event.set()
 
     def start(self) -> None:
-        """Start polling and monitoring window state."""
-        self._poll_status()
-        self._timer.start()
+        """Start asynchronous background polling thread."""
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._worker_loop,
+            daemon=True,
+            name="GameProcessWatcherThread"
+        )
+        self._thread.start()
 
     def stop(self) -> None:
-        """Stop polling and detach focus listener."""
-        self._timer.stop()
+        """Stop polling thread and detach focus listener."""
+        self._running = False
+        self._wake_event.set()
         if self._wm:
             try:
                 self._wm.remove_focus_listener(self._on_wm_focus_event)
             except Exception:
                 pass
+
+    def _worker_loop(self) -> None:
+        """Background thread executing all process inspection without blocking the Qt event loop."""
+        while self._running:
+            try:
+                self._poll_status()
+            except Exception as e:
+                logger.debug(f"Error in background process watcher: {e}")
+            self._wake_event.wait(timeout=self._poll_interval)
+            self._wake_event.clear()
 
     def _poll_status(self) -> None:
         raw_status = get_lmu_window_status()

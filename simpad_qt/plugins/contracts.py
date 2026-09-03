@@ -102,6 +102,17 @@ class PluginContext:
         """Persist a strongly-typed dataclass configuration."""
         self._config_manager.set_plugin_config_from(self.plugin_id, config_obj, auto_save=auto_save)
 
+    def is_enabled(self) -> bool:
+        """Check if this plugin is enabled in configuration."""
+        if hasattr(self._config_manager, "is_plugin_enabled"):
+            return self._config_manager.is_plugin_enabled(self.plugin_id)
+        return True
+
+    def set_enabled(self, enabled: bool, auto_save: bool = True) -> None:
+        """Persist plugin enabled state in configuration."""
+        if hasattr(self._config_manager, "set_plugin_enabled"):
+            self._config_manager.set_plugin_enabled(self.plugin_id, enabled, auto_save=auto_save)
+
 
 class SimPadPlugin(ABC):
     """

@@ -106,7 +106,7 @@ class PluginManager(QObject):
         return None
 
     def register_plugin(self, plugin: SimPadPlugin, file_path: Optional[Path] = None) -> bool:
-        """Register, initialize, and enable a plugin instance."""
+        """Register, initialize, and activate/deactivate a plugin instance based on saved config."""
         pid = plugin.metadata.id
         if pid in self._plugins:
             self.logger.warning(f"Plugin with ID '{pid}' is already registered. Overwriting.")
@@ -121,10 +121,22 @@ class PluginManager(QObject):
 
         try:
             plugin.on_load(ctx)
-            plugin.on_enable()
-            self.logger.info(f"Loaded and enabled plugin: '{plugin.metadata.name}' (v{plugin.metadata.version}) [{pid}]")
-            self.plugin_loaded.emit(pid)
-            self.plugin_state_changed.emit(pid, PluginState.ENABLED)
+
+            # Check if plugin is enabled in saved configuration (defaults to True)
+            is_enabled = True
+            if self.config_manager and hasattr(self.config_manager, "is_plugin_enabled"):
+                is_enabled = self.config_manager.is_plugin_enabled(pid, default=True)
+
+            if is_enabled:
+                plugin.on_enable()
+                self.logger.info(f"Loaded and enabled plugin: '{plugin.metadata.name}' (v{plugin.metadata.version}) [{pid}]")
+                self.plugin_loaded.emit(pid)
+                self.plugin_state_changed.emit(pid, PluginState.ENABLED)
+            else:
+                plugin.state = PluginState.DISABLED
+                self.logger.info(f"Loaded plugin (disabled in configuration): '{plugin.metadata.name}' (v{plugin.metadata.version}) [{pid}]")
+                self.plugin_loaded.emit(pid)
+                self.plugin_state_changed.emit(pid, PluginState.DISABLED)
             return True
         except Exception as e:
             self.logger.error(f"Error during on_load for plugin '{pid}': {e}\n{traceback.format_exc()}")
@@ -138,11 +150,14 @@ class PluginManager(QObject):
             self.plugin_faulted.emit(report)
             return False
 
-    def enable_plugin(self, plugin_id: str) -> bool:
-        """Enable a loaded or disabled plugin."""
+    def enable_plugin(self, plugin_id: str, save_config: bool = True) -> bool:
+        """Enable a loaded or disabled plugin and persist state to configuration."""
         plugin = self._plugins.get(plugin_id)
         if not plugin:
             return False
+
+        if save_config and self.config_manager and hasattr(self.config_manager, "set_plugin_enabled"):
+            self.config_manager.set_plugin_enabled(plugin_id, True)
 
         if plugin.state == PluginState.ENABLED:
             return True
@@ -165,11 +180,17 @@ class PluginManager(QObject):
             self.plugin_faulted.emit(report)
             return False
 
-    def disable_plugin(self, plugin_id: str) -> bool:
-        """Disable an enabled plugin."""
+    def disable_plugin(self, plugin_id: str, save_config: bool = True) -> bool:
+        """Disable an enabled plugin and persist state to configuration."""
         plugin = self._plugins.get(plugin_id)
-        if not plugin or plugin.state == PluginState.DISABLED:
+        if not plugin:
             return False
+
+        if save_config and self.config_manager and hasattr(self.config_manager, "set_plugin_enabled"):
+            self.config_manager.set_plugin_enabled(plugin_id, False)
+
+        if plugin.state == PluginState.DISABLED:
+            return True
 
         try:
             plugin.on_disable()
