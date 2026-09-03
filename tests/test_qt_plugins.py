@@ -29,6 +29,8 @@ from simpad_qt.ui.slot_compositor import HudSlotCompositor
 from simpad_qt.ui.status_bar import SimPadCoreStatusBar
 from simpad_qt.builtin_plugins.gear_speed_hud import GearSpeedHudPlugin
 from simpad_qt.builtin_plugins.gear_speed_hud.plugin import GearSpeedConfig
+from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
+from simpad_qt.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudConfig
 from simpad_qt.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
 from simpad_qt.builtin_plugins.pedal_monitor.plugin import PedalMonitorConfig
 from simpad_qt.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
@@ -551,19 +553,163 @@ def test_window_focus_studio_parent_vs_lmu_and_hud():
     from src.utils.window_utils import get_window_manager
 
     wm = get_window_manager()
+    orig_get_pids = wm.get_lmu_pids
+    try:
+        wm.get_lmu_pids = lambda: {77777}
 
-    # 1. SimPad Studio Console window focused -> MUST NOT be LMU foreground!
-    wm._active_window_info = ("SimPad Studio Console (Qt6 Pure)", "simpad", 99999)
-    assert wm.is_lmu_foreground() is False
+        # 1. SimPad Studio Console window focused -> MUST NOT be LMU foreground!
+        wm._active_window_info = ("SimPad Studio Console (Qt6 Pure)", "simpad", 99999)
+        assert wm.is_lmu_foreground() is False
 
-    # 2. Third-party app (e.g. Chrome / Discord / Desktop) -> False
-    wm._active_window_info = ("Google Chrome", "google-chrome", 88888)
-    assert wm.is_lmu_foreground() is False
+        # 2. Third-party app (e.g. Chrome / Discord / Desktop) -> False
+        wm._active_window_info = ("Google Chrome", "google-chrome", 88888)
+        assert wm.is_lmu_foreground() is False
 
-    # 3. Transparent HUD Overlay floating over game -> True
-    wm._active_window_info = ("SimPad Qt6 HUD Overlay", "simpad", 99999)
-    assert wm.is_lmu_foreground() is True
+        # 3. Transparent HUD Overlay floating over game -> True
+        wm._active_window_info = ("SimPad Qt6 HUD Overlay", "simpad", 99999)
+        assert wm.is_lmu_foreground() is True
 
-    # 4. Le Mans Ultimate game focused -> True
-    wm._active_window_info = ("Le Mans Ultimate", "lemansultimate", 77777)
-    assert wm.is_lmu_foreground() is True
+        # 4. Le Mans Ultimate game focused -> True
+        wm._active_window_info = ("Le Mans Ultimate", "lemansultimate", 77777)
+        assert wm.is_lmu_foreground() is True
+    finally:
+        wm.get_lmu_pids = orig_get_pids
+
+
+def test_official_cockpit_hud_plugin_lifecycle_and_typed_config(qapp, tmp_path):
+    """Test OfficialCockpitHudPlugin lifecycle, typed configuration, and scaling."""
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    plugin = OfficialCockpitHudPlugin()
+    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    plugin.on_load(ctx)
+    plugin.on_enable()
+
+    assert isinstance(plugin.config, OfficialCockpitHudConfig)
+    assert plugin.config.slot == HudSlot.COCKPIT_CENTER
+    assert plugin.config.hud_enabled is True
+    assert plugin.config.speed_unit == "kmh"
+    assert plugin.config.scale == 1.0
+    assert plugin.preferred_slot == HudSlot.COCKPIT_CENTER
+    assert plugin.get_hud_size() == QSize(640, 300)
+
+    # Test scaling
+    plugin.config.scale = 1.2
+    assert plugin.get_hud_size() == QSize(768, 360)
+
+    # Test channel requirements
+    reqs = plugin.get_channel_requirements()
+    assert len(reqs) >= 2
+    assert any(r.channel == TelemetryChannel.TELEMETRY for r in reqs)
+    assert any(r.channel == TelemetryChannel.COMPACT_SCORING for r in reqs)
+
+
+def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
+    """Test telemetry ingestion and full offscreen vector rendering for all 11 modular HUD widgets."""
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    plugin = OfficialCockpitHudPlugin()
+    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    plugin.on_load(ctx)
+    plugin.on_enable()
+
+    sensors = VehicleSensors(
+        vehicle_speed=55.0,  # ~198 km/h
+        gear=3,
+        engine_rpm=6800.0,
+        engine_max_rpm=8500.0,
+        unfiltered_throttle=0.90,
+        unfiltered_brake=0.45,
+        ecu_abs_active_raw=True,
+        ecu_tc_active_raw=True,
+        ecu_abs_level=4,
+        ecu_tc_level=3,
+        delta_time=-0.320,
+        has_delta_reference=True,
+        front_left_lock=0.35,
+        rear_left_spin=0.40,
+        front_left_lat_slip=0.25,
+        front_left_lat_signed=-0.50,
+        explicit_aero_load=0.75,
+        lap_flag=2,
+        fuel_level=42.5,
+        remaining_laps=18,
+        sector1_time="32.105",
+        sector1_status="purple",
+        sector2_time="44.230",
+        sector2_status="green",
+        sector3_time="31.890",
+        sector3_status="default",
+    )
+
+    plugin.on_telemetry_frame(sensors)
+
+    # 1. Full vector render (Metric KM/H)
+    img = QImage(640, 300, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(0)
+    painter = QPainter(img)
+    try:
+        plugin.paint_hud(painter, 640.0, 300.0, sensors)
+    finally:
+        painter.end()
+
+    assert not img.isNull()
+
+    # 2. MPH Mode
+    plugin.config.speed_unit = "mph"
+    img_mph = QImage(640, 300, QImage.Format.Format_ARGB32_Premultiplied)
+    img_mph.fill(0)
+    painter_mph = QPainter(img_mph)
+    try:
+        plugin.paint_hud(painter_mph, 640.0, 300.0, sensors)
+    finally:
+        painter_mph.end()
+
+    assert not img_mph.isNull()
+
+    # 3. Lap Freeze Mode (Finish line crossing)
+    sensors_freeze = VehicleSensors(
+        vehicle_speed=50.0,
+        gear=4,
+        last_lap_time=92.45,
+        last_lap_time_str="01:32.450",
+        last_lap_status="purple",
+        is_lap_freeze_active=True,
+        lap_flag=2,
+    )
+    img_freeze = QImage(640, 300, QImage.Format.Format_ARGB32_Premultiplied)
+    img_freeze.fill(0)
+    painter_freeze = QPainter(img_freeze)
+    try:
+        plugin.paint_hud(painter_freeze, 640.0, 300.0, sensors_freeze)
+    finally:
+        painter_freeze.end()
+
+    assert not img_freeze.isNull()
+
+
+def test_official_cockpit_hud_tab_and_preview(qapp, tmp_path):
+    """Test Studio Tab instantiation, interactive UI controls and live preview update."""
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    plugin = OfficialCockpitHudPlugin()
+    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    plugin.on_load(ctx)
+    plugin.on_enable()
+
+    assert plugin.get_tab_title() == "Cockpit HUD"
+    assert plugin.get_tab_icon() == "🏎️"
+
+    tab = plugin.create_tab_widget()
+    assert tab is not None
+
+    sensors = VehicleSensors(
+        vehicle_speed=40.0,
+        gear=2,
+        engine_rpm=5500.0,
+        unfiltered_throttle=0.75,
+        unfiltered_brake=0.20,
+    )
+    plugin.on_telemetry_frame(sensors)
+    tab.update_telemetry_ui(sensors)
+
+    assert "KM/H" in tab.lbl_speed_gear.text()
+    assert "THR: 75%" in tab.lbl_pedals.text()
+

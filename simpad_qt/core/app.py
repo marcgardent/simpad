@@ -16,6 +16,7 @@ from simpad_qt.core.config import ConfigManager
 from simpad_qt.core.game_plugin_manager import GamePluginManager
 from simpad_qt.core.game_process_watcher import GameProcessWatcher
 from simpad_qt.core.overlay_state_machine import OverlayStateMachine, OverlayDisplayMode
+from simpad_qt.core.reference_lap import ReferenceLapManager
 from simpad_qt.core.telemetry_bus import TelemetryBus
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.ui.main_window import SimPadQtMainWindow
@@ -55,11 +56,17 @@ class SimPadQtApp:
         self.process_watcher.status_changed.connect(self.overlay_state_machine.update_game_status)
         self.process_watcher.start()
 
-        # 5. SimPad Plugin Manager (with strongly-typed ConfigManager)
+        # 5. Core Reference Lap & Delta Manager
+        self.reference_lap_mgr = ReferenceLapManager(config_manager=self.config_mgr)
+
+        # 6. SimPad Plugin Manager (with strongly-typed ConfigManager)
         self.plugin_manager = PluginManager(config_manager=self.config_mgr)
 
-        # 6. Telemetry Bus (Ingestion pipeline)
-        self.telemetry_bus = TelemetryBus(self.plugin_manager)
+        # 7. Telemetry Bus (Ingestion pipeline)
+        self.telemetry_bus = TelemetryBus(
+            plugin_manager=self.plugin_manager,
+            reference_lap_mgr=self.reference_lap_mgr,
+        )
         self.telemetry_bus.telemetry_updated.connect(self.overlay_state_machine.update_telemetry)
 
         # 7. Start telemetry stream (Live UDP server by default, or Mock Feeder if enabled)

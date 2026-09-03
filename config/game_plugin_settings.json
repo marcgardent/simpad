@@ -4,8 +4,8 @@
   "inbound_port": 5001,
   "enable_logging": false,
   "rates": {
-    "TELEMETRY": "unlimited",
-    "OPPONENT_TELEMETRY": "off",
+    "TELEMETRY": "100Hz",
+    "OPPONENT_TELEMETRY": "10Hz",
     "COMPACT_SCORING": "10Hz",
     "FULL_SCORING": "5Hz",
     "WEATHER": "1Hz",

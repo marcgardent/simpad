@@ -1,6 +1,6 @@
 """
 SimPad Qt6 Mock Telemetry Generator.
-Generates realistic racing telemetry waveforms for offline testing and visualization.
+Generates realistic racing telemetry waveforms, sectors, and live deltas for offline testing and visualization.
 """
 
 import math
@@ -13,7 +13,7 @@ from src.telemetry.sensors import VehicleSensors
 class MockTelemetryGenerator(QObject):
     """
     Generates realistic 60 FPS vehicle telemetry simulating a GT3/Hypercar lap.
-    Emits VehicleSensors at regular intervals.
+    Emits VehicleSensors at regular intervals with coordinated physics, timing, and deltas.
     """
 
     frame_ready = Signal(object)  # VehicleSensors
@@ -27,10 +27,16 @@ class MockTelemetryGenerator(QObject):
 
         self._t: float = 0.0
         self._running = False
+        self._lap_count = 1
+        self._lap_dist = 0.0
+        self._track_len = 4500.0  # 4.5 km track
+        self._freeze_until = 0.0
+        self._last_completed_time = 89.742
 
     def start(self) -> None:
         self._running = True
         self._t = 0.0
+        self._lap_dist = 0.0
         self._timer.start()
 
     def stop(self) -> None:
@@ -139,13 +145,53 @@ class MockTelemetryGenerator(QObject):
                 sensors.gear = 4
                 sensors.engine_rpm = 5200 + (spd_kmh - 130) * 60
 
-        # Session data
-        sensors.fuel_level = 45.2 - (self._t * 0.01)
+        # Advance track distance
+        self._lap_dist += sensors.vehicle_speed * dt
+        if self._lap_dist >= self._track_len:
+            self._lap_dist -= self._track_len
+            self._lap_count += 1
+            self._freeze_until = time.time() + 4.0
+            self._last_completed_time = 89.500 + 0.5 * math.sin(self._t)
+
+        now = time.time()
+        is_freeze = now < self._freeze_until
+
+        # Compute current sector based on track distance
+        s1_dist = self._track_len * 0.33
+        s2_dist = self._track_len * 0.66
+        if self._lap_dist < s1_dist:
+            sensors.current_sector = 1
+        elif self._lap_dist < s2_dist:
+            sensors.current_sector = 2
+        else:
+            sensors.current_sector = 3
+
+        # Sector timings & deltas
+        sensors.sector1_time = "29.412"
+        sensors.sector1_status = "purple"
+        sensors.sector1_delta = -0.145
+
+        sensors.sector2_time = "31.850" if sensors.current_sector >= 2 else "--"
+        sensors.sector2_status = "green" if sensors.current_sector >= 2 else "default"
+        sensors.sector2_delta = -0.082 if sensors.current_sector >= 2 else 0.0
+
+        sensors.sector3_time = "28.480" if sensors.current_sector >= 3 else "--"
+        sensors.sector3_status = "green" if sensors.current_sector >= 3 else "default"
+        sensors.sector3_delta = -0.057 if sensors.current_sector >= 3 else 0.0
+
+        # Session & timing data
+        sensors.fuel_level = max(5.0, 45.2 - (self._t * 0.01))
         sensors.has_delta_reference = True
         sensors.lap_flag = 2
-        sensors.delta_time = -0.342 + 0.15 * math.sin(self._t * 0.2)
-        sensors.estimated_lap_time_str = "1:38.450"
-        sensors.last_lap_time_str = "1:38.792"
-        sensors.remaining_laps = 18
+        sensors.delta_time = -0.284 + 0.12 * math.sin(self._t * 0.3)
+        sensors.estimated_lap_time = 89.458
+        sensors.estimated_lap_time_str = "01:29.458"
+        sensors.last_lap_time = self._last_completed_time
+        mins = int(self._last_completed_time // 60)
+        secs = self._last_completed_time % 60
+        sensors.last_lap_time_str = f"{mins:02d}:{secs:06.3f}"
+        sensors.last_lap_status = "purple" if self._last_completed_time < 89.6 else "green"
+        sensors.is_lap_freeze_active = is_freeze
+        sensors.remaining_laps = max(0, 25 - self._lap_count)
 
         self.frame_ready.emit(sensors)

@@ -22,6 +22,7 @@ from src.telemetry.sensors import VehicleSensors
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, ChannelMetrics, TelemetryRawPacket
 )
+from simpad_qt.core.reference_lap import LapDeltaPacket
 
 TConfig = TypeVar("TConfig")
 
@@ -170,6 +171,20 @@ class ITelemetrySubscriber(Protocol):
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         """
         Called on every high-level telemetry frame (typically 20-60 Hz).
+        Must execute quickly without blocking the main event loop.
+        """
+        ...
+
+
+@runtime_checkable
+class IDeltaSubscriber(Protocol):
+    """
+    Capability: The plugin receives authoritative lap delta and timing data packets.
+    """
+
+    def on_delta_frame(self, delta_packet: LapDeltaPacket) -> None:
+        """
+        Called on every lap delta & timing evaluation (typically 20-100 Hz).
         Must execute quickly without blocking the main event loop.
         """
         ...

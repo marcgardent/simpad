@@ -21,11 +21,13 @@ from simpad_qt.plugins.contracts import (
     PluginErrorReport,
     ITabProvider,
     ITelemetrySubscriber,
+    IDeltaSubscriber,
     IPacketSubscriber,
     IHudWidgetProvider,
 )
 from simpad_qt.core.config import ConfigManager
 from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryRawPacket
+from simpad_qt.core.reference_lap import LapDeltaPacket
 from src.telemetry.sensors import VehicleSensors
 
 
@@ -225,6 +227,13 @@ class PluginManager(QObject):
                     providers.append(p)
         return providers
 
+    def get_delta_subscribers(self) -> List[IDeltaSubscriber]:
+        """Return all active plugins implementing IDeltaSubscriber."""
+        return [
+            p for p in self._plugins.values()
+            if p.state == PluginState.ENABLED and isinstance(p, IDeltaSubscriber)
+        ]
+
     def dispatch_telemetry(self, sensors: VehicleSensors) -> None:
         """Dispatch a telemetry frame safely to all active subscribers."""
         for pid, p in list(self._plugins.items()):
@@ -236,6 +245,18 @@ class PluginManager(QObject):
                 self._error_counts[pid] = 0  # Reset error count on success
             except Exception as e:
                 self._handle_plugin_error(pid, "on_telemetry_frame", e)
+
+    def dispatch_delta(self, delta_packet: LapDeltaPacket) -> None:
+        """Dispatch an authoritative LapDeltaPacket safely to all active IDeltaSubscriber plugins."""
+        for pid, p in list(self._plugins.items()):
+            if p.state != PluginState.ENABLED or not isinstance(p, IDeltaSubscriber):
+                continue
+
+            try:
+                p.on_delta_frame(delta_packet)
+                self._error_counts[pid] = 0
+            except Exception as e:
+                self._handle_plugin_error(pid, "on_delta_frame", e)
 
     def dispatch_packet(self, packet: TelemetryRawPacket) -> None:
         """Dispatch a specific channel raw packet safely to all active IPacketSubscriber plugins."""

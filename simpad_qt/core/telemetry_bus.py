@@ -1,7 +1,7 @@
 """
 SimPad Qt6 Telemetry Bus & Ingestion Pipeline.
 Tracks real-time bandwidth (Kb/s), measured frequencies (Hz), per-channel statistics,
-and connects live UDP socket datagrams directly to plugins and telemetry domain models.
+connects live UDP socket datagrams directly to plugins and coordinates authoritative delta & reference lap calculations.
 """
 
 from __future__ import annotations
@@ -19,9 +19,11 @@ from src.telemetry.sensors import VehicleSensors
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelMetrics, TelemetryRawPacket
 )
+from simpad_qt.core.reference_lap import ReferenceLapManager, LapDeltaPacket
 from simpad_qt.core.mock_telemetry import MockTelemetryGenerator
 from src.telemetry.udp_server import UDPServer
 from src.telemetry.lmu_parser import LMUParser
+from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession, SystemEvent
 
 logger = logging.getLogger("simpad.telemetry_bus")
 
@@ -40,14 +42,21 @@ class TelemetryBus(QObject):
     """
 
     telemetry_updated = Signal(object)      # VehicleSensors
+    delta_updated = Signal(object)          # LapDeltaPacket
     packet_received = Signal(object)        # TelemetryRawPacket
     metrics_updated = Signal()              # Triggered periodically for UI refresh
     telemetry_fps_changed = Signal(float)
     stream_status_changed = Signal(object)  # UdpStreamStatus
 
-    def __init__(self, plugin_manager: PluginManager, parent: Optional[QObject] = None):
+    def __init__(
+        self,
+        plugin_manager: PluginManager,
+        reference_lap_mgr: Optional[ReferenceLapManager] = None,
+        parent: Optional[QObject] = None,
+    ):
         super().__init__(parent)
         self.plugin_manager = plugin_manager
+        self.reference_lap_mgr = reference_lap_mgr or ReferenceLapManager.get_instance()
         self.mock_generator = MockTelemetryGenerator(fps=60, parent=self)
         self.mock_generator.frame_ready.connect(self._on_mock_frame)
 
@@ -55,6 +64,7 @@ class TelemetryBus(QObject):
         self.udp_port: int = 5000
         self._udp_server: Optional[UDPServer] = None
         self._latest_sensors = VehicleSensors()
+        self._latest_delta = LapDeltaPacket()
         self._last_status: UdpStreamStatus = UdpStreamStatus.STOPPED
 
         # Per-channel metrics tracking
@@ -80,6 +90,10 @@ class TelemetryBus(QObject):
     @property
     def latest_sensors(self) -> VehicleSensors:
         return self._latest_sensors
+
+    @property
+    def latest_delta(self) -> LapDeltaPacket:
+        return self._latest_delta
 
     @property
     def total_measured_kbs(self) -> float:
@@ -197,24 +211,70 @@ class TelemetryBus(QObject):
         self.plugin_manager.dispatch_packet(packet)
         self.packet_received.emit(packet)
 
-        # 2. Process high-level telemetry domain representations
+        # 2. Process high-level telemetry domain representations and delta calculations
         if data is not None:
+            delta_pkt: Optional[LapDeltaPacket] = None
+
+            # Process in ReferenceLapManager
+            if isinstance(data, TelemInfo):
+                delta_pkt = self.reference_lap_mgr.update_physics(
+                    veh_speed_ms=float(data.speed_mps),
+                    throttle=float(data.unfiltered_throttle),
+                    brake=float(data.unfiltered_brake),
+                    steering=float(data.unfiltered_steering),
+                    gear=int(data.gear),
+                    dt=float(data.delta_time),
+                    elapsed_time=float(data.elapsed_time),
+                    lap_start_et=float(data.lap_start_et),
+                )
+            elif isinstance(data, (CompactScoring, FullScoringSession, dict)):
+                delta_pkt = self.reference_lap_mgr.update_scoring(data)
+
             if isinstance(data, VehicleSensors):
-                self.process_frame(data)
+                self.process_frame(data, delta_pkt)
             else:
                 snap = LMUParser.process_packet(data)
-                if snap is not None:
-                    self.process_frame(snap.to_sensors())
+                sensors = snap.to_sensors() if snap is not None else self._latest_sensors
+                if delta_pkt is not None:
+                    sensors.delta_time = delta_pkt.display_delta
+                    sensors.sector1_delta = delta_pkt.sector1_delta
+                    sensors.sector2_delta = delta_pkt.sector2_delta
+                    sensors.sector3_delta = delta_pkt.sector3_delta
+                    sensors.sector1_time = delta_pkt.sector1_time
+                    sensors.sector1_status = delta_pkt.sector1_status
+                    sensors.sector2_time = delta_pkt.sector2_time
+                    sensors.sector2_status = delta_pkt.sector2_status
+                    sensors.sector3_time = delta_pkt.sector3_time
+                    sensors.sector3_status = delta_pkt.sector3_status
+                    sensors.last_lap_time = delta_pkt.last_lap_time
+                    sensors.last_lap_time_str = delta_pkt.last_lap_time_str
+                    sensors.last_lap_status = delta_pkt.last_lap_status
+                    sensors.is_lap_freeze_active = delta_pkt.is_lap_freeze_active
+                    sensors.has_delta_reference = delta_pkt.has_reference
+                    sensors.estimated_lap_time = delta_pkt.estimated_lap_time
+                    sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
+                    sensors.is_pit_lap = delta_pkt.is_pit_lap
+                    sensors.lap_flag = delta_pkt.lap_flag
+                    sensors.current_sector = delta_pkt.current_sector
 
-    def process_frame(self, sensors: VehicleSensors) -> None:
+                self.process_frame(sensors, delta_pkt)
+
+    def process_frame(self, sensors: VehicleSensors, delta_packet: Optional[LapDeltaPacket] = None) -> None:
         """Handle incoming high-level telemetry frame and broadcast to plugins and UI."""
         self._latest_sensors = sensors
+        if delta_packet is None:
+            delta_packet = self.reference_lap_mgr.latest_packet
+        self._latest_delta = delta_packet
 
         # 1. Dispatch safely to all ITelemetrySubscriber plugins
         self.plugin_manager.dispatch_telemetry(sensors)
 
-        # 2. Emit signal for host UI observers
+        # 2. Dispatch authoritative LapDeltaPacket to all IDeltaSubscriber plugins
+        self.plugin_manager.dispatch_delta(delta_packet)
+
+        # 3. Emit signals for host UI observers
         self.telemetry_updated.emit(sensors)
+        self.delta_updated.emit(delta_packet)
 
     def _on_mock_frame(self, sensors: VehicleSensors) -> None:
         """Simulate real UDP packet arrival across multiple channels in mock mode."""

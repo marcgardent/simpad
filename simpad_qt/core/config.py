@@ -23,6 +23,9 @@ class AppSettings:
     overlay_enabled: bool = True
     mock_telemetry: bool = False
     hud_debug_boxes: bool = False
+    delta_reference_mode: str = "all_time_best"
+    delta_freeze_duration: float = 3.5
+    delta_ema_samples: int = 0
 
 
 @dataclass

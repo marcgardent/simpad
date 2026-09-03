@@ -151,7 +151,17 @@ class RaceEngineer:
         return [r for r in self._roles if r.enabled and r.is_busy()]
 
     def _get_active_reference_profile(self) -> Optional[Any]:
-        """Résout le profil de tour de référence actif depuis le DeltaEngine global."""
+        """Résout le profil de tour de référence actif depuis le ReferenceLapManager du Core."""
+        try:
+            from simpad_qt.core.reference_lap import ReferenceLapManager
+            ref_mgr = ReferenceLapManager.get_instance()
+            if ref_mgr:
+                prof = ref_mgr.get_active_profile()
+                if prof:
+                    return prof
+        except Exception:
+            pass
+
         try:
             from src.telemetry.lmu_parser import LMUParser
             delta_eng = getattr(LMUParser, "_delta_engine", None)
