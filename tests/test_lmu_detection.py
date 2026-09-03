@@ -209,7 +209,7 @@ class TestLMUSteamDetection(unittest.TestCase):
                 # Execute install_all
                 res = manager.install_all(tmp_path)
                 self.assertTrue(res["installed"])
-                self.assertIn("installé et configuré avec succès", res["message"])
+                self.assertIn("successfully installed and configured", res["message"])
                 self.assertTrue((plugins_dir / "isiMotor_RawUDP.dll").exists())
 
                 # Check json created

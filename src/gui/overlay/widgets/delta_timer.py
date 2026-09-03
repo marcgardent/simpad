@@ -11,14 +11,14 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtDeltaTimerWidget(BaseQtHudWidget):
     """
-    Chrono Delta / Temps au Tour (Positionné sous le Gear).
-    - En piste : Affiche le Delta Live (ex: '-0.150' en Vert, '+0.240' en Rouge).
-    - Passage de ligne : Affiche le Temps au Tour complété (format MM:ss.mmm)
-      avec code couleur cohérent :
-        * Violet (Session / All-Time Best)
-        * Vert (Amélioration Personnelle)
-        * Jaune (Non amélioré / Plus lent)
-        * Gris (Tour Invalide / Dirty)
+    Delta Timer / Lap Time (Positioned below Gear).
+    - On track: Displays Live Delta (e.g. '-0.150' in Green, '+0.240' in Red).
+    - Line crossing: Displays Completed Lap Time (format MM:ss.mmm)
+      with color coding:
+        * Purple (Session / All-Time Best)
+        * Green (Personal Best)
+        * Yellow (No improvement / Slower)
+        * Grey (Invalid / Dirty Lap)
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -36,40 +36,40 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
 
         if is_freeze:
-            # ── Mode Passage de Ligne : Temps au Tour complété (MM:ss.mmm) ──
+            # Line crossing mode: Completed Lap Time (MM:ss.mmm)
             lap_time_str = str(extra_data.get("lastLapTime", getattr(sensors, "last_lap_time_str", "--:--.---")))
             disp_str = lap_time_str if lap_time_str not in ("", "--") else "--:--.---"
             lap_status = str(extra_data.get("lastLapStatus", getattr(sensors, "last_lap_status", "default")))
 
             if lap_flag == 0 or lap_status == "invalid":
-                # Tour Dirty / Invalide -> Gris
+                # Dirty / Invalid lap -> Grey
                 text_color = QColor(156, 163, 175, 255)
             elif lap_status == "purple":
-                # Meilleur tour absolu / session -> Violet
+                # Overall session best -> Purple
                 text_color = QColor(168, 85, 247, 255)
             elif lap_status == "green":
-                # Amélioration personnelle -> Vert
+                # Personal improvement -> Green
                 text_color = QColor(34, 197, 94, 255)
             elif lap_status in ("yellow", "red"):
-                # Non amélioré / plus lent -> Jaune
+                # No improvement / slower -> Yellow
                 text_color = QColor(234, 179, 8, 255)
             else:
                 text_color = QColor(255, 255, 255, 255)
         else:
-            # ── Mode En Piste : Delta Live ──
+            # On-track mode: Live Delta
             expected_str = str(extra_data.get("expectedTime", sensors.delta_time_str))
             disp_str = expected_str
 
             if lap_flag == 0:
-                # Tour Dirty / Invalide -> Gris
+                # Dirty / Invalid lap -> Grey
                 text_color = QColor(156, 163, 175, 255)
             elif expected_str.startswith("-"):
-                # En avance -> Vert
+                # Ahead -> Green
                 text_color = QColor(34, 197, 94, 255)
             elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
                 text_color = QColor(255, 255, 255, 255)
             else:
-                # En retard -> Rouge
+                # Behind -> Red
                 text_color = QColor(239, 68, 68, 255)
 
         scale_x = canvas_w / 800.0

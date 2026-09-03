@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Packages de rôles.
-Importe tous les rôles pour déclencher leur enregistrement auprès de RoleRegistry.
+SimPad Race Engineer — Roles package.
+Imports all roles to trigger registration with RoleRegistry.
 """
 
 from src.engineer.roles.lap_validity import LapValidityRole

@@ -1,7 +1,7 @@
 """
-SimPad Race Engineer — Rôle Pace Notes & Repères de Pilotage (PaceNotesRole).
-Annonce les repères vocaux du tour de référence (Brake, Turn-In, Virages T1..T30, Rapports de boîte).
-Architecture SOLID (SRP, OCP, DIP).
+SimPad Race Engineer — Pace Notes & Driving Markers Role (PaceNotesRole).
+Announces voice markers from reference lap (Brake, Turn-In, Turns T1..T30, Gear shifts).
+SOLID architecture (SRP, OCP, DIP).
 """
 
 import time
@@ -25,20 +25,20 @@ logger = logging.getLogger(__name__)
 @RoleRegistry.register(
     "pace_notes",
     name="Pace Notes & Track Markers",
-    description="Annonce les repères vocaux de pilotage (Frein, Braquage, Virages T1..T30, Rapports) configurés sur le circuit.",
+    description="Announces driving voice markers (Brake, Turn-in, Turns T1..T30, Gears) configured on track.",
     default_priority=80,
 )
 class PaceNotesRole(BaseRole):
     """
-    Rôle de co-pilote / ingénieur de piste pour les repères de freinage, braquage, virages et vitesses.
-    Anticipe les marqueurs en fonction de la vitesse du véhicule pour un déclenchement optimal.
+    Co-driver / track engineer role for braking, turn-in, turns, and gear markers.
+    Anticipates markers based on vehicle speed for optimal trigger timing.
     """
 
     def __init__(
         self,
         role_id: str = "pace_notes",
         name: str = "Pace Notes & Track Markers",
-        description: str = "Annonce les repères vocaux de pilotage du tour de référence.",
+        description: str = "Announces driving voice markers from reference lap.",
         priority: int = 80,
         enabled: bool = True,
         audio_engine: Optional[Any] = None,
@@ -66,7 +66,7 @@ class PaceNotesRole(BaseRole):
         self.min_lead_distance_m = float(min_lead_distance_m)
         self.max_lead_distance_m = float(max_lead_distance_m)
 
-        # État interne
+        # Internal state
         self._triggered_ann_ids: Set[str] = set()
         self._last_laps_completed: int = -1
         self._last_announcement_time: float = 0.0
@@ -76,71 +76,71 @@ class PaceNotesRole(BaseRole):
         self._custom_profile: Optional[ReferenceLapProfile] = None
 
     def get_parameters(self) -> List[RoleParam]:
-        """Déclare la liste des paramètres configurables pour le formulaire de l'IHM."""
+        """Declares list of configurable parameters for UI form."""
         return [
             BoolParam(
                 name="enable_brake",
-                label="Annonces Frein (Brake)",
+                label="Braking Announcements (Brake)",
                 default=True,
-                description="Activer l'annonce vocale 'Brake' aux repères de freinage",
+                description="Enable voice announcement 'Brake' at braking markers",
             ),
             BoolParam(
                 name="enable_turn_in",
-                label="Annonces Braquage (Turn-in)",
+                label="Turn-in Announcements (Turn-in)",
                 default=True,
-                description="Activer l'annonce vocale 'Turn' aux repères de braquage/corde",
+                description="Enable voice announcement 'Turn' at turn-in/apex markers",
             ),
             BoolParam(
                 name="enable_turn",
-                label="Annonces Virages (Turn 1..30)",
+                label="Turn Number Announcements (Turn 1..30)",
                 default=True,
-                description="Activer l'annonce vocale des virages numérotés 'Turn N'",
+                description="Enable voice announcement of numbered turns 'Turn N'",
             ),
             BoolParam(
                 name="enable_gear",
-                label="Annonces Rapports (Gear 1..8)",
+                label="Gear Announcements (Gear 1..8)",
                 default=True,
-                description="Activer l'annonce vocale du rapport conseillé 'Gear N'",
+                description="Enable voice announcement of recommended gear 'Gear N'",
             ),
             FloatRangeParam(
                 name="anticipation_time_sec",
-                label="Temps d'anticipation",
+                label="Anticipation Time",
                 min_val=0.2,
                 max_val=3.0,
                 step=0.1,
                 unit="s",
                 default=0.8,
-                description="Délai d'anticipation proportionnel à la vitesse du véhicule",
+                description="Anticipation delay proportional to vehicle speed",
             ),
             FloatRangeParam(
                 name="min_lead_distance_m",
-                label="Distance min d'anticipation",
+                label="Min Lead Distance",
                 min_val=5.0,
                 max_val=50.0,
                 step=1.0,
                 unit="m",
                 default=15.0,
-                description="Distance d'anticipation minimale à basse vitesse",
+                description="Minimum anticipation distance at low speed",
             ),
             FloatRangeParam(
                 name="max_lead_distance_m",
-                label="Distance max d'anticipation",
+                label="Max Lead Distance",
                 min_val=20.0,
                 max_val=150.0,
                 step=5.0,
                 unit="m",
                 default=75.0,
-                description="Distance d'anticipation maximale à haute vitesse",
+                description="Maximum anticipation distance at high speed",
             ),
         ]
 
     def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
-        """Permet d'injecter manuellement un profil de référence."""
+        """Allows manual injection of a reference profile."""
         self._custom_profile = profile
         self.reset()
 
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
-        """Récupère le profil de référence actif avec isolation stricte par circuit."""
+        """Retrieves active reference profile with strict per-track isolation."""
         scoring_track = ""
         if context and context.scoring:
             if hasattr(context.scoring, "track_name") and context.scoring.track_name:
@@ -150,7 +150,7 @@ class PaceNotesRole(BaseRole):
 
         if self._custom_profile is not None:
             ref_track = getattr(self._custom_profile, "track_name", "")
-            # Si le paquet de scoring indique explicitement un autre circuit, invalider le profil obsolète
+            # If scoring packet explicitly indicates a different track, invalidate stale profile
             if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
                 logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")
                 self._custom_profile = None
@@ -164,14 +164,14 @@ class PaceNotesRole(BaseRole):
 
         delta_eng = getattr(LMUParser, "_delta_engine", None)
         if delta_eng:
-            # 1. Profil courant s'il contient des annotations
+            # 1. Current profile if it contains annotations
             if delta_eng.current_profile and delta_eng.current_profile.annotations:
                 prof = delta_eng.current_profile
                 ref_track = getattr(prof, "track_name", "")
                 if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
                     return prof
 
-            # 2. Repli direct sur le profil de repères/disque du circuit (indépendant du mode delta)
+            # 2. Direct fallback to track reference/marks profile on disk (independent of delta mode)
             prof = delta_eng.all_time_best_profile or delta_eng.current_profile
             if prof and prof.annotations:
                 ref_track = getattr(prof, "track_name", "")
@@ -188,13 +188,13 @@ class PaceNotesRole(BaseRole):
                     channel=TelemetryChannel.TELEMETRY,
                     preferred_hz=100,
                     required=True,
-                    reason="Distance sur le tour (lap_dist) et vitesse instantanée pour anticipation des repères",
+                    reason="Lap distance (lap_dist) and speed for marker anticipation",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.COMPACT_SCORING,
                     preferred_hz=10,
                     required=False,
-                    reason="Longueur du tour et validation de circuit",
+                    reason="Lap length and track validation",
                 ),
             ]
         except ImportError:
@@ -212,7 +212,7 @@ class PaceNotesRole(BaseRole):
         return sounds
 
     def reset(self) -> None:
-        """Réinitialise les marqueurs déclenchés et l'état du rôle."""
+        """Resets triggered markers and role state."""
         self._triggered_ann_ids.clear()
         self._last_laps_completed = -1
         self._last_announcement_time = 0.0
@@ -221,22 +221,22 @@ class PaceNotesRole(BaseRole):
         self._last_ann_signature = []
 
     def is_busy(self) -> bool:
-        """Indique si une annonce vocale a été émise très récemment (< 1.2s)."""
+        """Indicates if a voice announcement was emitted recently (< 1.2s)."""
         return (time.time() - self._last_announcement_time) < 1.2
 
     def _compute_lead_distance(self, speed_mps: float) -> float:
-        """Calcule la distance d'anticipation optimale en mètres selon la vitesse du véhicule."""
+        """Calculates optimal anticipation distance in meters based on vehicle speed."""
         dist = speed_mps * self.anticipation_time_sec
         return max(self.min_lead_distance_m, min(self.max_lead_distance_m, dist))
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
         """
-        Évalue la position du joueur par rapport aux marqueurs du circuit à chaque tick.
+        Evaluates player position relative to track markers on each tick.
         """
         if not self.enabled:
             return None
 
-        # Récupérer le véhicule joueur et les infos de position
+        # Retrieve player vehicle and position info
         player_veh = context.get_player_vehicle()
         if not player_veh:
             return None
@@ -244,7 +244,7 @@ class PaceNotesRole(BaseRole):
         if context.is_player_in_garage() or context.is_player_in_pits():
             return None
 
-        # Gérer la réinitialisation des marqueurs lors du passage au tour suivant
+        # Reset triggered markers on new lap
         laps_comp = int(get_vehicle_attr(player_veh, "total_laps", 0))
         if self._last_laps_completed >= 0 and laps_comp != self._last_laps_completed:
             self._triggered_ann_ids.clear()
@@ -254,7 +254,7 @@ class PaceNotesRole(BaseRole):
         if not profile or not profile.annotations:
             return None
 
-        # Détection dynamique si la liste des repères ou leurs positions ont changé en temps réel
+        # Dynamic detection if marker list or positions changed in real-time
         curr_ann_signature = [(a.id, round(a.distance, 1), a.type.value, a.gear) for a in profile.annotations]
         if curr_ann_signature != self._last_ann_signature:
             self._last_ann_signature = curr_ann_signature
@@ -267,24 +267,24 @@ class PaceNotesRole(BaseRole):
         player_dist = float(get_vehicle_attr(player_veh, "lap_dist", 0.0)) % track_len
         player_speed = context.get_player_speed_mps()
 
-        # Si le joueur est presque à l'arrêt (< 2 m/s), ne pas anticiper
+        # If player is nearly stopped (< 2 m/s), do not anticipate
         if player_speed < 2.0:
             return None
 
         lead_dist = self._compute_lead_distance(player_speed)
         now = context.timestamp
 
-        # Éviter de superposer deux annonces instantanément (< 0.35s pour laisser passer Brake -> Gear)
+        # Prevent overlapping two announcements instantly (< 0.35s to allow Brake -> Gear sequence)
         if (now - self._last_announcement_time) < 0.35:
             return None
 
-        # Recherche du marqueur le plus proche dans la fenêtre d'anticipation [0, lead_dist]
+        # Find closest marker in anticipation window [0, lead_dist]
         candidates = []
         for ann in profile.annotations:
             if ann.id in self._triggered_ann_ids:
                 continue
 
-            # Filtrage selon les paramètres d'activation utilisateur
+            # Filter according to user configuration
             if ann.type == AnnotationType.BRAKE and not self.enable_brake:
                 continue
             if ann.type == AnnotationType.TURN_IN and not self.enable_turn_in:
@@ -303,11 +303,11 @@ class PaceNotesRole(BaseRole):
         if not candidates:
             return None
 
-        # Trier par proximité croissante
+        # Sort by proximity
         candidates.sort(key=lambda item: item[0])
         _, target_ann = candidates[0]
 
-        # Déclencher l'annonce
+        # Trigger announcement
         phrase_key = profile.get_annotation_phrase_key(target_ann)
         display_label = profile.get_annotation_display_label(target_ann)
 
@@ -328,7 +328,7 @@ class PaceNotesRole(BaseRole):
         )
 
     def get_state_summary(self) -> Dict[str, Any]:
-        """Retourne un résumé sérialisable pour l'interface graphique."""
+        """Returns serializable summary for graphical interface."""
         summary = super().get_state_summary()
         profile = self.get_reference_profile()
         num_markers = len(profile.annotations) if (profile and profile.annotations) else 0
@@ -342,7 +342,7 @@ class PaceNotesRole(BaseRole):
         return summary
 
     def get_config(self) -> Dict[str, Any]:
-        """Retourne la configuration exportable."""
+        """Returns exportable configuration dictionary."""
         config = super().get_config()
         config.update({
             "anticipation_time_sec": self.anticipation_time_sec,
@@ -352,7 +352,7 @@ class PaceNotesRole(BaseRole):
         return config
 
     def set_config(self, config: Dict[str, Any]) -> None:
-        """Applique une configuration externe."""
+        """Applies external configuration dictionary."""
         super().set_config(config)
         if "anticipation_time_sec" in config:
             self.anticipation_time_sec = float(config["anticipation_time_sec"])

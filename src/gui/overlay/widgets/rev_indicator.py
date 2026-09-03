@@ -11,9 +11,9 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtRevIndicatorWidget(BaseQtHudWidget):
     """
-    Indicateurs de Régime Moteur (Triangles du HUD).
-    - Triangle gauche (sous-régime / downshift sweet spot).
-    - Triangle droit (sur-régime / upshift redline).
+    Engine RPM Shift Indicators (HUD Triangles).
+    - Left triangle (underrev / downshift sweet spot).
+    - Right triangle (overrev / upshift redline).
     """
 
     def paint(
@@ -34,7 +34,7 @@ class QtRevIndicatorWidget(BaseQtHudWidget):
         painter.setBrush(QBrush(QColor(255, 255, 255, 255)))
         painter.setPen(QPen(QColor(255, 255, 255, 255)))
 
-        # Triangle Sous-régime (Gauche)
+        # Underrev Triangle (Left)
         if underrev:
             p1 = QPointF(center_x - (130.0 * scale_x), 110.0 * scale_y)
             p2 = QPointF(center_x - (90.0 * scale_x), 80.0 * scale_y)
@@ -42,7 +42,7 @@ class QtRevIndicatorWidget(BaseQtHudWidget):
             poly_left = QPolygonF([p1, p2, p3])
             painter.drawPolygon(poly_left)
 
-        # Triangle Sur-régime (Droite)
+        # Overrev Triangle (Right)
         if overrev:
             p1 = QPointF(center_x + (130.0 * scale_x), 110.0 * scale_y)
             p2 = QPointF(center_x + (90.0 * scale_x), 80.0 * scale_y)

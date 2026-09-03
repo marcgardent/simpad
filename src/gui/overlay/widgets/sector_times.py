@@ -11,7 +11,7 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtSectorTimesWidget(BaseQtHudWidget):
     """
-    Secteurs de Tour S1, S2, S3 (Positionnés sous le Delta et le Gear).
+    Lap Sectors S1, S2, S3 (Positioned below Delta and Gear).
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -76,20 +76,20 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             delta_val = float(sec.get("delta", 0.0))
             delta_str = sec.get("delta_str", "--")
 
-            # Tant que le secteur n'est pas terminé, afficher le Delta Live du secteur
+            # While sector is ongoing, display live sector delta
             if is_current and delta_str != "--":
                 disp_text = delta_str
                 if delta_val < 0.0:
-                    bg_color = QColor(22, 163, 74, 255)      # Vert (Gain)
+                    bg_color = QColor(22, 163, 74, 255)      # Green (Gain)
                     border_color = QColor(34, 197, 94, 255)
                 elif delta_val > 0.0:
-                    bg_color = QColor(185, 28, 28, 255)     # Rouge (Perte)
+                    bg_color = QColor(185, 28, 28, 255)     # Red (Loss)
                     border_color = QColor(239, 68, 68, 255)
                 else:
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
             else:
-                # Secteur terminé ou en attente -> Affichage du chrono de secteur gelé
+                # Sector completed or waiting -> Display frozen sector time
                 disp_text = s_time
                 if s_status == "invalid":
                     bg_color = QColor(15, 23, 42, 255)
@@ -104,7 +104,7 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
 
-            # Bordure blanche marquée sur le secteur en cours
+            # Marked white border for current active sector
             if is_current:
                 border_color = QColor(255, 255, 255, 255)
                 pen_width = 2

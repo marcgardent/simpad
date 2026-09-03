@@ -12,8 +12,8 @@ from src.utils.window_utils import get_3x3_grid_rect
 
 class MonitoringBoard(BaseDashboard):
     """
-    Tableau de bord 'monitoringBoard' : Graphe de courbes télémétriques temps réel en overlay borderless.
-    Positionné de manière fixe dans le tiers haut / milieu de l'écran (col=1, row=0).
+    'monitoringBoard' dashboard: Real-time telemetry curves graph in borderless overlay.
+    Fixed position in top-middle third of screen (col=1, row=0).
     """
 
     def __init__(self):
@@ -40,7 +40,7 @@ class MonitoringBoard(BaseDashboard):
         ):
             self._visible = False
 
-            # En-tête HUD Borderless
+            # Borderless HUD header
             with dpg.group(horizontal=True):
                 dpg.add_text("SIMPAD", color=[0, 210, 255, 255])
                 dpg.add_text("MONITORING BOARD", color=[255, 200, 0, 255])
@@ -50,7 +50,7 @@ class MonitoringBoard(BaseDashboard):
 
             dpg.add_separator()
 
-            # Graphe de courbes télémétriques en temps réel
+            # Real-time telemetry signal curves plot
             with dpg.plot(no_title=True, height=-1, width=-1, tag="mb_plot"):
                 dpg.add_plot_legend()
                 dpg.add_plot_axis(dpg.mvXAxis, label="Time (s)", tag="mb_xaxis")

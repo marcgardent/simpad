@@ -37,18 +37,18 @@ from src.utils.window_utils import get_hud_rect, _PROJECT_ROOT
 
 class LmuHudQtWindow(QWidget):
     """
-    Fenêtre Overlay HUD PySide6 100% transparente et Always-On-Top.
-    Orchestre les widgets de télémétrie LMU sans aucun fond noir.
+    PySide6 HUD Overlay Window: 100% transparent and Always-On-Top.
+    Orchestrates LMU telemetry widgets without any black background.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("SimPad LMU HUD Overlay (Qt6)")
 
-        # 1. Chargement de la police de course Anta-Regular
+        # 1. Load Anta-Regular racing font
         self.font_family = self._load_custom_font()
 
-        # 2. Instanciation modulaire des 11 widgets HUD
+        # 2. Modular instantiation of 11 HUD widgets
         self._widgets = [
             QtAbsGaugeWidget(),
             QtBrakeGaugeWidget(),
@@ -66,7 +66,7 @@ class LmuHudQtWindow(QWidget):
         self._sensors = VehicleSensors()
         self._extra_data: Dict[str, Any] = {}
 
-        # 3. Configuration des drapeaux de fenêtre (Transparent, AlwaysOnTop, ClickThrough)
+        # 3. Configure window flags (Transparent, AlwaysOnTop, ClickThrough)
         self._apply_window_flags()
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -74,14 +74,14 @@ class LmuHudQtWindow(QWidget):
 
         self.update_geometry()
 
-        # Timer 120 FPS pour fluidité ultra-réactive et rafraîchissement continu
+        # 120 FPS timer for fluid responsive continuous rendering
         self._timer = QTimer(self)
         self._timer.setInterval(8)
         self._timer.timeout.connect(self.update)
         self._timer.start()
 
     def _load_custom_font(self) -> str:
-        """Charge Anta-Regular.ttf dans la base de polices Qt."""
+        """Loads Anta-Regular.ttf into the Qt font database."""
         font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
         if font_path.exists():
             font_id = QFontDatabase.addApplicationFont(str(font_path))
@@ -92,7 +92,7 @@ class LmuHudQtWindow(QWidget):
         return "Segoe UI"
 
     def _apply_window_flags(self) -> None:
-        """Applique les drapeaux de fenêtre pour l'overlay transparent traversant."""
+        """Applies window flags for transparent click-through overlay."""
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
@@ -102,7 +102,7 @@ class LmuHudQtWindow(QWidget):
         )
 
     def update_geometry(self) -> None:
-        """Couvre l'ensemble de l'écran physique pour permettre le placement libre des widgets."""
+        """Covers entire physical screen to allow flexible widget placement."""
         screen = QApplication.primaryScreen()
         if screen:
             geo = screen.geometry()
@@ -114,7 +114,7 @@ class LmuHudQtWindow(QWidget):
         QTimer.singleShot(100, self._enforce_kwin_keep_above)
 
     def _enforce_kwin_keep_above(self) -> None:
-        """Envoie l'ordre DBus KWin pour forcer le maintien au premier plan absolu sous KDE Wayland."""
+        """Sends KWin DBus command to enforce absolute top plane under KDE Wayland."""
         try:
             script_dir = Path.home() / ".cache" / "simpad"
             script_dir.mkdir(parents=True, exist_ok=True)
@@ -137,7 +137,7 @@ class LmuHudQtWindow(QWidget):
             pass
 
     def update_telemetry(self, sensors: VehicleSensors, extra_data: Optional[Dict[str, Any]] = None) -> None:
-        """Reçoit les données de télémétrie temps réel et déclenche le rafraîchissement."""
+        """Receives real-time telemetry data and triggers canvas repaint."""
         self._sensors = sensors
         speed_kmh = sensors.vehicle_speed * 3.6
         throttle_pct = sensors.unfiltered_throttle * 100.0
@@ -186,7 +186,7 @@ class LmuHudQtWindow(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:
-        """Cycle de rendu vectoriel 120 FPS de l'ensemble des 8 widgets HUD (Affichage Tête Haute)."""
+        """120 FPS vector rendering loop for all HUD widgets (Head-Up Display)."""
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -195,18 +195,18 @@ class LmuHudQtWindow(QWidget):
             sw = float(self.width())
             sh = float(self.height())
 
-            # Dimensions exactes HUD Tête Haute (Base 800x600 proportionnelle à l'écran)
+            # Exact HUD dimensions (800x600 base proportional to screen)
             hud_w = max(300.0, sw / 3.0)
             hud_h = max(240.0, sh / 2.0)
 
-            # Positionné au 2ème tiers horizontal (centré) et 2ème moitié verticale (tête haute cockpit)
+            # Positioned at 2nd horizontal third (center) and 2nd vertical half (cockpit head-up display)
             hud_x = (sw - hud_w) / 2.0
             hud_y = sh / 2.0
 
             painter.save()
             painter.translate(hud_x, hud_y)
 
-            # Rendu séquentiel modulaire de chaque widget
+            # Modular sequential rendering of each widget
             for widget in self._widgets:
                 widget.paint(painter, hud_w, hud_h, self._sensors, self._extra_data)
 

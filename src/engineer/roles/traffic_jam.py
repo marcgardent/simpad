@@ -1,7 +1,7 @@
 """
-SimPad Race Engineer — Rôle Traffic Jam / Véhicules Ralentis devant.
-Surveille la piste devant le joueur pour détecter les ralentissements soudains,
-voitures en perdition ou embouteillages.
+SimPad Race Engineer — Traffic Jam / Slow Vehicles Ahead Role.
+Monitors track ahead of player to detect sudden slowdowns,
+spinning cars, or traffic jams.
 """
 
 import time
@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 @RoleRegistry.register(
     role_id="traffic_jam",
     name="Traffic Jam (Slow Cars Ahead)",
-    description="Alerte lorsque des véhicules sont au ralenti ou accidentés devant le joueur sur la trajectoire.",
+    description="Alerts when vehicles are slow or crashed ahead of player on racing line.",
     default_priority=75,
 )
 class TrafficJamRole(BaseRole):
     """
-    Rôle surveillant les voitures lentes ou à l'arrêt devant le joueur.
+    Role monitoring slow or stopped cars ahead of the player.
     """
 
     def __init__(
@@ -61,12 +61,12 @@ class TrafficJamRole(BaseRole):
         self._target_slow_car_info: str = ""
 
     def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
-        """Injecte manuellement un profil de tour de référence."""
+        """Manually injects a reference lap profile."""
         self._custom_profile = profile
         self.reset()
 
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
-        """Récupère le profil de référence actif (injecté ou via le contexte/DeltaEngine)."""
+        """Retrieves active reference profile (injected or via context/DeltaEngine)."""
         if self._custom_profile is not None:
             return self._custom_profile
         if context:
@@ -92,49 +92,49 @@ class TrafficJamRole(BaseRole):
         return [
             BoolParam(
                 name="enable_ref_lap_filter",
-                label="Filtre Tour Référence",
+                label="Reference Lap Filter",
                 default=True,
-                description="Exige qu'au moins un des véhicules (joueur ou adversaire) soit hors domaine de vitesse normal",
+                description="Requires at least one vehicle (player or opponent) to be outside normal speed domain",
             ),
             FloatRangeParam(
                 name="domain_speed_tolerance_kmh",
-                label="Tolérance Vitesse Domaine",
+                label="Domain Speed Tolerance",
                 min_val=5.0,
                 max_val=80.0,
                 step=5.0,
                 unit="km/h",
                 default=30.0,
-                description="Écart de vitesse max avec le tour de référence pour être considéré dans le domaine normal",
+                description="Maximum speed delta with reference lap to be considered in normal domain",
             ),
             FloatRangeParam(
                 name="slow_speed_threshold_kmh",
-                label="Vitesse Seuil Ralenti",
+                label="Slow Speed Threshold",
                 min_val=10.0,
                 max_val=120.0,
                 step=5.0,
                 unit="km/h",
                 default=50.0,
-                description="Vitesse sous laquelle une voiture devant est considérée au ralenti/accidentée",
+                description="Speed below which a car ahead is considered slow/crashed",
             ),
             FloatRangeParam(
                 name="warning_distance_m",
-                label="Distance d'Alerte",
+                label="Warning Distance",
                 min_val=50.0,
                 max_val=400.0,
                 step=10.0,
                 unit="m",
                 default=180.0,
-                description="Distance maximale devant le joueur pour détecter les ralentissements",
+                description="Maximum distance ahead of player to detect slowdowns",
             ),
             FloatRangeParam(
                 name="cooldown_sec",
-                label="Cooldown Alerte",
+                label="Alert Cooldown",
                 min_val=2.0,
                 max_val=30.0,
                 step=1.0,
                 unit="s",
                 default=8.0,
-                description="Délai minimal entre deux alertes vocales",
+                description="Minimum delay between two voice alerts",
             ),
         ]
 
@@ -146,13 +146,13 @@ class TrafficJamRole(BaseRole):
                     channel=TelemetryChannel.FULL_SCORING,
                     preferred_hz=10,
                     required=True,
-                    reason="Positions et vitesses scalaires des adversaires devant sur la trajectoire",
+                    reason="Positions and speeds of opponents ahead on track trajectory",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.COMPACT_SCORING,
                     preferred_hz=10,
                     required=False,
-                    reason="Spline de piste et calcul de distance relative devant",
+                    reason="Track spline and forward relative distance calculation",
                 ),
             ]
         except ImportError:
@@ -164,7 +164,7 @@ class TrafficJamRole(BaseRole):
         }
 
     def is_busy(self) -> bool:
-        """Occupé si une alerte de trafic ralenti est active."""
+        """Returns True if a slow traffic alert is active."""
         return self._is_active_alert
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
@@ -178,7 +178,7 @@ class TrafficJamRole(BaseRole):
             self._is_active_alert = False
             return None
 
-        # Si le joueur est dans la pitlane ou au garage, désactiver l'alerte bouchon sur piste
+        # If player is in pitlane or garage, disable on-track traffic jam alerts
         if context.is_player_in_pits() or context.is_player_in_garage():
             self._is_active_alert = False
             self._target_slow_car_info = ""
@@ -193,11 +193,11 @@ class TrafficJamRole(BaseRole):
         slow_cars_ahead = []
         for opp in opponents:
             dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
-            # dist_behind < 0 signifie que la voiture est DEVANT le joueur
+            # dist_behind < 0 means car is AHEAD of player
             if -self.warning_distance_m <= dist_behind < -5.0:
                 opp_speed = context.extract_vehicle_speed_mps(opp)
                 if opp_speed < self.slow_speed_threshold_mps:
-                    # Filtre du tour de référence : il faut au moins soit moi, soit l'autre hors domaine
+                    # Reference lap filter: requires player or opponent to be outside speed domain
                     if self.enable_ref_lap_filter and has_valid_ref:
                         if not context.has_traffic_domain_anomaly(
                             player_veh,

@@ -19,11 +19,11 @@ from src.telemetry.sensors import VehicleSensors
 
 def get_qt_tire_colors(lock_val: float, slip_val: float) -> Tuple[QColor, QColor, str, float]:
     """
-    Calcule la couleur de fond, de bordure, le type d'événement et l'intensité
-    du pneu pour Qt selon la physique de contact pneu/route.
+    Calculates background color, border color, event type, and intensity
+    of the tire for Qt based on tire/road contact physics.
     """
     if lock_val > 0.02:
-        # Blocage / Freinage critique -> Dégradé VIOLET (Pastel doux vers Foncé profond)
+        # Wheel lockup / Critical braking -> PURPLE gradient (soft pastel to dark deep)
         t = min(1.0, max(0.0, lock_val))
         r = int(216 - t * (216 - 88))
         g = int(180 - t * (180 - 28))
@@ -33,7 +33,7 @@ def get_qt_tire_colors(lock_val: float, slip_val: float) -> Tuple[QColor, QColor
         return fill_col, border_col, "LOCK", t
 
     elif slip_val > 0.02:
-        # Glisse / Patinage / Dérive -> Dégradé CYAN (Pastel doux vers Foncé profond)
+        # Wheel slip / Spin / Scrub -> CYAN gradient (soft pastel to dark deep)
         t = min(1.0, max(0.0, slip_val))
         r = int(165 - t * (165 - 14))
         g = int(243 - t * (243 - 116))
@@ -43,16 +43,16 @@ def get_qt_tire_colors(lock_val: float, slip_val: float) -> Tuple[QColor, QColor
         return fill_col, border_col, "SLIP", t
 
     else:
-        # Pneu neutre au repos (Gomme sombre stylisée)
+        # Neutral tire at rest (Dark stylized rubber)
         return QColor(19, 24, 34, 180), QColor(46, 56, 77, 200), "NONE", 0.0
 
 
 class QtTiresGaugeWidget(BaseQtHudWidget):
     """
-    Représentation Physique Tri-Axiale Complète des 4 Pneus sous Qt Overlay :
-    - Section HAUTE (CCCC) : Jauge Verticale Cyan (Over-Acceleration / Motricité ⬆️)
-    - Section MÉDIANE (LLRR) : Jauge Horizontale Jaune (Dérive Latérale Gauche/Droite ⬅️ ➡️ / Sous-virage & Survirage)
-    - Section BASSE (BBBB) : Jauge Verticale Violette (Over-Braking / Blocage de frein ⬇️)
+    Complete Tri-Axial Physical Representation of 4 Tires in Qt Overlay:
+    - TOP Section (CCCC): Vertical Cyan Gauge (Over-Acceleration / Traction ⬆️)
+    - MIDDLE Section (LLRR): Horizontal Yellow Gauge (Lateral Scrub Left/Right ⬅️ ➡️ / Understeer & Oversteer)
+    - BOTTOM Section (BBBB): Vertical Purple Gauge (Over-Braking / Wheel Lockup ⬇️)
     """
 
     def __init__(self):
@@ -113,23 +113,23 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        # Proportions réalistes de pneu de course (ratio largeur/hauteur ~ 1:1.85)
+        # Realistic racing tire aspect ratio (~ 1:1.85)
         tire_w = 40.0 * scale_x
         tire_h = 74.0 * scale_y
 
-        # Alignement :
-        # - Pneus Avant (FL, FR) : Alignés vers le HAUT (y = 15px)
+        # Alignment:
+        # - Front Tires (FL, FR): Aligned to TOP (y = 15px)
         front_y = 15.0 * scale_y
 
-        # - Pneus Arrière (RL, RR) : Alignés vers le BAS (se termine à 236px, avec 14px de marge au-dessus de l'aéro à 250px)
+        # - Rear Tires (RL, RR): Aligned to BOTTOM (ends at 236px, with 14px margin above aero bar at 250px)
         rear_bot_y = 236.0 * scale_y
         rear_y = rear_bot_y - tire_h  # 162.0 * scale_y
 
-        # Positions horizontales (à côté des jauges de frein et d'accélérateur)
+        # Horizontal positions (alongside brake and throttle gauges)
         left_tires_x = center_x - (215.0 * scale_x)
         right_tires_x = center_x + (175.0 * scale_x)
 
-        # Liste des 4 pneus (x, y, label, lock, spin, lat_mag, lat_signed)
+        # List of 4 tires (x, y, label, lock, spin, lat_mag, lat_signed)
         tires_info = [
             (left_tires_x, front_y, "FL", self.disp_fl_lock, self.disp_fl_spin, self.disp_fl_lat, self.disp_fl_lat_s),
             (left_tires_x, rear_y, "RL", self.disp_rl_lock, self.disp_rl_spin, self.disp_rl_lat, self.disp_rl_lat_s),
@@ -137,27 +137,27 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
             (right_tires_x, rear_y, "RR", self.disp_rr_lock, self.disp_rr_spin, self.disp_rr_lat, self.disp_rr_lat_s),
         ]
 
-        # Découpage proportionnel interne : ccccccc (3) / LLL|RRR (2) / bbbbbbb (3)
+        # Internal proportional layout: ccccccc (3) / LLL|RRR (2) / bbbbbbb (3)
         header_h = 12.0 * scale_y
         gap_y = 2.0 * scale_y
-        vert_h = 21.0 * scale_y   # Jauges verticales CCCC et BBBB
-        lat_h = 14.0 * scale_y    # Jauge médiane horizontale LLL|RRR
+        vert_h = 21.0 * scale_y   # Vertical gauges CCCC and BBBB
+        lat_h = 14.0 * scale_y    # Middle horizontal gauge LLL|RRR
 
         font_label = QFont("Segoe UI", max(7, int(8.0 * scale_y)), QFont.Weight.Bold)
 
         for x, y, label, lock_val, spin_val, lat_val, lat_s in tires_info:
-            # 1. Conteneur externe du pneu
+            # 1. Outer tire box
             rect = QRectF(x, y, tire_w, tire_h)
             painter.setBrush(QBrush(QColor(19, 24, 34, 220)))
             painter.setPen(QPen(QColor(46, 56, 77, 240), 1.0))
             painter.drawRoundedRect(rect, 4.0 * scale_x, 4.0 * scale_y)
 
-            # En-tête label roue
+            # Wheel label header
             painter.setFont(font_label)
             painter.setPen(QPen(QColor(255, 255, 255, 220)))
             painter.drawText(QRectF(x + 3.0 * scale_x, y + 2.0 * scale_y, tire_w - 6.0 * scale_x, 11.0 * scale_y), Qt.AlignmentFlag.AlignLeft, label)
 
-            # ── SECTION 1 (CCCC) : Jauge Verticale Cyan (Over-Acceleration ⬆️) ──
+            # ── SECTION 1 (CCCC): Vertical Cyan Gauge (Over-Acceleration ⬆️) ──
             c_top = y + header_h + gap_y
             c_rect = QRectF(x + 2.0 * scale_x, c_top, tire_w - 4.0 * scale_x, vert_h)
             painter.setBrush(QBrush(QColor(15, 20, 30, 180)))
@@ -175,7 +175,7 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
                 painter.setPen(QPen(QColor(255, 255, 255, 240), 1.0))
                 painter.drawLine(QPointF(x + 3.0 * scale_x, c_fill_y), QPointF(x + tire_w - 3.0 * scale_x, c_fill_y))
 
-            # ── SECTION 2 (LLRR) : Jauge Horizontale Jaune avec Flèche (⬅️ ➡️) ──
+            # ── SECTION 2 (LLRR): Horizontal Yellow Gauge with Arrow (⬅️ ➡️) ──
             l_top = c_top + vert_h + gap_y
             l_rect = QRectF(x + 2.0 * scale_x, l_top, tire_w - 4.0 * scale_x, lat_h)
             painter.setBrush(QBrush(QColor(15, 20, 30, 200)))
@@ -185,27 +185,27 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
             mid_x = x + tire_w / 2.0
             half_w = (tire_w - 7.0 * scale_x) / 2.0
 
-            # Séparateur central net entre Gauche et Droite
+            # Sharp central separator between Left and Right
             painter.setPen(QPen(QColor(148, 163, 184, 255), 1.5))
             painter.drawLine(QPointF(mid_x, l_top + 1.0 * scale_y), QPointF(mid_x, l_top + lat_h - 1.0 * scale_y))
 
-            # Flèche directionnelle selon le sens de glisse
+            # Directional arrow based on scrub direction
             if abs(lat_s) > 0.02:
                 bar_w = max(4.0 * scale_x, half_w * min(1.0, abs(lat_s)))
                 head_w = min(bar_w, 5.0 * scale_x)
 
-                if lat_s < 0:  # Glisse vers la Gauche (◄ Flèche pointant à gauche)
+                if lat_s < 0:  # Slide to the Left (◄ Arrow pointing left)
                     tip_x = mid_x - 1.0 * scale_x - bar_w
                     base_x = tip_x + head_w
 
-                    # Corps rectangulaire
+                    # Rectangular body
                     if bar_w > head_w:
                         body_rect = QRectF(base_x, l_top + 3.0 * scale_y, mid_x - 1.0 * scale_x - base_x, lat_h - 6.0 * scale_y)
                         painter.setBrush(QBrush(QColor(250, 204, 21, 220)))
                         painter.setPen(QPen(QColor(234, 179, 8, 255), 0.8))
                         painter.drawRect(body_rect)
 
-                    # Tête triangulaire
+                    # Triangular head
                     triangle = QPolygonF([
                         QPointF(tip_x, l_top + lat_h / 2.0),
                         QPointF(base_x, l_top + 1.5 * scale_y),
@@ -215,18 +215,18 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
                     painter.setPen(QPen(QColor(255, 255, 255, 240), 1.0))
                     painter.drawPolygon(triangle)
 
-                else:  # Glisse vers la Droite (► Flèche pointant à droite)
+                else:  # Slide to the Right (► Arrow pointing right)
                     tip_x = mid_x + 1.0 * scale_x + bar_w
                     base_x = tip_x - head_w
 
-                    # Corps rectangulaire
+                    # Rectangular body
                     if bar_w > head_w:
                         body_rect = QRectF(mid_x + 1.0 * scale_x, l_top + 3.0 * scale_y, base_x - (mid_x + 1.0 * scale_x), lat_h - 6.0 * scale_y)
                         painter.setBrush(QBrush(QColor(250, 204, 21, 220)))
                         painter.setPen(QPen(QColor(234, 179, 8, 255), 0.8))
                         painter.drawRect(body_rect)
 
-                    # Tête triangulaire
+                    # Triangular head
                     triangle = QPolygonF([
                         QPointF(tip_x, l_top + lat_h / 2.0),
                         QPointF(base_x, l_top + 1.5 * scale_y),
@@ -236,14 +236,14 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
                     painter.setPen(QPen(QColor(255, 255, 255, 240), 1.0))
                     painter.drawPolygon(triangle)
 
-            elif lat_val > 0.02:  # Fallback si amplitude non signée
+            elif lat_val > 0.02:  # Fallback if magnitude is unsigned
                 bar_w = max(3.0 * scale_x, half_w * min(1.0, lat_val))
                 lat_bar = QRectF(mid_x - bar_w / 2.0, l_top + 2.0 * scale_y, bar_w, lat_h - 4.0 * scale_y)
                 painter.setBrush(QBrush(QColor(250, 204, 21, 220)))
                 painter.setPen(QPen(QColor(234, 179, 8, 255), 0.8))
                 painter.drawRoundedRect(lat_bar, 1.5 * scale_x, 1.5 * scale_y)
 
-            # ── SECTION 3 (BBBB) : Jauge Verticale Violette (Over-Braking ⬇️) ──
+            # ── SECTION 3 (BBBB): Vertical Purple Gauge (Over-Braking ⬇️) ──
             b_top = l_top + lat_h + gap_y
             b_rect = QRectF(x + 2.0 * scale_x, b_top, tire_w - 4.0 * scale_x, vert_h)
             painter.setBrush(QBrush(QColor(15, 20, 30, 180)))

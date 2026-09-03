@@ -12,8 +12,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtThrottleGaugeWidget(BaseQtHudWidget):
     """
-    Jauge d'Accélérateur Pure (Centre-Droit du HUD compact).
-    Affiche la course réelle de la pédale d'accélérateur en Vert (#22c55e).
+    Pure Throttle Gauge (Center-Right of compact HUD).
+    Displays actual throttle pedal travel in Green (#22c55e).
     """
 
     def __init__(self):
@@ -29,7 +29,7 @@ class QtThrottleGaugeWidget(BaseQtHudWidget):
     ) -> None:
         raw_throttle = float(extra_data.get("throttle", sensors.unfiltered_throttle * 100.0))
 
-        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_throttle = lerp(self.display_throttle, raw_throttle, 0.65)
 
         scale_x = canvas_w / 800.0

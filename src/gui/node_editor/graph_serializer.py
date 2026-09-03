@@ -65,13 +65,13 @@ class GraphSerializer:
 
     @staticmethod
     def _extract_shape_props(ninfo: dict) -> dict:
-        sh_t, fr_t, du_t, in_t = ninfo.get("shape_tag"), ninfo.get("freq_tag"), ninfo.get("duty_tag"), ninfo.get("val_in_tag")
+        sh_t, fr_t, duty_t, in_t = ninfo.get("shape_tag"), ninfo.get("freq_tag"), ninfo.get("duty_tag"), ninfo.get("val_in_tag")
         return {
             "in_attr": ninfo.get("in_attr"),
             "in_freq": ninfo.get("in_freq"),
             "shape": dpg.get_value(sh_t) if dpg.does_item_exist(sh_t) else "Square (Pulsed)",
             "freq": dpg.get_value(fr_t) if dpg.does_item_exist(fr_t) else 20.0,
-            "duty": dpg.get_value(du_t) if dpg.does_item_exist(du_t) else 0.40,
+            "duty": dpg.get_value(duty_t) if dpg.does_item_exist(duty_t) else 0.40,
             "val_in": dpg.get_value(in_t) if in_t and dpg.does_item_exist(in_t) else 0.0,
         }
 

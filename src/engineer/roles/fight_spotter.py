@@ -1,11 +1,11 @@
 """
-SimPad Race Engineer — Rôle Fight Spotter (CrewChief V4 Cartesian FSM).
-Architecture POO et principes SOLID :
-- SRP : Découpage en modules spécialisés (Géométrie 2D, Filtrage bruit/vitesse, Détection overlap, FSM temporelle, Stratégies de vocabulaire).
-- OCP : Stratégies de phrasé interchangeables (Routier vs Ovale) et paramètres déclaratifs extensibles.
-- LSP : Implémentation conforme et substituable de BaseRole.
-- ISP : Protocoles clairs et ciblés pour la géométrie, la vitesse et la FSM.
-- DIP : Découplage strict entre la logique spatiale et le runtime audio/télémétrie.
+SimPad Race Engineer — Fight Spotter Role (CrewChief V4 Cartesian FSM).
+OOP Architecture and SOLID principles:
+- SRP: Split into specialized modules (2D Geometry, Noise/Velocity filtering, Overlap detection, Temporal FSM, Phrasing strategies).
+- OCP: Interchangeable phrasing strategies (Road vs Oval) and extensible declarative parameters.
+- LSP: Compliant and substitutable implementation of BaseRole.
+- ISP: Clear and targeted protocols for geometry, speed, and FSM.
+- DIP: Strict decoupling between spatial logic and audio/telemetry runtime.
 """
 
 import time
@@ -24,18 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# 1. ÉNUMÉRATIONS ET STRUCTURES DE DONNÉES TYPÉES
+# 1. ENUMS AND TYPED DATA STRUCTURES
 # =============================================================================
 
 class SpotterSide(str, Enum):
-    """Côté relatif d'un adversaire par rapport au véhicule joueur."""
+    """Relative side of an opponent relative to player vehicle."""
     NONE = "none"
     LEFT = "left"
     RIGHT = "right"
 
 
 class SpotterMessageType(str, Enum):
-    """Types de messages vocaux émis par le Spotter."""
+    """Types of vocal messages emitted by Spotter."""
     NONE = "none"
     CAR_LEFT = "car_left"
     CAR_RIGHT = "car_right"
@@ -49,7 +49,7 @@ class SpotterMessageType(str, Enum):
 
 
 class FightSpotterState(str, Enum):
-    """État global de la situation spatiale de combat autour du véhicule joueur."""
+    """Global spatial state of battle situation around player vehicle."""
     IDLE = "IDLE"
     CLEAR = "CLEAR"
     OVERLAP_LEFT = "OVERLAP_LEFT"
@@ -61,7 +61,7 @@ class FightSpotterState(str, Enum):
 
 @dataclass
 class OpponentTrackingData:
-    """Mémoire de suivi temporel et cinématique pour un adversaire."""
+    """Temporal and kinematic tracking memory for an opponent."""
     opponent_id: int
     pos_x: float
     pos_z: float
@@ -72,7 +72,7 @@ class OpponentTrackingData:
 
 @dataclass
 class AlignedOpponent:
-    """Position et classification relative d'un adversaire dans le repère joueur."""
+    """Relative position and classification of an opponent in player reference frame."""
     opponent_id: int
     side: SpotterSide
     lateral_separation_m: float
@@ -81,18 +81,18 @@ class AlignedOpponent:
 
 
 # =============================================================================
-# 2. STRATÉGIES DE VOCABULAIRE (PATTERN STRATEGY - OCP)
+# 2. PHRASING STRATEGIES (STRATEGY PATTERN - OCP)
 # =============================================================================
 
 class ISpotterPhrasingStrategy(Protocol):
-    """Protocole pour la résolution des clés de phrases audio du Spotter."""
+    """Protocol for resolving Spotter audio phrase keys."""
     def resolve_phrase(self, message_type: SpotterMessageType) -> str:
-        """Retourne la clé de phrase audio correspondant au type de message."""
+        """Returns audio phrase key corresponding to message type."""
         ...
 
 
 class RoadSpotterPhrasingStrategy:
-    """Stratégie de phrasé pour circuits routiers (Car Left, Car Right, Clear, 3-Wide)."""
+    """Phrasing strategy for road courses (Car Left, Car Right, Clear, 3-Wide)."""
     _PHRASE_MAP = {
         SpotterMessageType.CAR_LEFT: "car_left",
         SpotterMessageType.CAR_RIGHT: "car_right",
@@ -110,7 +110,7 @@ class RoadSpotterPhrasingStrategy:
 
 
 class OvalSpotterPhrasingStrategy:
-    """Stratégie de phrasé pour circuits ovales (Inside, Outside, Clear Inside/Outside)."""
+    """Phrasing strategy for oval tracks (Inside, Outside, Clear Inside/Outside)."""
     _PHRASE_MAP = {
         SpotterMessageType.CAR_LEFT: "car_inside",
         SpotterMessageType.CAR_RIGHT: "car_outside",
@@ -128,13 +128,13 @@ class OvalSpotterPhrasingStrategy:
 
 
 # =============================================================================
-# 3. MOTEUR GÉOMÉTRIQUE CARTÉSIEN 2D (SRP)
+# 3. 2D CARTESIAN GEOMETRY ENGINE (SRP)
 # =============================================================================
 
 class CartesianGeometry2D:
     """
-    Gère les projections géométriques 2D du repère mondial vers le repère local de la voiture.
-    Repère joueur : Origine (0, 0), +Z vers l'arrière / -Z vers l'avant, +X à gauche / -X à droite.
+    Handles 2D geometric coordinate transformations from world to local vehicle frame.
+    Player frame: Origin (0, 0), +Z rearward / -Z forward, +X to left / -X to right.
     """
 
     @staticmethod
@@ -146,7 +146,7 @@ class CartesianGeometry2D:
         opponent_z: float,
     ) -> Tuple[float, float]:
         """
-        Effectue le changement de repère par rotation trigonométrique 2D.
+        Performs coordinate system rotation using 2D trigonometric rotation.
         """
         raw_x = opponent_x - player_x
         raw_z = opponent_z - player_z
@@ -154,16 +154,16 @@ class CartesianGeometry2D:
         cos_rot = math.cos(player_rotation_rad)
         sin_rot = math.sin(player_rotation_rad)
 
-        # X_aligné : > 0 à gauche, < 0 à droite
+        # aligned_x: > 0 on left, < 0 on right
         aligned_x = float((cos_rot * raw_x) + (sin_rot * raw_z))
-        # Z_aligné : > 0 derrière, < 0 devant
+        # aligned_z: > 0 behind, < 0 ahead
         aligned_z = float((cos_rot * raw_z) - (sin_rot * raw_x))
 
         return aligned_x, aligned_z
 
     @staticmethod
     def compute_yaw_from_velocity(vel_x: float, vel_z: float) -> float:
-        """Calcule l'angle de lacet (yaw) à partir du vecteur vitesse mondiale."""
+        """Calculates yaw angle from world velocity vector."""
         if abs(vel_x) < 0.001 and abs(vel_z) < 0.001:
             return 0.0
         yaw = math.atan2(vel_x, vel_z)
@@ -173,11 +173,11 @@ class CartesianGeometry2D:
 
     @staticmethod
     def compute_yaw_from_orientation(m_ori: Any) -> Optional[float]:
-        """Extrait l'angle de lacet depuis une matrice d'orientation rFactor2/LMU si disponible."""
+        """Extracts yaw angle from rFactor2/LMU orientation matrix if available."""
         if m_ori is None:
             return None
         try:
-            # Format mOri rF2 : mOri[RowZ].x, mOri[RowZ].z
+            # Format mOri rF2: mOri[RowZ].x, mOri[RowZ].z
             if isinstance(m_ori, (list, tuple)) and len(m_ori) >= 3:
                 row_z = m_ori[2]
                 if isinstance(row_z, dict):
@@ -194,13 +194,13 @@ class CartesianGeometry2D:
 
 
 # =============================================================================
-# 4. FILTRE DE VITESSE ET BRUIT CINÉMATIQUE (SRP)
+# 4. VELOCITY FILTER AND KINEMATIC NOISE REJECTION (SRP)
 # =============================================================================
 
 class OpponentSpeedFilter:
     """
-    Suit la cinématique des adversaires par différences finies et filtre les vitesses anormales
-    (ex: voitures en toupie, à contresens ou téléportées).
+    Tracks opponent kinematics via finite differences and filters abnormal speeds
+    (e.g. spinning cars, driving wrong way, or teleporting).
     """
 
     def __init__(
@@ -224,8 +224,8 @@ class OpponentSpeedFilter:
         opp_vel_z: Optional[float] = None,
     ) -> bool:
         """
-        Met à jour la vitesse de l'adversaire et valide si la vitesse relative de rapprochement
-        est dans la plage réaliste d'une bataille en piste.
+        Updates opponent speed and validates if relative closing speed
+        is within realistic racing battle range.
         """
         tracking = self._cache.get(opponent_id)
         if tracking is None:
@@ -256,31 +256,31 @@ class OpponentSpeedFilter:
                 tracking.pos_z = opp_z
                 tracking.last_update_time = now
 
-        # Vérification du différentiel de vitesse (closing speed)
+        # Check speed differential (closing speed)
         delta_vx = abs(player_vel_x - tracking.vel_x)
         delta_vz = abs(player_vel_z - tracking.vel_z)
 
         return delta_vx <= self.max_closing_speed_mps and delta_vz <= self.max_closing_speed_mps
 
     def purge_inactive(self, active_ids: set) -> None:
-        """Supprime du cache les véhicules qui ne sont plus dans la zone d'intérêt."""
+        """Removes vehicles no longer in consideration zone from cache."""
         stale_keys = [k for k in self._cache.keys() if k not in active_ids]
         for k in stale_keys:
             del self._cache[k]
 
     def clear(self) -> None:
-        """Réinitialise tout le cache cinématique."""
+        """Clears entire kinematic cache."""
         self._cache.clear()
 
 
 # =============================================================================
-# 5. ÉVALUATEUR D'OVERLAP ET GESTION 3-WIDE (SRP)
+# 5. OVERLAP EVALUATOR AND 3-WIDE DISPERSION (SRP)
 # =============================================================================
 
 class CartesianOverlapEvaluator:
     """
-    Évalue la présence d'overlap avec hystérésis de dégagement (Clear Gap)
-    et analyse la dispersion latérale pour distinguer la file indienne du 3-Wide.
+    Evaluates overlap presence with clear gap hysteresis
+    and analyzes lateral dispersion to distinguish line-astern from 3-Wide.
     """
 
     def __init__(
@@ -299,7 +299,7 @@ class CartesianOverlapEvaluator:
         self.track_zone_to_consider_m = track_zone_to_consider_m
 
     def set_dimensions(self, length_m: float, width_m: float, clear_gap_m: Optional[float] = None) -> None:
-        """Met à jour dynamiquement les dimensions du véhicule."""
+        """Updates vehicle dimensions dynamically."""
         self.car_length_m = float(length_m)
         self.car_width_m = float(width_m)
         if clear_gap_m is not None:
@@ -307,7 +307,7 @@ class CartesianOverlapEvaluator:
         self.long_car_length_m = self.car_length_m + self.gap_needed_for_clear_m
 
     def is_in_consideration_zone(self, aligned_x: float, aligned_z: float) -> bool:
-        """Vérifie si le véhicule adverse est dans le périmètre d'analyse immédiat (20m)."""
+        """Checks if opponent vehicle is within immediate analysis perimeter (20m)."""
         return (abs(aligned_x) <= self.track_zone_to_consider_m and
                 abs(aligned_z) <= self.track_zone_to_consider_m)
 
@@ -319,21 +319,21 @@ class CartesianOverlapEvaluator:
         is_speed_valid: bool,
     ) -> Tuple[SpotterSide, float]:
         """
-        Détermine si l'adversaire est en situation d'overlap (gauche ou droite)
-        en appliquant la règle d'hystérésis (longCarLength vs carLength).
+        Determines if opponent is in overlap situation (left or right)
+        applying hysteresis rule (longCarLength vs carLength).
         """
         if not self.is_in_consideration_zone(aligned_x, aligned_z):
             return SpotterSide.NONE, -1.0
 
-        # Opponent à DROITE (X < 0)
+        # Opponent on RIGHT (X < 0)
         if aligned_x < 0:
             lateral_sep = abs(aligned_x)
             if had_overlap_on_side:
-                # Si déjà en overlap, maintien jusqu'à long_car_length
+                # If already overlapping, hold until long_car_length
                 if abs(aligned_z) < self.long_car_length_m:
                     return SpotterSide.RIGHT, lateral_sep
             else:
-                # Nouvel overlap : vérification stricte longueur + largeur + vitesse
+                # New overlap: strict check of length + width + speed
                 is_longitudinal_overlap = (
                     (aligned_z < 0 and abs(aligned_z) < self.car_length_m) or
                     (aligned_z >= 0 and aligned_z < (self.car_length_m + self.car_behind_extra_length_m))
@@ -341,7 +341,7 @@ class CartesianOverlapEvaluator:
                 if is_longitudinal_overlap and lateral_sep >= (self.car_width_m * 0.4) and is_speed_valid:
                     return SpotterSide.RIGHT, lateral_sep
 
-        # Opponent à GAUCHE (X > 0)
+        # Opponent on LEFT (X > 0)
         elif aligned_x > 0:
             lateral_sep = aligned_x
             if had_overlap_on_side:
@@ -363,8 +363,8 @@ class CartesianOverlapEvaluator:
         right_separations: List[float],
     ) -> Tuple[int, int]:
         """
-        Calcule le nombre effectif de voitures de front à gauche et à droite.
-        Filtre les véhicules en file indienne (line-astern) si delta séparation < car_width.
+        Calculates effective number of side-by-side cars on left and right.
+        Filters line-astern vehicles if lateral delta < car_width.
         """
         cars_left = len(left_separations)
         cars_right = len(right_separations)
@@ -372,25 +372,25 @@ class CartesianOverlapEvaluator:
         if cars_left > 1 and cars_right == 0:
             delta_left = max(left_separations) - min(left_separations)
             if delta_left < self.car_width_m:
-                cars_left = 1  # File indienne
+                cars_left = 1  # Line astern
 
         if cars_right > 1 and cars_left == 0:
             delta_right = max(right_separations) - min(right_separations)
             if delta_right < self.car_width_m:
-                cars_right = 1  # File indienne
+                cars_right = 1  # Line astern
 
         return cars_left, cars_right
 
 
 # =============================================================================
-# 6. MACHINE À ÉTATS TEMPORELLE ET LOGIQUE ANTI-CHATTER (SRP)
+# 6. TEMPORAL STATE MACHINE AND ANTI-CHATTER LOGIC (SRP)
 # =============================================================================
 
 class SpotterStateMachine:
     """
-    Machine à états finis temporelle inspirée de CrewChiefV4.
-    Gère les délais de confirmation (Clear Delay), les répétitions ("Still there"),
-    la prévention du rebond (Anti-Chatter) et le maintien du canal radio.
+    Temporal finite state machine inspired by CrewChiefV4.
+    Manages confirmation delays (Clear Delay), reminders ("Still there"),
+    anti-chatter logic, and radio channel holding.
     """
 
     def __init__(
@@ -411,7 +411,7 @@ class SpotterStateMachine:
         self.enable_three_wide = enable_three_wide
         self.time_to_wait_before_closing_channel_sec = time_to_wait_before_closing_channel_sec
 
-        # États internes
+        # Internal states
         self.cars_on_left_prev: int = 0
         self.cars_on_right_prev: int = 0
         self.reported_single_overlap_left: bool = False
@@ -423,12 +423,12 @@ class SpotterStateMachine:
         self.next_message_type: SpotterMessageType = SpotterMessageType.NONE
         self.next_message_due_time: float = 0.0
 
-        # Gestion du canal radio ouvert
+        # Open radio channel management
         self.channel_open: bool = False
         self.time_when_channel_should_close: float = float("inf")
 
     def reset(self) -> None:
-        """Réinitialise tous les états de la machine."""
+        """Resets all state machine states."""
         self.cars_on_left_prev = 0
         self.cars_on_right_prev = 0
         self.reported_single_overlap_left = False
@@ -449,11 +449,11 @@ class SpotterStateMachine:
         use_oval_logic: bool = False,
     ) -> None:
         """
-        Détermine le prochain message à planifier en fonction de l'évolution des overlaps.
+        Determines next message to schedule based on overlap changes.
         """
         clear_delay = self.oval_clear_message_delay_sec if use_oval_logic else self.clear_message_delay_sec
 
-        # 1. Clear All Round (dégagé des deux côtés)
+        # 1. Clear All Round (clear on both sides)
         if cars_on_left == 0 and cars_on_right == 0 and (self.cars_on_left_prev > 0 and self.cars_on_right_prev > 0):
             self.next_message_type = SpotterMessageType.CLEAR_ALL_ROUND
             self.next_message_due_time = now + clear_delay
@@ -474,14 +474,14 @@ class SpotterStateMachine:
             self.next_message_type = SpotterMessageType.CLEAR_RIGHT
             self.next_message_due_time = now + clear_delay
 
-        # 4. Three Wide In the Middle (voitures des deux côtés)
+        # 4. Three Wide In the Middle (cars on both sides)
         elif cars_on_left > 0 and cars_on_right > 0 and (self.cars_on_left_prev == 0 or self.cars_on_right_prev == 0):
             has_pending_clear = (self.reported_single_overlap_left or self.reported_double_overlap_left) and \
                                 (self.reported_single_overlap_right or self.reported_double_overlap_right)
             self.next_message_due_time = now + (self.bouncing_wait_sec if has_pending_clear else 0.0)
             self.next_message_type = SpotterMessageType.THREE_WIDE_MIDDLE
 
-        # 5. Nouvel Overlap à Gauche
+        # 5. New Overlap on Left
         elif cars_on_left > 0 and cars_on_right == 0 and self.cars_on_left_prev == 0 and self.cars_on_right_prev == 0:
             has_pending_clear = self.reported_single_overlap_left or self.reported_double_overlap_left
             self.next_message_due_time = now + (self.bouncing_wait_sec if has_pending_clear else 0.0)
@@ -490,7 +490,7 @@ class SpotterStateMachine:
             else:
                 self.next_message_type = SpotterMessageType.CAR_LEFT
 
-        # 6. Nouvel Overlap à Droite
+        # 6. New Overlap on Right
         elif cars_on_left == 0 and cars_on_right > 0 and self.cars_on_left_prev == 0 and self.cars_on_right_prev == 0:
             has_pending_clear = self.reported_single_overlap_right or self.reported_double_overlap_right
             self.next_message_due_time = now + (self.bouncing_wait_sec if has_pending_clear else 0.0)
@@ -499,7 +499,7 @@ class SpotterStateMachine:
             else:
                 self.next_message_type = SpotterMessageType.CAR_RIGHT
 
-        # 7. Escalade vers 3-Wide sur un seul côté
+        # 7. Escalation to 3-Wide on single side
         elif self.enable_three_wide and cars_on_left > 1 and cars_on_right == 0 and self.cars_on_left_prev == 1:
             self.next_message_due_time = now + (self.on_single_to_3wide_delay_sec if self.reported_single_overlap_left else 0.0)
             self.next_message_type = SpotterMessageType.THREE_WIDE_RIGHT
@@ -508,7 +508,7 @@ class SpotterStateMachine:
             self.next_message_due_time = now + (self.on_single_to_3wide_delay_sec if self.reported_single_overlap_right else 0.0)
             self.next_message_type = SpotterMessageType.THREE_WIDE_LEFT
 
-        # 8. Désescalade 3-Wide -> simple overlap
+        # 8. De-escalation 3-Wide -> single overlap
         elif self.enable_three_wide and cars_on_left == 1 and cars_on_right == 0 and self.cars_on_left_prev > 1:
             self.next_message_type = SpotterMessageType.CAR_LEFT
             self.next_message_due_time = now
@@ -518,7 +518,7 @@ class SpotterStateMachine:
             self.next_message_due_time = now
 
     def is_message_valid(self, msg_type: SpotterMessageType, cars_on_left: int, cars_on_right: int) -> bool:
-        """Vérifie la validité contextuelle du message avant émission."""
+        """Verifies contextual validity of message before emission."""
         if msg_type == SpotterMessageType.CAR_LEFT and cars_on_left == 0:
             return False
         if msg_type == SpotterMessageType.CAR_RIGHT and cars_on_right == 0:
@@ -540,8 +540,8 @@ class SpotterStateMachine:
         now: float,
     ) -> Optional[Tuple[SpotterMessageType, bool]]:
         """
-        Consomme le message prêt s'il est éligible et met à jour les indicateurs d'état.
-        Retourne (message_type, keep_channel_open) ou None.
+        Consumes ready message if eligible and updates state indicators.
+        Returns (message_type, keep_channel_open) or None.
         """
         if self.next_message_type == SpotterMessageType.NONE or now < self.next_message_due_time:
             return None
@@ -552,7 +552,7 @@ class SpotterStateMachine:
 
         msg_to_play = self.next_message_type
 
-        # Machine de transition des états après émission
+        # State transition machine after emission
         if msg_to_play == SpotterMessageType.THREE_WIDE_MIDDLE:
             self.reported_single_overlap_left = True
             self.reported_single_overlap_right = True
@@ -661,18 +661,18 @@ class SpotterStateMachine:
 
 
 # =============================================================================
-# 7. RÔLE PRINCIPAL RACE ENGINEER : FIGHT SPOTTER (SOLID - LSP / DIP)
+# 7. MAIN RACE ENGINEER ROLE: FIGHT SPOTTER (SOLID - LSP / DIP)
 # =============================================================================
 
 @RoleRegistry.register(
     role_id="fight_spotter",
     name="Fight Spotter (CrewChief Cartesian FSM)",
-    description="Spotter de combat de proximité haute fidélité basé sur CrewChief V4 : transformation 2D locale, filtrage cinématique, hystérésis d'overlap, détection 3-wide et machine à états anti-chatter.",
+    description="High-fidelity close-proximity battle spotter based on CrewChief V4: local 2D transformation, kinematic filtering, overlap hysteresis, 3-wide detection, and anti-chatter state machine.",
     default_priority=110,
 )
 class FightSpotterRole(BaseRole):
     """
-    Rôle Fight Spotter implémentant l'architecture complète de combat rapproché de CrewChiefV4.
+    Fight Spotter Role implementing full close-combat architecture of CrewChiefV4.
     """
 
     def __init__(
@@ -702,7 +702,7 @@ class FightSpotterRole(BaseRole):
             audio_engine=audio_engine,
         )
 
-        # Paramètres configurables
+        # Configurable parameters
         self.car_length_m = float(car_length_m)
         self.car_width_m = float(car_width_m)
         self.gap_needed_for_clear_m = float(gap_needed_for_clear_m)
@@ -713,7 +713,7 @@ class FightSpotterRole(BaseRole):
         self.use_oval_logic = bool(use_oval_logic)
         self.enable_three_wide = bool(enable_three_wide)
 
-        # Instanciation des sous-systèmes modulaires (SOLID SRP/ISP/DIP)
+        # Instantiation of modular subsystems (SOLID SRP/ISP/DIP)
         self.geometry_engine = CartesianGeometry2D()
         self.speed_filter = OpponentSpeedFilter(
             calculate_speeds_interval_sec=0.2,
@@ -732,24 +732,24 @@ class FightSpotterRole(BaseRole):
         self._road_phrasing = RoadSpotterPhrasingStrategy()
         self._oval_phrasing = OvalSpotterPhrasingStrategy()
 
-        # Variables dynamiques de télémétrie précédente
+        # Dynamic previous telemetry variables
         self._prev_player_x: float = 0.0
         self._prev_player_z: float = 0.0
         self._prev_time: float = 0.0
 
-        # Données de diagnostic en direct pour l'IHM
+        # Live diagnostic data for UI
         self._live_cars_left: int = 0
         self._live_cars_right: int = 0
         self._live_channel_open: bool = False
         self._live_last_message: str = "none"
 
     def get_parameters(self) -> List[RoleParam]:
-        """Déclare les paramètres configurables pour l'éditeur IHM."""
+        """Declares configurable parameters for UI editor."""
         return [
             FloatRangeParam(
                 name="car_length_m",
                 label="Car Length",
-                description="Longueur nominale du véhicule (mètres)",
+                description="Nominal vehicle length (meters)",
                 min_val=2.5,
                 max_val=6.0,
                 step=0.1,
@@ -759,7 +759,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="car_width_m",
                 label="Car Width",
-                description="Largeur nominale du véhicule (mètres)",
+                description="Nominal vehicle width (meters)",
                 min_val=1.2,
                 max_val=2.5,
                 step=0.05,
@@ -769,7 +769,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="gap_needed_for_clear_m",
                 label="Clear Gap Hysteresis",
-                description="Distance supplémentaire requise pour déclarer 'Clear' (mètres)",
+                description="Extra distance required to declare 'Clear' (meters)",
                 min_val=0.2,
                 max_val=5.0,
                 step=0.1,
@@ -779,7 +779,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="clear_message_delay_sec",
                 label="Clear Delay",
-                description="Délai de confirmation avant d'annoncer Clear (secondes)",
+                description="Confirmation delay before announcing Clear (seconds)",
                 min_val=0.0,
                 max_val=2.0,
                 step=0.05,
@@ -789,7 +789,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="repeat_hold_freq_sec",
                 label="Hold Repeat Frequency",
-                description="Fréquence de rappel 'Still There' pendant un overlap maintenu (secondes)",
+                description="Reminder frequency 'Still There' during maintained overlap (seconds)",
                 min_val=1.0,
                 max_val=10.0,
                 step=0.5,
@@ -799,7 +799,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="min_speed_kmh",
                 label="Min Speed for Spotter",
-                description="Vitesse minimale requise pour activer le Spotter (km/h)",
+                description="Minimum speed required to activate Spotter (km/h)",
                 min_val=10.0,
                 max_val=100.0,
                 step=5.0,
@@ -809,7 +809,7 @@ class FightSpotterRole(BaseRole):
             FloatRangeParam(
                 name="max_closing_speed_kmh",
                 label="Max Closing Speed",
-                description="Vitesse relative différentielle maximale tolérée pour un overlap (km/h)",
+                description="Maximum tolerated closing speed for overlap (km/h)",
                 min_val=30.0,
                 max_val=200.0,
                 step=5.0,
@@ -818,20 +818,20 @@ class FightSpotterRole(BaseRole):
             ),
             BoolParam(
                 name="use_oval_logic",
-                label="Oval Course Phrasing",
-                description="Utiliser les termes Inside / Outside au lieu de Left / Right",
+                label="Oval Track Phrasing",
+                description="Use terms Inside / Outside instead of Left / Right",
                 default=False,
             ),
             BoolParam(
                 name="enable_three_wide",
                 label="Enable 3-Wide Calls",
-                description="Activer les détections et annonces de situation 3-Wide",
+                description="Enable detection and announcements for 3-Wide situations",
                 default=True,
             ),
         ]
 
     def set_param_value(self, name: str, value: Any) -> None:
-        """Applique et synchronise les paramètres avec les sous-systèmes internes."""
+        """Applies and synchronizes parameters with internal subsystems."""
         super().set_param_value(name, value)
         if name in ("car_length_m", "car_width_m", "gap_needed_for_clear_m"):
             self.overlap_evaluator.set_dimensions(
@@ -857,13 +857,13 @@ class FightSpotterRole(BaseRole):
                     channel=TelemetryChannel.TELEMETRY,
                     preferred_hz=100,
                     required=True,
-                    reason="Orientation lacet (yaw) et cinématique locale ultra-précise du joueur",
+                    reason="Player yaw orientation and precise local kinematics",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.FULL_SCORING,
                     preferred_hz=10,
                     required=True,
-                    reason="Positions mondiales 3D et vecteurs vitesse de l'ensemble du plateau",
+                    reason="3D world positions and velocity vectors for all cars",
                 ),
             ]
         except ImportError:
@@ -890,8 +890,8 @@ class FightSpotterRole(BaseRole):
 
     def is_busy(self) -> bool:
         """
-        Indique si le Spotter est actuellement engagé dans une situation critique
-        (overlap actif, 3-wide ou annonce en cours de planification).
+        Indicates if Spotter is currently engaged in a critical situation
+        (active overlap, 3-wide, or pending scheduled announcement).
         """
         return (
             self.fsm.channel_open or
@@ -903,7 +903,7 @@ class FightSpotterRole(BaseRole):
         )
 
     def reset(self) -> None:
-        """Réinitialise totalement l'état du rôle."""
+        """Completely resets role state."""
         self.fsm.reset()
         self.speed_filter.clear()
         self._prev_player_x = 0.0
@@ -920,14 +920,14 @@ class FightSpotterRole(BaseRole):
         now: float,
     ) -> Optional[Tuple[float, float, float, float, float]]:
         """
-        Extrait la position (X, Z), la vitesse (vx, vz) et l'orientation lacet (yaw) du joueur.
-        Retourne (player_x, player_z, vel_x, vel_z, player_yaw_rad) ou None.
+        Extracts position (X, Z), velocity (vx, vz), and yaw orientation of player.
+        Returns (player_x, player_z, vel_x, vel_z, player_yaw_rad) or None.
         """
         player_veh = context.get_player_vehicle()
         if not player_veh:
             return None
 
-        # Position cartésienne
+        # Cartesian position
         pos = get_vehicle_attr(player_veh, "pos")
         if pos is None:
             return None
@@ -941,7 +941,7 @@ class FightSpotterRole(BaseRole):
         elif isinstance(pos, (list, tuple)):
             if len(pos) >= 3:
                 px = float(pos[0])
-                pz = float(pos[2])  # Dans ISI X/Y/Z : Z est le plan au sol
+                pz = float(pos[2])  # In ISI X/Y/Z: Z is ground plane
             elif len(pos) == 2:
                 px = float(pos[0])
                 pz = float(pos[1])
@@ -953,7 +953,7 @@ class FightSpotterRole(BaseRole):
         if px == 0.0 and pz == 0.0:
             return None
 
-        # Calcul ou extraction de la vitesse
+        # Velocity calculation / extraction
         dt = (now - self._prev_time) if self._prev_time > 0.0 else 0.05
         dt = max(0.001, dt)
 
@@ -980,7 +980,7 @@ class FightSpotterRole(BaseRole):
             speed_val = context.get_player_speed_mps()
             vx, vz = 0.0, float(speed_val)
 
-        # Calcul ou extraction de l'orientation (yaw)
+        # Orientation (yaw) calculation
         m_ori = get_vehicle_attr(player_veh, "mOri") or get_vehicle_attr(player_veh, "ori")
         yaw_from_ori = self.geometry_engine.compute_yaw_from_orientation(m_ori)
         if yaw_from_ori is not None:
@@ -996,20 +996,20 @@ class FightSpotterRole(BaseRole):
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
         """
-        Évalue la télémétrie et le positionnement relatif à chaque tick.
+        Evaluates telemetry and relative positioning on each tick.
         """
         if not self.enabled:
             return None
 
         now = context.timestamp or time.time()
 
-        # 1. Filtre conditions globales : Stand, Garage, Qualification isolée
+        # 1. Global filter conditions: Pits, Garage, Private Qualifying
         if context.is_player_in_pits() or context.is_player_in_garage() or context.is_private_qualifying():
             if self.is_busy():
                 self.reset()
             return None
 
-        # 2. Extraction des données joueur
+        # 2. Extract player data
         player_data = self._extract_player_data(context, now)
         if not player_data:
             return None
@@ -1017,7 +1017,7 @@ class FightSpotterRole(BaseRole):
         player_x, player_z, player_vx, player_vz, player_yaw = player_data
         player_speed_scalar = math.sqrt(player_vx * player_vx + player_vz * player_vz)
 
-        # Filtre vitesse minimale
+        # Minimum speed filter
         if player_speed_scalar < self.min_speed_mps:
             if self.fsm.channel_open and (now > self.fsm.time_when_channel_should_close):
                 self.reset()
@@ -1027,7 +1027,7 @@ class FightSpotterRole(BaseRole):
         else:
             self.fsm.time_when_channel_should_close = float("inf")
 
-        # 3. Récupération des adversaires sur la piste (exclut stands et garages)
+        # 3. Retrieve opponents on track (excluding pits and garage)
         opponents = context.get_track_opponents()
         active_ids = set()
 
@@ -1037,7 +1037,7 @@ class FightSpotterRole(BaseRole):
         had_overlap_left = self.fsm.cars_on_left_prev > 0
         had_overlap_right = self.fsm.cars_on_right_prev > 0
 
-        # 4. Traitement géométrique et cinématique pour chaque adversaire
+        # 4. Geometric and kinematic processing for each opponent
         for opp in opponents:
             opp_id = int(get_vehicle_attr(opp, "id", 0) or get_vehicle_attr(opp, "mID", 0))
             pos = get_vehicle_attr(opp, "pos")
@@ -1067,7 +1067,7 @@ class FightSpotterRole(BaseRole):
 
             active_ids.add(opp_id)
 
-            # Extraction optionnelle vitesse adversaire
+            # Optional opponent velocity extraction
             ovx, ovz = None, None
             opp_vel = get_vehicle_attr(opp, "local_vel")
             if isinstance(opp_vel, dict):
@@ -1081,16 +1081,16 @@ class FightSpotterRole(BaseRole):
                     ovx = float(opp_vel[0])
                     ovz = float(opp_vel[1])
 
-            # Projection cartésienne 2D dans le repère local joueur
+            # 2D Cartesian projection into player local frame
             aligned_x, aligned_z = self.geometry_engine.get_aligned_xz_coordinates(
                 player_yaw, player_x, player_z, ox, oz
             )
 
-            # Vérification pré-filtrage portée (20m)
+            # Range pre-filtering check (20m)
             if not self.overlap_evaluator.is_in_consideration_zone(aligned_x, aligned_z):
                 continue
 
-            # Validation de la vitesse de rapprochement
+            # Closing speed validation
             is_speed_valid = self.speed_filter.update_and_validate(
                 opponent_id=opp_id,
                 opp_x=ox,
@@ -1102,7 +1102,7 @@ class FightSpotterRole(BaseRole):
                 opp_vel_z=ovz,
             )
 
-            # Évaluation d'overlap
+            # Overlap evaluation
             side, lateral_sep = self.overlap_evaluator.evaluate_opponent_overlap(
                 aligned_x=aligned_x,
                 aligned_z=aligned_z,
@@ -1115,10 +1115,10 @@ class FightSpotterRole(BaseRole):
             elif side == SpotterSide.RIGHT:
                 right_separations.append(lateral_sep)
 
-        # Purge des véhicules hors de portée
+        # Purge vehicles out of range
         self.speed_filter.purge_inactive(active_ids)
 
-        # 5. Détection 3-Wide et filtrage file indienne
+        # 5. 3-Wide detection and line-astern filtering
         cars_on_left, cars_on_right = self.overlap_evaluator.analyze_multi_car_distribution(
             left_separations, right_separations
         )
@@ -1126,7 +1126,7 @@ class FightSpotterRole(BaseRole):
         self._live_cars_left = cars_on_left
         self._live_cars_right = cars_on_right
 
-        # 6. Évaluation machine à états (FSM)
+        # 6. State machine evaluation (FSM)
         self.fsm.evaluate_next_message(
             cars_on_left=cars_on_left,
             cars_on_right=cars_on_right,
@@ -1134,7 +1134,7 @@ class FightSpotterRole(BaseRole):
             use_oval_logic=self.use_oval_logic,
         )
 
-        # 7. Exécution et émission audio
+        # 7. Audio playback execution
         playback_result = self.fsm.process_playback_tick(
             cars_on_left=cars_on_left,
             cars_on_right=cars_on_right,
@@ -1152,7 +1152,7 @@ class FightSpotterRole(BaseRole):
 
             if phrase_key:
                 self._live_last_message = phrase_key
-                # Les alertes spotter de combat ont la priorité maximale et interrompent les messages réguliers
+                # Close-combat spotter alerts have highest priority and interrupt regular messages
                 msg = EngineerMessage(
                     phrase_key=phrase_key,
                     priority=self.priority,
@@ -1165,7 +1165,7 @@ class FightSpotterRole(BaseRole):
         return None
 
     def get_state_summary(self) -> Dict[str, Any]:
-        """Retourne le diagnostic d'état en direct pour le monitoring IHM."""
+        """Returns live state diagnostic for UI monitoring."""
         summary = super().get_state_summary()
         summary.update({
             "cars_on_left": self._live_cars_left,

@@ -12,8 +12,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtAbsGaugeWidget(BaseQtHudWidget):
     """
-    Jauge ABS (Extrême Gauche du HUD, à gauche du Frein).
-    Affiche l'intensité de régulation ABS / blocage des roues en Violet (#a855f7).
+    ABS Gauge (Far Left of HUD, to the left of Brake gauge).
+    Displays ABS regulation / wheel lockup intensity in Purple (#a855f7).
     """
 
     def __init__(self):
@@ -32,7 +32,7 @@ class QtAbsGaugeWidget(BaseQtHudWidget):
         else:
             raw_abs = sensors.ecu_abs_active * 100.0
 
-        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_abs = lerp(self.display_abs, raw_abs, 0.65)
 
         scale_x = canvas_w / 800.0

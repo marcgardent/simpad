@@ -11,7 +11,7 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtEnergyLapsWidget(BaseQtHudWidget):
     """
-    Énergie & Tours Restants (Positionné sur la droite sous le Gear).
+    Energy & Remaining Laps (Positioned on the right below Gear).
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -29,7 +29,7 @@ class QtEnergyLapsWidget(BaseQtHudWidget):
         remaining_laps = int(extra_data.get("remainingLaps", sensors.remaining_laps))
 
         val_str = f"{energy:.1f} / {remaining_laps}" if (energy > 0 or remaining_laps > 0) else "-- / --"
-        sub_str = "ÉNERGIE / TOURS"
+        sub_str = "ENERGY / LAPS"
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0

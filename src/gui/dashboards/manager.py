@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 class DashboardManager:
     """
-    Gestionnaire centralisé pour la création, le positionnement, la visibilité
-    et la mise à jour télémétrique des tableaux de bord (dashboards) et de l'Overlay HUD Qt.
-    Gère les modes d'affichage 'desktop' (console principale) et 'ingame' (overlay transparent Qt).
+    Centralized manager for creation, positioning, visibility,
+    and telemetry updates of dashboards and the Qt HUD Overlay.
+    Manages display modes: 'desktop' (main console), 'ingame' (transparent Qt overlay), and 'pause'.
     """
 
     def __init__(self, grace_period_sec: float = 1.5):
@@ -31,13 +31,13 @@ class DashboardManager:
         
         self._qt_app = QApplication.instance() or QApplication(sys.argv)
         self._qt_overlay = LmuHudQtWindow()
-        # Enregistrement des dashboards
+        # Dashboard registrations
         self.register_dashboard(MonitoringBoard(), enabled=False)
         self._enabled_dashboards["lmuHudBoard"] = True
 
     @property
     def dashboard_names(self) -> List[str]:
-        """Retourne la liste des noms des dashboards enregistrés (incluant lmuHudBoard)."""
+        """Returns list of registered dashboard names (including lmuHudBoard)."""
         names = list(self._dashboards.keys())
         if "lmuHudBoard" not in names:
             names.append("lmuHudBoard")
@@ -48,13 +48,13 @@ class DashboardManager:
         return self._display_mode
 
     def is_dashboard_enabled(self, name: str) -> bool:
-        """Indique si un dashboard ou l'overlay spécifique est activé."""
+        """Indicates whether a specific dashboard or overlay is enabled."""
         return self._enabled_dashboards.get(name, True)
 
     def set_dashboard_enabled(self, name: str, enabled: bool) -> None:
-        """Active ou désactive un dashboard spécifique ou l'overlay HUD Qt via sa checkbox."""
+        """Enables or disables a specific dashboard or Qt HUD overlay via its checkbox."""
         self._enabled_dashboards[name] = enabled
-        print(f"[DashboardManager] Dashboard '{name}' activation définie à {enabled}", flush=True)
+        print(f"[DashboardManager] Dashboard '{name}' enabled set to {enabled}", flush=True)
         if self._display_mode == "ingame":
             if enabled:
                 self.show(name)
@@ -67,10 +67,10 @@ class DashboardManager:
 
     def update_auto_display_state(self, is_lmu_foreground: bool, on_track: bool, now: Optional[float] = None) -> str:
         """
-        Décision d'affichage centralisée et réactive :
-        - 'ingame'  : LMU actif au premier plan ET conduite en piste (on_track=True / in_realtime=True).
-        - 'pause'   : LMU actif au premier plan MAIS dans les menus/garages/stands/pause (on_track=False).
-        - 'desktop' : LMU non actif au premier plan.
+        Centralized reactive display decision:
+        - 'ingame'  : LMU active in foreground AND driving on track (on_track=True / in_realtime=True).
+        - 'pause'   : LMU active in foreground BUT in menus/garages/pits/pause (on_track=False).
+        - 'desktop' : LMU not active in foreground.
         """
         if not is_lmu_foreground:
             target_mode = "desktop"
@@ -86,10 +86,10 @@ class DashboardManager:
 
     def set_display_mode(self, mode: str) -> None:
         """
-        Bascule strictement entre les 3 modes d'affichage :
-        - 'desktop': Console de configuration principale affichée. Overlay masqué.
-        - 'ingame' : Overlay HUD Qt transparent lancé au premier plan.
-        - 'pause'  : Menus/Garages/Pause dans LMU. Overlay masqué pour laisser l'écran de jeu totalement dégagé.
+        Strictly switches between the 3 display modes:
+        - 'desktop': Main config console displayed. Overlay hidden.
+        - 'ingame' : Transparent Qt HUD overlay displayed in foreground.
+        - 'pause'  : Menus/Garages/Pause in LMU. Overlay hidden to leave game screen clear.
         """
         if mode not in ("desktop", "ingame", "pause"):
             return
@@ -112,66 +112,66 @@ class DashboardManager:
             if self.is_dashboard_enabled("lmuHudBoard"):
                 self._qt_overlay.update_geometry()
                 self._qt_overlay.show()
-                print("[DashboardManager] Mode INGAME actif -> Overlay HUD Qt affiché.", flush=True)
+                print("[DashboardManager] Active INGAME mode -> Qt HUD Overlay shown.", flush=True)
         else:
             self.hide_all()
             self._qt_overlay.hide()
             if mode == "pause":
-                print("[DashboardManager] Mode PAUSE / GARAGE -> Overlay masqué.", flush=True)
+                print("[DashboardManager] PAUSE / GARAGE mode -> Overlay hidden.", flush=True)
             else:
-                print("[DashboardManager] Mode DESKTOP -> Console Studio active.", flush=True)
+                print("[DashboardManager] DESKTOP mode -> Studio Console active.", flush=True)
 
     def register_dashboard(self, board: BaseDashboard, enabled: bool = True) -> None:
-        """Enregistre un nouveau dashboard dans le gestionnaire."""
+        """Registers a new dashboard in the manager."""
         if board.name in self._dashboards:
-            logger.warning(f"[DashboardManager] Dashboard '{board.name}' est déjà enregistré. Remplacement.")
+            logger.warning(f"[DashboardManager] Dashboard '{board.name}' is already registered. Overwriting.")
         self._dashboards[board.name] = board
         self._enabled_dashboards[board.name] = enabled
         print(f"[DashboardManager] Registered dashboard: '{board.name}' (enabled={enabled})", flush=True)
 
     def get_dashboard(self, name: str) -> Optional[BaseDashboard]:
-        """Retourne une instance de dashboard par son nom."""
+        """Returns a dashboard instance by name."""
         return self._dashboards.get(name)
 
     def build_all_ui(self) -> None:
-        """Construit l'interface utilisateur de tous les dashboards enregistrés."""
+        """Builds user interface for all registered dashboards."""
         for board in self._dashboards.values():
             try:
                 board.build_ui()
             except Exception as e:
-                logger.error(f"[DashboardManager] Erreur build_ui sur '{board.name}': {e}")
+                logger.error(f"[DashboardManager] Error build_ui on '{board.name}': {e}")
 
     def show_all(self) -> None:
-        """Affiche tous les dashboards enregistrés qui sont activés."""
+        """Shows all registered dashboards that are enabled."""
         for name, board in self._dashboards.items():
             if self._enabled_dashboards.get(name, True):
                 try:
                     board.show()
                 except Exception as e:
-                    logger.error(f"[DashboardManager] Erreur show sur '{board.name}': {e}")
+                    logger.error(f"[DashboardManager] Error show on '{board.name}': {e}")
 
     def show(self, name: str) -> None:
-        """Affiche un dashboard spécifique par son nom."""
+        """Shows a specific dashboard by name."""
         board = self._dashboards.get(name)
         if board:
             board.show()
 
     def hide_all(self) -> None:
-        """Masque tous les dashboards enregistrés."""
+        """Hides all registered dashboards."""
         for board in self._dashboards.values():
             try:
                 board.hide()
             except Exception as e:
-                logger.error(f"[DashboardManager] Erreur hide sur '{board.name}': {e}")
+                logger.error(f"[DashboardManager] Error hide on '{board.name}': {e}")
 
     def hide(self, name: str) -> None:
-        """Masque un dashboard spécifique par son nom."""
+        """Hides a specific dashboard by name."""
         board = self._dashboards.get(name)
         if board:
             board.hide()
 
     def update_telemetry(self, sensors: VehicleSensors) -> None:
-        """Transmet la mise à jour des capteurs à tous les dashboards visibles."""
+        """Transmits sensor update to all visible dashboards."""
         if not sensors.in_realtime:
             if self._display_mode == "ingame":
                 self.set_display_mode("pause")
@@ -181,20 +181,20 @@ class DashboardManager:
             try:
                 self._qt_overlay.update_telemetry(sensors)
             except Exception as e:
-                logger.debug(f"[DashboardManager] Erreur Qt Overlay update_telemetry: {e}")
+                logger.debug(f"[DashboardManager] Error Qt Overlay update_telemetry: {e}")
 
         for board in self._dashboards.values():
             if board.is_visible:
                 try:
                     board.update_telemetry(sensors)
                 except Exception as e:
-                    logger.debug(f"[DashboardManager] Erreur update_telemetry sur '{board.name}': {e}")
+                    logger.debug(f"[DashboardManager] Error update_telemetry on '{board.name}': {e}")
 
     def update_history_plots(self, t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high) -> None:
-        """Transmet les historiques de courbes temporelles aux dashboards avec graphes."""
+        """Transmits time-series plot histories to dashboards with graphs."""
         for board in self._dashboards.values():
             if board.is_visible and hasattr(board, "update_history_plots"):
                 try:
                     board.update_history_plots(t_list, d_abs, d_tc, d_over, d_und, d_rpm, d_travel, d_low, d_high)
                 except Exception as e:
-                    logger.debug(f"[DashboardManager] Erreur update_history_plots sur '{board.name}': {e}")
+                    logger.debug(f"[DashboardManager] Error update_history_plots on '{board.name}': {e}")

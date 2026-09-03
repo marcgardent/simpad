@@ -1,8 +1,8 @@
 """
-SimPad Race Engineer — Rôle Traffic Spotter (FSM Haute Précision TTC).
-Détecte l'approche rapide de véhicules par l'arrière (Time-To-Collision),
-gère le décompte vocal (3, 2, 1), l'avertissement de bord-à-bord (Alongside)
-et la confirmation de dépassement sécurisé (Clear).
+SimPad Race Engineer — Traffic Spotter Role (High Precision TTC FSM).
+Detects fast approaching vehicles from behind (Time-To-Collision),
+manages voice countdown (3, 2, 1), alongside warnings,
+and safe overtake confirmation (Clear).
 """
 
 import time
@@ -19,25 +19,25 @@ logger = logging.getLogger(__name__)
 
 
 class TrafficSpotterState(str, Enum):
-    """États de la machine à états finis (FSM) du Traffic Spotter."""
-    IDLE = "IDLE"                # Piste dégagée / Aucune menace
-    APPROACHING = "APPROACHING"  # Véhicule rapide détecté derrière (TTC <= 5s)
-    COUNTDOWN = "COUNTDOWN"      # Décompte temporel actif (3s, 2s, 1s)
-    OVERLAP = "OVERLAP"          # Véhicule bord à bord / Côte à côte
-    CLEAR = "CLEAR"              # Véhicule passé devant & distance de sécurité atteinte
+    """States of the Traffic Spotter finite state machine (FSM)."""
+    IDLE = "IDLE"                # Track clear / No threat
+    APPROACHING = "APPROACHING"  # Fast vehicle detected behind (TTC <= 5s)
+    COUNTDOWN = "COUNTDOWN"      # Active temporal countdown (3s, 2s, 1s)
+    OVERLAP = "OVERLAP"          # Vehicle alongside / Side-by-side
+    CLEAR = "CLEAR"              # Vehicle passed ahead & safe distance reached
 
 
 @RoleRegistry.register(
     role_id="traffic_spotter",
     name="Traffic Spotter (TTC FSM)",
-    description="Machine à états surveillant le TTC et la position relative des adversaires pour annoncer l'approche, le décompte (3-2-1), l'overlap et le clear.",
+    description="State machine monitoring TTC and relative positioning of opponents to announce approach, countdown (3-2-1), overlap, and clear.",
     default_priority=100,
 )
 class TrafficSpotterRole(BaseRole):
     """
-    Rôle de surveillance du trafic et de gestion des dépassements rapides par l'arrière.
+    Role for traffic monitoring and fast approaching vehicle management from behind.
     
-    Machine à états :
+    State machine:
     [IDLE] -> [APPROACHING] -> [COUNTDOWN: 3, 2, 1] -> [OVERLAP] -> [CLEAR] -> [IDLE]
     """
 
@@ -63,7 +63,7 @@ class TrafficSpotterRole(BaseRole):
         clear_dist_threshold_m: float = 10.0,
         abort_ttc_sec: float = 6.0,
         max_scan_distance_m: float = 250.0,
-        phrase_mode: str = "alongside",  # "alongside" ou "overlap" ou "car"
+        phrase_mode: str = "alongside",  # "alongside" or "overlap" or "car"
         enable_ref_lap_filter: bool = True,
         domain_speed_tolerance_kmh: float = 30.0,
         target_memory_sec: float = 6.0,
@@ -93,7 +93,7 @@ class TrafficSpotterRole(BaseRole):
             self.target_memory_sec = float(target_memory_sec)
         self._custom_profile: Optional[ReferenceLapProfile] = None
 
-        # Variables dynamiques de suivi
+        # Dynamic tracking variables
         self.target_vehicle_id: Optional[int] = None
         self.target_driver_name: str = ""
         self.target_vehicle_name: str = ""
@@ -104,20 +104,20 @@ class TrafficSpotterRole(BaseRole):
         self._last_aborted_target_id: Optional[int] = None
         self._last_aborted_time: float = 0.0
 
-        # Mémoire et anti-rebond par véhicule (débouncing renforcé N secondes)
+        # Per-vehicle debounce and memory (reinforced N seconds)
         self._target_history: Dict[int, Dict[str, Any]] = {}
         self._last_spotted_target_id: Optional[int] = None
         self._last_spotted_stage: Optional[int] = None
         self._last_spotted_time: float = 0.0
 
-        # Données de diagnostic en direct
+        # Live diagnostic data
         self._live_ttc: float = float("inf")
         self._live_distance: float = 0.0
         self._live_speed_delta_kmh: float = 0.0
 
     @property
     def incoming_cooldown_sec(self) -> float:
-        """Alias de compatibilité pour target_memory_sec."""
+        """Compatibility alias for target_memory_sec."""
         return self.target_memory_sec
 
     @incoming_cooldown_sec.setter
@@ -125,7 +125,7 @@ class TrafficSpotterRole(BaseRole):
         self.target_memory_sec = float(value)
 
     def _record_target_stage(self, vehicle_id: int, stage: int, now: float) -> None:
-        """Enregistre le stade d'annonce atteint par un véhicule pour éviter les répétitions."""
+        """Records target announcement stage reached by vehicle to avoid repeats."""
         self._target_history[vehicle_id] = {
             "last_stage": stage,
             "last_time": now,
@@ -135,7 +135,7 @@ class TrafficSpotterRole(BaseRole):
         self._last_spotted_time = now
 
     def _get_target_memory(self, vehicle_id: int, now: float) -> Optional[Dict[str, Any]]:
-        """Récupère la mémoire d'un véhicule si elle n'a pas expiré (target_memory_sec)."""
+        """Retrieves vehicle memory if not expired (target_memory_sec)."""
         entry = self._target_history.get(vehicle_id)
         if not entry:
             return None
@@ -145,7 +145,7 @@ class TrafficSpotterRole(BaseRole):
         return entry
 
     def _prune_target_history(self, now: float) -> None:
-        """Nettoie les entrées d'historique expirées (> target_memory_sec)."""
+        """Cleans expired history entries (> target_memory_sec)."""
         expired = [
             vid for vid, entry in self._target_history.items()
             if (now - entry["last_time"]) > self.target_memory_sec
@@ -154,12 +154,12 @@ class TrafficSpotterRole(BaseRole):
             del self._target_history[vid]
 
     def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
-        """Injecte manuellement un profil de tour de référence."""
+        """Manually injects a reference lap profile."""
         self._custom_profile = profile
         self.reset()
 
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
-        """Récupère le profil de référence actif (injecté ou via le contexte/DeltaEngine)."""
+        """Retrieves active reference profile (injected or via context/DeltaEngine)."""
         if self._custom_profile is not None:
             return self._custom_profile
         if context:
@@ -175,7 +175,7 @@ class TrafficSpotterRole(BaseRole):
 
     @property
     def speed_delta_min_kmh(self) -> float:
-        """Delta de vitesse minimum en km/h."""
+        """Minimum speed delta in km/h."""
         return round(self.speed_delta_min_mps * 3.6, 1)
 
     @speed_delta_min_kmh.setter
@@ -183,83 +183,83 @@ class TrafficSpotterRole(BaseRole):
         self.speed_delta_min_mps = float(value) / 3.6
 
     def get_parameters(self) -> List[RoleParam]:
-        """Déclare la liste des paramètres configurables du Spotter pour l'IHM."""
+        """Declares list of configurable parameters for UI."""
         return [
             BoolParam(
                 name="enable_ref_lap_filter",
-                label="Filtre Tour Référence",
+                label="Reference Lap Filter",
                 default=True,
-                description="Exige qu'au moins un des véhicules (joueur ou adversaire) soit hors domaine de vitesse normal",
+                description="Requires at least one vehicle (player or opponent) to be outside normal speed domain",
             ),
             FloatRangeParam(
                 name="domain_speed_tolerance_kmh",
-                label="Tolérance Vitesse Domaine",
+                label="Domain Speed Tolerance",
                 min_val=5.0,
                 max_val=80.0,
                 step=5.0,
                 unit="km/h",
                 default=30.0,
-                description="Écart de vitesse max avec le tour de référence pour être considéré dans le domaine normal",
+                description="Maximum speed delta with reference lap to be considered in normal domain",
             ),
             FloatRangeParam(
                 name="speed_delta_min_kmh",
-                label="Delta Vitesse Min",
+                label="Min Speed Delta",
                 min_val=5.0,
                 max_val=80.0,
                 step=1.0,
                 unit="km/h",
                 default=20.0,
-                description="Delta de vitesse positif minimum requis pour déclencher l'alerte d'approche",
+                description="Minimum positive speed delta required to trigger approach alert",
             ),
             FloatRangeParam(
                 name="ttc_trigger_sec",
-                label="Seuil Déclenchement TTC",
+                label="TTC Trigger Threshold",
                 min_val=2.0,
                 max_val=10.0,
                 step=0.5,
                 unit="s",
                 default=5.0,
-                description="Temps avant collision (Time-To-Collision) déclenchant le spotter",
+                description="Time-To-Collision threshold triggering spotter",
             ),
             FloatRangeParam(
                 name="target_memory_sec",
-                label="Mémoire / Anti-rebond Cible",
+                label="Target Memory / Debounce",
                 min_val=1.0,
                 max_val=30.0,
                 step=0.5,
                 unit="s",
                 default=6.0,
-                description="Durée de mémorisation de la dernière cible pour éviter les annonces répétées non progressives",
+                description="Memory duration for last target to prevent non-progressive repeated announcements",
             ),
             FloatRangeParam(
                 name="overlap_dist_threshold_m",
-                label="Distance Seuil Overlap",
+                label="Overlap Distance Threshold",
                 min_val=1.0,
                 max_val=15.0,
                 step=0.5,
                 unit="m",
                 default=4.0,
-                description="Distance relative bord-à-bord (Alongside / Overlap)",
+                description="Relative side-by-side distance (Alongside / Overlap)",
             ),
             FloatRangeParam(
                 name="clear_dist_threshold_m",
-                label="Distance Seuil Clear",
+                label="Clear Distance Threshold",
                 min_val=2.0,
                 max_val=30.0,
                 step=1.0,
                 unit="m",
                 default=10.0,
-                description="Distance de sécurité après dépassement pour annoncer Clear",
+                description="Safety distance after overtake to announce Clear",
             ),
             FloatRangeParam(
                 name="max_scan_distance_m",
-                label="Distance Max de Scan",
+                label="Max Scan Distance",
                 min_val=50.0,
                 max_val=500.0,
                 step=10.0,
                 unit="m",
                 default=250.0,
-                description="Rayon de détection arrière sur la spline de piste",
+                description="Rear detection radius along track spline",
             ),
         ]
 
@@ -271,19 +271,19 @@ class TrafficSpotterRole(BaseRole):
                     channel=TelemetryChannel.TELEMETRY,
                     preferred_hz=100,
                     required=True,
-                    reason="Vitesse longitudinale joueur et calcul de la distance relative",
+                    reason="Player longitudinal speed and relative distance calculation",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.FULL_SCORING,
                     preferred_hz=10,
                     required=True,
-                    reason="Positions et vitesses scalaires des véhicules en approche (TTC)",
+                    reason="Positions and speeds of approaching vehicles (TTC)",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.COMPACT_SCORING,
                     preferred_hz=10,
                     required=False,
-                    reason="Longueur du circuit et spline pour calcul de distance arrière",
+                    reason="Track length and spline for rear distance calculation",
                 ),
             ]
         except ImportError:
@@ -305,7 +305,7 @@ class TrafficSpotterRole(BaseRole):
         }
 
     def is_busy(self) -> bool:
-        """Le rôle est occupé dès qu'il suit activement une voiture (hors IDLE)."""
+        """Role is busy as long as it is actively tracking a car (non-IDLE)."""
         return self.state != TrafficSpotterState.IDLE
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
@@ -320,8 +320,8 @@ class TrafficSpotterRole(BaseRole):
                 self.reset()
             return None
 
-        # Si le joueur est dans la pitlane ou au garage, désactiver le spotter de piste
-        # pour éviter toute fausse alerte causée par les voitures passant à pleine vitesse sur la piste
+        # If player is in pitlane or garage, disable on-track spotter
+        # to avoid false alerts caused by cars driving past at full speed on main straight
         if context.is_player_in_pits() or context.is_player_in_garage():
             if self.state != TrafficSpotterState.IDLE:
                 self.reset()
@@ -334,10 +334,10 @@ class TrafficSpotterRole(BaseRole):
         track_length = context.get_track_length()
         opponents = context.get_track_opponents()
 
-        # Calcul des métriques de tous les adversaires
+        # Calculate metrics for all opponents
         opponent_metrics = self._calculate_opponent_metrics(context, player_veh, player_speed, opponents, track_length)
 
-        # Exécution de la FSM
+        # Execute FSM
         return self._run_state_machine(opponent_metrics, now=now)
 
     def _calculate_opponent_metrics(
@@ -348,7 +348,7 @@ class TrafficSpotterRole(BaseRole):
         opponents: List[Dict[str, Any]],
         track_length: float,
     ) -> List[Dict[str, Any]]:
-        """Calcule TTC, distance relative et delta de vitesse pour chaque adversaire."""
+        """Calculates TTC, relative distance, and speed delta for each opponent."""
         metrics = []
         ref_prof = self.get_reference_profile(context)
         has_valid_ref = bool(ref_prof and getattr(ref_prof, "num_points", 0) >= 2)
@@ -360,13 +360,13 @@ class TrafficSpotterRole(BaseRole):
             speed_delta = opp_speed - player_speed
             speed_delta_kmh = speed_delta * 3.6
 
-            # TTC valide physiquement si l'adversaire est derrière et se rapproche
+            # Physically valid TTC if opponent is behind and closing in
             if dist_behind > 0.0 and speed_delta > 0.5:
                 ttc = dist_behind / speed_delta
             else:
                 ttc = float("inf")
 
-            # Évaluation du domaine de vitesse normal (tour de référence)
+            # Normal speed domain evaluation (reference lap)
             domain_anomaly = True
             if self.enable_ref_lap_filter and has_valid_ref:
                 domain_anomaly = context.has_traffic_domain_anomaly(
@@ -377,7 +377,7 @@ class TrafficSpotterRole(BaseRole):
                 )
             elif self.enable_ref_lap_filter and not has_valid_ref:
                 logger.debug(
-                    "[TrafficSpotter] Filtre domaine activé mais aucun profil de référence — filtre bypassé"
+                    "[TrafficSpotter] Domain filter enabled but no reference profile — bypassing filter"
                 )
 
             metrics.append({
@@ -395,20 +395,20 @@ class TrafficSpotterRole(BaseRole):
         return metrics
 
     def _run_state_machine(self, metrics: List[Dict[str, Any]], now: Optional[float] = None) -> Optional[EngineerMessage]:
-        """Exécute les transitions de la FSM selon les métriques calculées."""
+        """Runs FSM transitions according to calculated metrics."""
         if now is None:
             now = time.time()
 
         # =========================================================================
-        # 1. ÉTAT IDLE / TRACK CLEAR
+        # 1. IDLE STATE / TRACK CLEAR
         # =========================================================================
         if self.state == TrafficSpotterState.IDLE:
             self._live_ttc = float("inf")
             self._live_distance = 0.0
             self._live_speed_delta_kmh = 0.0
 
-            # Trouver le véhicule le plus menaçant (TTC le plus court <= seuil)
-            # avec filtre du tour de référence
+            # Find the most threatening vehicle (shortest TTC <= threshold)
+            # with reference lap filter
             threats = [
                 m for m in metrics
                 if 0.0 < m["dist_behind"] <= self.max_scan_distance_m
@@ -431,12 +431,12 @@ class TrafficSpotterRole(BaseRole):
                 self._live_distance = target["dist_behind"]
                 self._live_speed_delta_kmh = target["speed_delta_kmh"]
 
-                # Vérifier dans l'historique si ce véhicule a déjà été annoncé dans la fenêtre target_memory_sec
+                # Check history to see if vehicle was already announced within target_memory_sec window
                 hist = self._get_target_memory(target_id, now)
                 last_stage = hist.get("last_stage") if hist else None
 
                 if last_stage is None:
-                    # Première détection pour cette cible -> Entrée standard en APPROACHING ("incoming")
+                    # First detection for this target -> Standard entry into APPROACHING ("incoming")
                     self.state = TrafficSpotterState.APPROACHING
                     self.last_announced_sec = 5
                     self._record_target_stage(target_id, 5, now)
@@ -452,8 +452,8 @@ class TrafficSpotterRole(BaseRole):
                     self.emit_sound(phrase, interrupt=False)
                     return msg
                 else:
-                    # Véhicule déjà en mémoire dans les N dernières secondes
-                    # Déterminer si le véhicule a progressé vers un stade plus proche
+                    # Vehicle already in memory within last N seconds
+                    # Determine if vehicle progressed to a closer stage
                     if target["ttc"] <= 1.0:
                         current_stage = 1
                     elif target["ttc"] <= 2.0:
@@ -464,7 +464,7 @@ class TrafficSpotterRole(BaseRole):
                         current_stage = 5
 
                     if current_stage < last_stage:
-                        # Progression constatée -> annonce directe du nouveau stade
+                        # Progression observed -> direct announcement of new stage
                         self._record_target_stage(target_id, current_stage, now)
                         self.last_announced_sec = current_stage
 
@@ -484,7 +484,7 @@ class TrafficSpotterRole(BaseRole):
                         self.emit_sound(phrase, interrupt=False)
                         return msg
                     else:
-                        # Pas de progression : reprise du suivi en silence sans répéter "incoming" ou le décompte
+                        # No progression: resume silent tracking without repeating "incoming" or countdown
                         self.state = TrafficSpotterState.APPROACHING if last_stage > 3 else TrafficSpotterState.COUNTDOWN
                         self.last_announced_sec = last_stage
                         return None
@@ -492,12 +492,12 @@ class TrafficSpotterRole(BaseRole):
             return None
 
         # =========================================================================
-        # RECHERCHE DE LA CIBLE COURANTE DANS LES METRICS
+        # SEARCH FOR CURRENT TARGET IN METRICS
         # =========================================================================
         target_metric = next((m for m in metrics if m["id"] == self.target_vehicle_id), None)
 
         if not target_metric:
-            # Cible disparue (abandon, stands, déconnexion)
+            # Target disappeared (abandon, pits, disconnect)
             self._last_aborted_target_id = self.target_vehicle_id
             self._last_aborted_time = now
             self._reset_active_tracking()
@@ -511,10 +511,10 @@ class TrafficSpotterRole(BaseRole):
         self._live_speed_delta_kmh = target_metric["speed_delta_kmh"]
 
         # =========================================================================
-        # 2. ÉTAT APPROACHING / COUNTDOWN
+        # 2. APPROACHING / COUNTDOWN STATE
         # =========================================================================
         if self.state in (TrafficSpotterState.APPROACHING, TrafficSpotterState.COUNTDOWN):
-            # Annulation / Reset si l'adversaire ralentit nettement ou s'écarte sans spammer
+            # Abort / Reset if opponent slows down significantly or pulls away without spamming
             is_slowing_down = (speed_delta_mps <= 1.0) or (ttc > self.abort_ttc_sec)
             if is_slowing_down and dist_behind > 15.0:
                 logger.debug(f"[TrafficSpotter] Abort approach: TTC={ttc:.1f}s, Dist={dist_behind:.1f}m, Delta={speed_delta_mps*3.6:.1f}km/h")
@@ -523,8 +523,8 @@ class TrafficSpotterRole(BaseRole):
                 self._reset_active_tracking()
                 return None
 
-            # Détection Overlap / Biais bord à bord
-            # La voiture est bord à bord quand la distance spline est proche de 0
+            # Overlap / Alongside detection
+            # Car is alongside when spline distance is near 0
             if (
                 abs(dist_behind) <= self.overlap_dist_threshold_m
                 or (dist_behind <= 0.0 and dist_behind > -self.clear_dist_threshold_m)
@@ -554,7 +554,7 @@ class TrafficSpotterRole(BaseRole):
                     return msg
                 return None
 
-            # Décompte temporel (3s, 2s, 1s)
+            # Temporal countdown (3s, 2s, 1s)
             for sec in (3, 2, 1):
                 if ttc <= float(sec) and (self.last_announced_sec is None or self.last_announced_sec > sec):
                     self.state = TrafficSpotterState.COUNTDOWN
@@ -582,22 +582,22 @@ class TrafficSpotterRole(BaseRole):
             return None
 
         # =========================================================================
-        # 3. ÉTAT OVERLAP
+        # 3. OVERLAP STATE
         # =========================================================================
         elif self.state == TrafficSpotterState.OVERLAP:
             if self._overlap_start_time <= 0.0:
                 self._overlap_start_time = now
 
-            # Sécurité timeout si overlap bloqué > 15s (voiture accidentée ou disparue)
+            # Timeout safety if overlap stuck > 15s (crashed or disappeared car)
             if (now - self._overlap_start_time) > 15.0:
                 self._reset_active_tracking()
                 return None
 
-            # Condition CLEAR : La voiture est passée devant (distance < -10m)
+            # CLEAR condition: Car passed ahead (distance < -10m)
             if dist_behind <= -self.clear_dist_threshold_m:
                 passed_target_id = self.target_vehicle_id
 
-                # Vérifier si une autre voiture arrive derrière immédiatement
+                # Check if another car arrives behind immediately
                 other_threats = [
                     m for m in metrics
                     if m["id"] != self.target_vehicle_id
@@ -609,7 +609,7 @@ class TrafficSpotterRole(BaseRole):
                     if passed_target_id is not None:
                         self._record_target_stage(passed_target_id, -1, now)
 
-                    # Enchaînement direct sur la prochaine voiture sans dire Clear
+                    # Direct chain onto next car without calling Clear
                     other_threats.sort(key=lambda m: m["ttc"])
                     next_target = other_threats[0]
                     next_id = next_target["id"]
@@ -624,7 +624,7 @@ class TrafficSpotterRole(BaseRole):
                     self._last_state_change_time = now
                     return None
 
-                # Piste dégagée derrière -> Annonce CLEAR
+                # Track clear behind -> Announce CLEAR
                 self.state = TrafficSpotterState.CLEAR
                 self._last_state_change_time = now
 
@@ -653,7 +653,7 @@ class TrafficSpotterRole(BaseRole):
             return None
 
         # =========================================================================
-        # 4. ÉTAT CLEAR -> RETOUR IMMÉDIAT À IDLE
+        # 4. CLEAR STATE -> IMMEDIATE RETURN TO IDLE
         # =========================================================================
         elif self.state == TrafficSpotterState.CLEAR:
             self._reset_active_tracking()
@@ -662,7 +662,7 @@ class TrafficSpotterRole(BaseRole):
         return None
 
     def _reset_active_tracking(self) -> None:
-        """Réinitialise les variables de suivi FSM sans effacer la mémoire d'anti-rebond."""
+        """Resets FSM tracking variables without clearing debounce memory."""
         self.state = TrafficSpotterState.IDLE
         self.target_vehicle_id = None
         self.target_driver_name = ""
@@ -675,7 +675,7 @@ class TrafficSpotterRole(BaseRole):
         self._live_speed_delta_kmh = 0.0
 
     def reset(self, clear_history: bool = True) -> None:
-        """Réinitialise l'état complet du rôle et optionnellement la mémoire."""
+        """Resets complete role state and optionally memory."""
         self._reset_active_tracking()
         if clear_history:
             self._target_history.clear()

@@ -16,7 +16,7 @@ def lerp(start: float, end: float, amt: float) -> float:
 
 class BaseQtHudWidget(ABC):
     """
-    Classe de base abstraite pour les composants graphiques du LMU HUD Overlay sous PySide6.
+    Abstract base class for graphical components of the LMU HUD Overlay under PySide6.
     """
 
     @abstractmethod
@@ -29,6 +29,6 @@ class BaseQtHudWidget(ABC):
         extra_data: Dict[str, Any],
     ) -> None:
         """
-        Dessine le composant graphique vectoriel via QPainter.
+        Renders vector graphical component via QPainter.
         """
         pass

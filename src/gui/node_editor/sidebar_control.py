@@ -46,8 +46,8 @@ class NodeSidebarControl:
             dpg.add_spacer(height=2)
             dpg.add_text("Engine RPM & Regime", color=[255, 100, 100, 255])
             with dpg.group(horizontal=True):
-                dpg.add_slider_float(label="Sur", tag="test_sensor_over_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
-                dpg.add_slider_float(label="Sous", tag="test_sensor_under_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="Over", tag="test_sensor_over_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
+                dpg.add_slider_float(label="Under", tag="test_sensor_under_rev", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
             with dpg.group(horizontal=True):
                 dpg.add_slider_float(label="RPM", tag="test_sensor_rpm", default_value=0.0, min_value=0.0, max_value=1.0, format="%.2f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))
                 dpg.add_slider_float(label="Gear", tag="test_sensor_gear", default_value=1.0, min_value=0.0, max_value=8.0, format="%.0f", width=120, callback=lambda *args: self.on_test_sensor_change(parent_editor._synth_engine))

@@ -35,7 +35,7 @@ def get_aero_qcolor_ramp(a: float) -> QColor:
 
 class QtAeroBarWidget(BaseQtHudWidget):
     """
-    Barre d'Appui Aérodynamique (Bas du HUD compact) et pastille 'cleanlap'.
+    Aerodynamic Downforce Bar (Bottom of compact HUD) and cleanlap indicator dot.
     """
 
     def __init__(self):
@@ -54,14 +54,14 @@ class QtAeroBarWidget(BaseQtHudWidget):
         else:
             raw_aero = sensors.aero_load * 100.0
 
-        # LERP Smoothing (0.65 réactivité immédiate)
+        # LERP Smoothing (0.65 immediate response)
         self.display_aero = lerp(self.display_aero, raw_aero, 0.65)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        # Largeur ajustée (330px) pour se loger parfaitement entre les pneus arrière
+        # Width (330px) sized to fit between rear tires
         aero_width = 330.0 * scale_x
         aero_height = 12.0 * scale_y
         aero_x = center_x - (aero_width / 2.0)
@@ -82,15 +82,15 @@ class QtAeroBarWidget(BaseQtHudWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(QRectF(aero_x, aero_y, fill_width, aero_height), 2.0 * scale_x, 2.0 * scale_y)
 
-        # ── Indicateur 'cleanlap' (Pastille ronde sous la jauge aéro) ──
+        # Indicator dot underneath aero bar
         lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
 
         if lap_flag == 0:
-            dot_color = QColor(239, 68, 68, 255)     # ROUGE (Dirty / Hors-piste / Coupé)
+            dot_color = QColor(239, 68, 68, 255)     # RED (Dirty / Off-track / Cut)
         elif lap_flag == 1:
-            dot_color = QColor(59, 130, 246, 255)    # BLEU (Out-lap / Stands / Garage)
+            dot_color = QColor(59, 130, 246, 255)    # BLUE (Out-lap / Pits / Garage)
         else:
-            dot_color = QColor(34, 197, 94, 255)     # VERT (Tour lancé propre / Départ Course / Clean)
+            dot_color = QColor(34, 197, 94, 255)     # GREEN (Flying lap clean / Race start / Clean)
 
         dot_center_x = center_x
         dot_center_y = aero_y + aero_height + (14.0 * scale_y)

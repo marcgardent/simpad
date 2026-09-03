@@ -1,7 +1,7 @@
 """
-SimPad Race Engineer — Coordinateur Principal de l'Ingénieur de Course (RaceEngineer).
-Gère la collection ordonnée des Rôles, leur cycle de vie, la priorisation,
-l'arbitrage des messages audio et l'état global IDLE/BUSY.
+SimPad Race Engineer — Main Race Engineer Coordinator (RaceEngineer).
+Manages ordered collection of Roles, lifecycle, prioritization,
+audio message arbitration, and global IDLE/BUSY state.
 """
 
 import time
@@ -22,8 +22,8 @@ DEFAULT_ENGINEER_CONFIG_PATH = Path("engineer_config.json")
 
 class RaceEngineer:
     """
-    Coordinateur principal de l'ingénieur de course virtuel.
-    Gère l'exécution des rôles par priorité décroissante, l'arbitrage sonore et l'état global.
+    Main coordinator for virtual race engineer.
+    Manages role execution by descending priority, audio arbitration, and global state.
     """
 
     def __init__(
@@ -50,36 +50,36 @@ class RaceEngineer:
                 self._sort_roles()
 
     def _sort_roles(self) -> None:
-        """Trie la liste des rôles par priorité décroissante."""
+        """Sorts role list by descending priority."""
         self._roles.sort(key=lambda r: r.priority, reverse=True)
 
     def get_roles(self) -> List[BaseRole]:
-        """Retourne la liste des rôles ordonnée par priorité."""
+        """Returns role list ordered by priority."""
         return list(self._roles)
 
     def get_role(self, role_id: str) -> Optional[BaseRole]:
-        """Recherche un rôle par son identifiant."""
+        """Searches for a role by identifier."""
         for r in self._roles:
             if r.role_id == role_id:
                 return r
         return None
 
     def add_role(self, role: BaseRole) -> None:
-        """Ajoute un rôle personnalisé et réordonne par priorité."""
-        # Remplacer si déjà présent
+        """Adds a custom role and reorders by priority."""
+        # Replace if already present
         self._roles = [r for r in self._roles if r.role_id != role.role_id]
         role.audio_engine = self.audio_engine
         self._roles.append(role)
         self._sort_roles()
 
     def remove_role(self, role_id: str) -> bool:
-        """Retire un rôle de l'ingénieur."""
+        """Removes a role from engineer."""
         before = len(self._roles)
         self._roles = [r for r in self._roles if r.role_id != role_id]
         return len(self._roles) < before
 
     def set_role_enabled(self, role_id: str, enabled: bool, auto_save: bool = True) -> None:
-        """Active ou désactive un rôle spécifique."""
+        """Enables or disables a specific role."""
         role = self.get_role(role_id)
         if role:
             role.enabled = enabled
@@ -90,13 +90,13 @@ class RaceEngineer:
 
     def move_role_up(self, role_id: str, auto_save: bool = True) -> bool:
         """
-        Augmente la priorité d'un rôle en l'échangeant avec le rôle au-dessus.
+        Increases priority of a role by swapping with role above.
         """
         for i, r in enumerate(self._roles):
             if r.role_id == role_id and i > 0:
-                # Échange des priorités
+                # Swap priorities
                 prev_role = self._roles[i - 1]
-                # Garantir une différence de priorité stricte
+                # Ensure strict priority difference
                 if r.priority <= prev_role.priority:
                     new_prio = prev_role.priority + 10
                     r.priority = new_prio
@@ -111,7 +111,7 @@ class RaceEngineer:
 
     def move_role_down(self, role_id: str, auto_save: bool = True) -> bool:
         """
-        Diminue la priorité d'un rôle en l'échangeant avec le rôle en-dessous.
+        Decreases priority of a role by swapping with role below.
         """
         for i, r in enumerate(self._roles):
             if r.role_id == role_id and i < len(self._roles) - 1:
@@ -130,8 +130,8 @@ class RaceEngineer:
 
     def reorder_roles(self, ordered_role_ids: List[str], auto_save: bool = True) -> None:
         """
-        Réassigne les priorités de l'ensemble des rôles selon l'ordre fourni.
-        Le premier élément recevra la priorité la plus haute (ex: 100, 90, 80...).
+        Reassigns priorities across all roles according to provided order.
+        First element receives highest priority (e.g. 100, 90, 80...).
         """
         base_priority = max(100, (len(ordered_role_ids) + len(self._roles)) * 10)
         for index, r_id in enumerate(ordered_role_ids):
@@ -143,11 +143,11 @@ class RaceEngineer:
             self.save_to_file()
 
     def is_any_role_busy(self) -> bool:
-        """Indique si au moins un rôle actif est actuellement en état BUSY."""
+        """Indicates whether at least one active role is in BUSY state."""
         return any(r.enabled and r.is_busy() for r in self._roles)
 
     def get_busy_roles(self) -> List[BaseRole]:
-        """Retourne la liste des rôles actuellement occupés."""
+        """Returns list of currently busy roles."""
         return [r for r in self._roles if r.enabled and r.is_busy()]
 
     # =========================================================================
@@ -156,8 +156,8 @@ class RaceEngineer:
 
     def get_channel_requirements(self) -> List[Any]:
         """
-        Agrège tous les besoins de canaux de télémétrie déclarés par les sous-plugins actifs.
-        Fusionne les canaux identiques en sélectionnant la fréquence maximale requise.
+        Aggregates all telemetry channel requirements declared by active sub-plugins.
+        Merges identical channels by selecting maximum required sampling rate.
         """
         try:
             from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
@@ -199,8 +199,8 @@ class RaceEngineer:
 
     def get_all_sound_requirements(self, only_enabled: bool = False) -> Dict[str, str]:
         """
-        Agrège l'ensemble des phrases vocales requises par les sous-plugins.
-        Retourne un dictionnaire {phrase_key: texte_a_synthetiser}.
+        Aggregates all speech phrases required by sub-plugins.
+        Returns a dictionary {phrase_key: text_to_synthesize}.
         """
         aggregated_sounds: Dict[str, str] = {}
         for role in self._roles:
@@ -214,8 +214,8 @@ class RaceEngineer:
 
     def get_missing_sounds(self, sound_dir: Optional[Path] = None, only_enabled: bool = False) -> Dict[str, str]:
         """
-        Vérifie sur le disque la présence des fichiers .wav requis par les sous-plugins
-        et retourne le dictionnaire des phrases manquantes à générer.
+        Checks disk for existence of .wav files required by sub-plugins
+        and returns dictionary of missing phrases to generate.
         """
         from src.utils.audio_baker import DEFAULT_SOUND_DIR
         target_dir = Path(sound_dir or DEFAULT_SOUND_DIR)
@@ -234,8 +234,8 @@ class RaceEngineer:
         force: bool = False,
     ) -> Tuple[int, int]:
         """
-        Génère via Piper TTS tous les fichiers audio manquants déclarés par les sous-plugins.
-        Retourne un tuple (nb_generes, nb_deja_presents).
+        Generates via Piper TTS all missing audio files declared by sub-plugins.
+        Returns tuple (num_generated, num_already_present).
         """
         try:
             from src.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
@@ -249,11 +249,11 @@ class RaceEngineer:
                 force=force,
             )
         except Exception as e:
-            logger.error(f"[RaceEngineer] Échec de la génération audio TTS : {e}", exc_info=True)
+            logger.error(f"[RaceEngineer] Failed to generate TTS audio: {e}", exc_info=True)
             return 0, 0
 
     def _get_active_reference_profile(self) -> Optional[Any]:
-        """Résout le profil de tour de référence actif depuis le ReferenceLapManager du Core."""
+        """Resolves active reference lap profile from Core ReferenceLapManager."""
         try:
             from simpad_qt.core.reference_lap import ReferenceLapManager
             ref_mgr = ReferenceLapManager.get_instance()
@@ -279,7 +279,7 @@ class RaceEngineer:
         scoring: Optional[Dict[str, Any]] = None,
     ) -> List[EngineerMessage]:
         """
-        Cycle d'évaluation principal : transmet le contexte à chaque rôle dans l'ordre de priorité.
+        Main evaluation cycle: passes context to each role in priority order.
         """
         if not self.enabled:
             return []
@@ -297,7 +297,7 @@ class RaceEngineer:
 
         emitted_messages: List[EngineerMessage] = []
 
-        # Évaluation dans l'ordre strict des priorités
+        # Evaluation in strict priority order
         for role in self._roles:
             if not role.enabled:
                 continue
@@ -307,17 +307,17 @@ class RaceEngineer:
                 if msg:
                     emitted_messages.append(msg)
             except Exception as e:
-                logger.error(f"[RaceEngineer] Erreur lors de l'exécution du rôle '{role.role_id}': {e}", exc_info=True)
+                logger.error(f"[RaceEngineer] Error executing role '{role.role_id}': {e}", exc_info=True)
 
         return emitted_messages
 
     def reset_all(self) -> None:
-        """Réinitialise tous les rôles."""
+        """Resets all roles."""
         for role in self._roles:
             role.reset()
 
     def get_status_summary(self) -> Dict[str, Any]:
-        """Retourne un état complet pour l'IHM."""
+        """Returns complete state summary for UI."""
         busy_roles = [r.role_id for r in self._roles if r.enabled and r.is_busy()]
         return {
             "enabled": self.enabled,
@@ -327,13 +327,13 @@ class RaceEngineer:
         }
 
     def set_master_enabled(self, enabled: bool, auto_save: bool = True) -> None:
-        """Active ou désactive globalement le Race Engineer."""
+        """Enables or disables Race Engineer globally."""
         self.enabled = enabled
         if auto_save and self.config_path:
             self.save_to_file()
 
     def save_configuration(self) -> Dict[str, Any]:
-        """Exporte la configuration des rôles (activations, priorités, paramètres)."""
+        """Exports role configuration (activations, priorities, parameters)."""
         return {
             "enabled": self.enabled,
             "roles": {
@@ -344,7 +344,7 @@ class RaceEngineer:
         }
 
     def load_configuration(self, config: Dict[str, Any]) -> None:
-        """Restaure une configuration exportée."""
+        """Restores exported configuration."""
         if "enabled" in config:
             self.enabled = bool(config["enabled"])
 
@@ -361,7 +361,7 @@ class RaceEngineer:
             self._sort_roles()
 
     def save_to_file(self, filepath: Optional[Path] = None) -> bool:
-        """Sauvegarde la configuration actuelle des rôles dans un fichier JSON."""
+        """Saves current role configuration to JSON file."""
         target_path = filepath or self.config_path
         if not target_path:
             return False
@@ -370,14 +370,14 @@ class RaceEngineer:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             with open(target_path, "w", encoding="utf-8") as f:
                 json.dump(self.save_configuration(), f, indent=2)
-            logger.info(f"[RaceEngineer] Configuration sauvegardée dans '{target_path}'.")
+            logger.info(f"[RaceEngineer] Configuration saved to '{target_path}'.")
             return True
         except Exception as e:
-            logger.error(f"[RaceEngineer] Erreur lors de la sauvegarde dans '{target_path}': {e}")
+            logger.error(f"[RaceEngineer] Error saving configuration to '{target_path}': {e}")
             return False
 
     def load_from_file(self, filepath: Optional[Path] = None) -> bool:
-        """Charge la configuration des rôles depuis un fichier JSON."""
+        """Loads role configuration from JSON file."""
         target_path = filepath or self.config_path
         if not target_path:
             return False
@@ -389,9 +389,9 @@ class RaceEngineer:
                 config = json.load(f)
             if isinstance(config, dict):
                 self.load_configuration(config)
-                logger.info(f"[RaceEngineer] Configuration chargée depuis '{target_path}'.")
+                logger.info(f"[RaceEngineer] Configuration loaded from '{target_path}'.")
                 return True
             return False
         except Exception as e:
-            logger.error(f"[RaceEngineer] Erreur lors du chargement de '{target_path}': {e}")
+            logger.error(f"[RaceEngineer] Error loading configuration from '{target_path}': {e}")
             return False

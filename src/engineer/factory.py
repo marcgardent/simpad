@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Fabrique de Rôles (Role Factory).
-Instancie les rôles de l'ingénieur de course selon le patron Factory Method / Abstract Factory.
+SimPad Race Engineer — Role Factory.
+Instantiates race engineer roles following Factory Method / Abstract Factory pattern.
 """
 
 import logging
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 class RoleFactory:
     """
-    Fabrique instanciant les rôles enregistrés dans le RoleRegistry.
-    Garantit l'injection correcte des dépendances (moteur audio, configuration).
+    Factory instantiating roles registered in RoleRegistry.
+    Ensures dependency injection (audio engine, configuration).
     """
 
     @classmethod
@@ -27,11 +27,11 @@ class RoleFactory:
         **kwargs: Any,
     ) -> BaseRole:
         """
-        Instancie un rôle spécifique par son identifiant role_id.
+        Instantiates a specific role by its identifier role_id.
         """
         role_cls = RoleRegistry.get_role_class(role_id)
         if role_cls is None:
-            raise ValueError(f"[RoleFactory] Aucun rôle enregistré avec l'identifiant '{role_id}'.")
+            raise ValueError(f"[RoleFactory] No role registered with identifier '{role_id}'.")
 
         meta = RoleRegistry.get_metadata(role_id) or {}
         role_name = meta.get("name", role_id)
@@ -52,10 +52,10 @@ class RoleFactory:
     @classmethod
     def create_all_roles(cls, audio_engine: Optional[Any] = None) -> List[BaseRole]:
         """
-        Instancie tous les rôles enregistrés dans le registre et les retourne
-        triés par priorité décroissante.
+        Instantiates all roles registered in the registry and returns them
+        sorted by descending priority.
         """
-        # S'assurer que tous les rôles intégrés sont importés et enregistrés
+        # Ensure all built-in roles are imported and registered
         cls._ensure_builtin_roles_loaded()
 
         roles: List[BaseRole] = []
@@ -65,16 +65,16 @@ class RoleFactory:
                 role_instance = cls.create_role(role_id=role_id, audio_engine=audio_engine)
                 roles.append(role_instance)
             except Exception as e:
-                logger.error(f"[RoleFactory] Erreur lors de l'instanciation du rôle '{role_id}': {e}")
+                logger.error(f"[RoleFactory] Error instantiating role '{role_id}': {e}")
 
-        # Tri par priorité décroissante
+        # Sort by descending priority
         roles.sort(key=lambda r: r.priority, reverse=True)
         return roles
 
     @classmethod
     def _ensure_builtin_roles_loaded(cls) -> None:
-        """Force l'import des rôles prédéfinis pour déclencher leurs décorateurs @register."""
+        """Forces import of built-in roles to trigger @register decorators."""
         try:
             import src.engineer.roles
         except ImportError as e:
-            logger.debug(f"[RoleFactory] Import des rôles intégrés : {e}")
+            logger.debug(f"[RoleFactory] Builtin roles import: {e}")

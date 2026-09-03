@@ -42,7 +42,7 @@ class SimPadDPGApp:
         self._lmu_installer = LMUPluginManager()
         self._telemetry_enabled = True
 
-        # Initialisation du moteur de delta depuis la configuration persistée
+        # Initialize delta engine from persisted configuration
         delta_eng = getattr(LMUParser, "_delta_engine", None)
         if delta_eng:
             ref_mode_str = self._app_config.get("delta_reference_mode", "all_time_best")
@@ -276,17 +276,17 @@ class SimPadDPGApp:
             dpg.add_text("• Graph Compiler: Python Bytecode JIT", color=[46, 204, 113, 255])
             dpg.add_text("• Telemetry Pipeline: UDP Port 5000", color=[46, 204, 113, 255])
             dpg.add_spacer(height=10)
-            dpg.add_text("Activation des Overlays HUD :", color=[255, 200, 0, 255])
+            dpg.add_text("HUD Overlay Activation:", color=[255, 200, 0, 255])
             dpg.add_checkbox(
-                label="Overlay LMU HUD (Vitesse, Gear, Delta, Secteurs)",
+                label="LMU HUD Overlay (Speed, Gear, Delta, Sectors)",
                 tag="chk_overlay_lmuHudBoard",
                 default_value=True,
                 callback=self._cb_toggle_overlay_lmuHudBoard,
             )
             dpg.add_checkbox(
-                label="Overlay Telemetry Monitor (Graphes de courbes)",
+                label="Telemetry Monitor Overlay (Curve graphs)",
                 tag="chk_overlay_monitoringBoard",
-                default_value=False,  # Désactivé par défaut comme demandé
+                default_value=False,  # Disabled by default as requested
                 callback=self._cb_toggle_overlay_monitoringBoard,
             )
             dpg.add_spacer(height=10)
@@ -295,27 +295,27 @@ class SimPadDPGApp:
         dpg.add_spacer(height=6)
 
         mode_to_label = {
-            DeltaReferenceMode.ALL_TIME_BEST: "All-Time Best (Disque)",
+            DeltaReferenceMode.ALL_TIME_BEST: "All-Time Best (Disk)",
             DeltaReferenceMode.SESSION_BEST: "Session Best",
             DeltaReferenceMode.STINT_BEST: "Stint Best",
             DeltaReferenceMode.LAST_LAP: "Last Lap",
         }
         delta_eng = getattr(LMUParser, "_delta_engine", None)
         active_mode = delta_eng.reference_mode if delta_eng else DeltaReferenceMode.ALL_TIME_BEST
-        init_mode_label = mode_to_label.get(active_mode, "All-Time Best (Disque)")
+        init_mode_label = mode_to_label.get(active_mode, "All-Time Best (Disk)")
         init_freeze = delta_eng.freeze_duration if delta_eng else 3.5
         init_ema = delta_eng.ema_samples if delta_eng else 0
 
         with dpg.child_window(height=190, border=True):
-            dpg.add_text("Moteur de Delta Live & Référence Chrono :", color=[0, 210, 255, 255])
-            dpg.add_text("Sélectionnez la référence active pour le calcul du delta en direct sur le HUD.", color=[180, 180, 180, 255])
+            dpg.add_text("Live Delta Engine & Lap Reference:", color=[0, 210, 255, 255])
+            dpg.add_text("Select active reference for live delta calculation on the HUD.", color=[180, 180, 180, 255])
             dpg.add_separator()
             dpg.add_spacer(height=6)
 
             with dpg.group(horizontal=True):
-                dpg.add_text("Cible Chrono :", color=[255, 200, 0, 255])
+                dpg.add_text("Lap Target:", color=[255, 200, 0, 255])
                 dpg.add_combo(
-                    items=["All-Time Best (Disque)", "Session Best", "Stint Best", "Last Lap"],
+                    items=["All-Time Best (Disk)", "Session Best", "Stint Best", "Last Lap"],
                     default_value=init_mode_label,
                     tag="combo_delta_ref_mode",
                     width=210,
@@ -323,11 +323,11 @@ class SimPadDPGApp:
                 )
 
                 dpg.add_spacer(width=15)
-                dpg.add_text("Réf Active:", color=[180, 180, 180, 255])
+                dpg.add_text("Active Ref:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--.---", tag="lbl_active_ref_lap_time", color=[0, 210, 255, 255])
 
                 dpg.add_spacer(width=15)
-                dpg.add_text("Gel Ligne (s) :", color=[255, 200, 0, 255])
+                dpg.add_text("Line Freeze (s):", color=[255, 200, 0, 255])
                 dpg.add_slider_float(
                     tag="slider_delta_freeze_dur",
                     default_value=init_freeze,
@@ -339,7 +339,7 @@ class SimPadDPGApp:
                 )
 
                 dpg.add_spacer(width=15)
-                dpg.add_text("Lissage EMA :", color=[255, 200, 0, 255])
+                dpg.add_text("EMA Smoothing:", color=[255, 200, 0, 255])
                 dpg.add_slider_int(
                     tag="slider_delta_ema_samples",
                     default_value=init_ema,
@@ -351,7 +351,7 @@ class SimPadDPGApp:
                 )
 
             dpg.add_spacer(height=10)
-            dpg.add_text("Temps de Référence Disponibles :", color=[255, 200, 0, 255])
+            dpg.add_text("Available Reference Times:", color=[255, 200, 0, 255])
             with dpg.group(horizontal=True):
                 dpg.add_text("All-Time Best:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--.---", tag="lbl_ref_all_time", color=[46, 204, 113, 255])
@@ -369,14 +369,14 @@ class SimPadDPGApp:
                 dpg.add_text("--:--.---", tag="lbl_ref_last_lap", color=[200, 200, 200, 255])
 
                 dpg.add_spacer(width=15)
-                dpg.add_text("Chrono Estimé:", color=[180, 180, 180, 255])
+                dpg.add_text("Estimated Time:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--.---", tag="lbl_ref_estimated", color=[255, 105, 180, 255])
 
         dpg.add_spacer(height=6)
 
         with dpg.child_window(height=140, border=True):
-            dpg.add_text("Activation des Loggers & Diagnostics :", color=[0, 210, 255, 255])
-            dpg.add_text("Activez ou coupez les flux de logs et fichiers de diagnostic (config.json).", color=[180, 180, 180, 255])
+            dpg.add_text("Loggers & Diagnostics Activation:", color=[0, 210, 255, 255])
+            dpg.add_text("Enable or disable log streams and diagnostic files (config.json).", color=[180, 180, 180, 255])
             dpg.add_separator()
             dpg.add_spacer(height=6)
 
@@ -509,8 +509,8 @@ class SimPadDPGApp:
                     dpg.add_line_series([], [], label="Traction (Spin)", tag="mon_series_tc")
                     dpg.add_line_series([], [], label="Oversteer", tag="mon_series_over")
                     dpg.add_line_series([], [], label="Understeer", tag="mon_series_und")
-                    dpg.add_line_series([], [], label="Over-Rev (Sur-régime)", tag="mon_series_over_rev")
-                    dpg.add_line_series([], [], label="Under-Rev (Sous-régime)", tag="mon_series_under_rev")
+                    dpg.add_line_series([], [], label="Over-Rev", tag="mon_series_over_rev")
+                    dpg.add_line_series([], [], label="Under-Rev", tag="mon_series_under_rev")
                     dpg.add_line_series([], [], label="Engine RPM", tag="mon_series_rpm")
                     dpg.add_line_series([], [], label="Gear", tag="mon_series_gear")
                     dpg.add_line_series([], [], label="Wheel Travel (Curbs)", tag="mon_series_travel")
@@ -551,8 +551,8 @@ class SimPadDPGApp:
         if hasattr(self, "_schedule_tab"):
             self._schedule_tab.render_tick()
 
-        # Tolérance aux micro-drops UDP (Grace period / Zero-Order Hold de 1.2s)
-        # pour éviter la propagation intempestive de trames "reset" et le clignotement de l'overlay
+        # UDP micro-drop tolerance (Grace period / Zero-Order Hold of 1.2s)
+        # to avoid accidental propagation of reset frames and overlay flickering
         udp_active = bool(self._udp and self._udp.is_receiving(timeout=1.2) and self._telemetry_enabled)
         if udp_active:
             self._was_udp_receiving = True
@@ -575,10 +575,10 @@ class SimPadDPGApp:
 
     def _check_lmu_auto_overlay(self):
         """
-        Délègue la décision d'affichage filtrée avec hystérésis au DashboardManager :
-        - 'ingame'  : LMU actif au premier plan ET conduite en piste (is_fg=True, on_track=True).
-        - 'pause'   : LMU actif au premier plan MAIS en pause/garage/stands (is_fg=True, on_track=False).
-        - 'desktop' : LMU en arrière-plan (Background) ou fermé -> Overlay masqué.
+        Delegates filtered display decision with hysteresis to DashboardManager:
+        - 'ingame'  : LMU active in foreground AND driving on track (is_fg=True, on_track=True).
+        - 'pause'   : LMU active in foreground BUT in pause/garage/pits (is_fg=True, on_track=False).
+        - 'desktop' : LMU in background or closed -> Overlay hidden.
         """
         from src.utils.window_utils import is_lmu_foreground
 

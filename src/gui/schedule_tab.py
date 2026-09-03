@@ -1,9 +1,9 @@
 """
-SimPad LMU Schedule & Notifications Tab — Onglet Dear PyGui (IHM Haute Performance).
-Visualisation du planning officiel Le Mans Ultimate (https://api.lmuschedule.com),
-activation et paramétrage par SETUP <Niveau> <Classes> <Circuit>,
-décomptes en direct et gestion de la file d'attente audio FIFO.
-Rendu optimisé sans sous-fenêtres imbriquées pour un défilement 60 FPS fluide et ultra-réactif.
+SimPad LMU Schedule & Notifications Tab — Dear PyGui Tab (High Performance UI).
+Visualization of official Le Mans Ultimate schedule (https://api.lmuschedule.com),
+activation and configuration by SETUP <Level> <Classes> <Track>,
+live countdowns and FIFO audio queue management.
+Optimized rendering without nested child windows for smooth 60 FPS scrolling.
 """
 
 import time
@@ -23,26 +23,26 @@ MAX_LOG_ENTRIES = 8
 
 class LMUScheduleTab:
     """
-    Gestionnaire de l'onglet IHM dédié au planning des courses LMU et aux alertes vocales.
-    Optimisé pour une fluidité maximale (zero allocation dynamique dans la boucle de tick).
+    GUI manager tab dedicated to LMU race schedule and voice alerts.
+    Optimized for maximum smoothness (zero dynamic allocations in tick loop).
     """
 
     def __init__(self, schedule_manager: Optional[LMUScheduleManager] = None):
         self.schedule_mgr = schedule_manager or LMUScheduleManager()
         self._parent_app: Optional[Any] = None
         self._last_ui_tick: float = 0.0
-        self._selected_category_filter: str = "Tous"
+        self._selected_category_filter: str = "All"
 
     def build_tab(self, parent_app: Any) -> None:
-        """Construit l'interface Dear PyGui dans l'onglet LMU Schedule."""
+        """Builds Dear PyGui interface in LMU Schedule tab."""
         self._parent_app = parent_app
 
-        # ── 1. Barre d'outils supérieure : Maître, API, Audio Queue & Actions ──
+        # ── 1. Top toolbar: Master, API, Audio Queue & Actions ──
         with dpg.child_window(height=84, border=True, tag="child_schedule_toolbar"):
             with dpg.group(horizontal=True):
                 dpg.add_text("LMU Schedule Engine:", color=[0, 210, 255, 255])
                 dpg.add_checkbox(
-                    label="Alertes Globales",
+                    label="Global Alerts",
                     tag="chk_sched_master_enabled",
                     default_value=self.schedule_mgr.master_enabled,
                     callback=self._cb_toggle_master_enabled,
@@ -50,7 +50,7 @@ class LMUScheduleTab:
 
                 dpg.add_spacer(width=10)
                 dpg.add_checkbox(
-                    label="Voix Audio (FIFO)",
+                    label="Audio Voice (FIFO)",
                     tag="chk_sched_audio_enabled",
                     default_value=self.schedule_mgr.audio_enabled,
                     callback=self._cb_toggle_audio_enabled,
@@ -58,7 +58,7 @@ class LMUScheduleTab:
 
                 dpg.add_spacer(width=10)
                 dpg.add_checkbox(
-                    label="Notification OS",
+                    label="OS Notification",
                     tag="chk_sched_desktop_notif",
                     default_value=self.schedule_mgr.desktop_notifications_enabled,
                     callback=self._cb_toggle_desktop_notif,
@@ -71,48 +71,48 @@ class LMUScheduleTab:
 
             dpg.add_spacer(height=3)
             with dpg.group(horizontal=True):
-                dpg.add_text("File audio :", color=[180, 180, 180, 255])
-                dpg.add_text("0 en attente (IDLE)", tag="lbl_audio_queue_status", color=[0, 210, 255, 255])
-                dpg.add_button(label="⏹ Vider File", width=95, callback=self._cb_clear_audio_queue)
+                dpg.add_text("Audio Queue:", color=[180, 180, 180, 255])
+                dpg.add_text("0 pending (IDLE)", tag="lbl_audio_queue_status", color=[0, 210, 255, 255])
+                dpg.add_button(label="⏹ Clear Queue", width=95, callback=self._cb_clear_audio_queue)
 
                 dpg.add_spacer(width=15)
-                dpg.add_button(label="❌ Tout Décocher", width=125, callback=self._cb_uncheck_all)
-                dpg.add_button(label="⚡ Activer Tout (5m)", width=140, callback=lambda: self._cb_enable_all_quick(5))
-                dpg.add_button(label="Sauvegarder", width=95, callback=self._cb_save_config)
+                dpg.add_button(label="❌ Uncheck All", width=125, callback=self._cb_uncheck_all)
+                dpg.add_button(label="⚡ Enable All (5m)", width=140, callback=lambda: self._cb_enable_all_quick(5))
+                dpg.add_button(label="Save", width=95, callback=self._cb_save_config)
 
         dpg.add_spacer(height=4)
 
-        # ── 2. Corps Principal : Liste des Setups & Planning Chronologique ────
+        # ── 2. Main Body: Setups List & Chronological Schedule ────
         with dpg.group(horizontal=True):
-            # Colonne Gauche : Tous les Setups <Niveau> <Classes> <Circuit> paramétrables
+            # Left Column: All configurable Setups <Level> <Classes> <Track>
             with dpg.child_window(width=780, height=-1, border=True, tag="child_sched_left_col"):
                 with dpg.group(horizontal=True):
-                    dpg.add_text("Setups LMU : <Niveau> <Classes> <Circuit>", color=[255, 200, 0, 255])
+                    dpg.add_text("LMU Setups: <Level> <Classes> <Track>", color=[255, 200, 0, 255])
                     dpg.add_spacer(width=15)
-                    dpg.add_text("Filtre :", color=[180, 180, 180, 255])
+                    dpg.add_text("Filter:", color=[180, 180, 180, 255])
                     dpg.add_combo(
-                        items=["Tous", "Beginner (Bronze)", "Intermediate (Silver)", "Advanced (Gold)", "Weekly (Spécial)"],
-                        default_value="Tous",
+                        items=["All", "Beginner (Bronze)", "Intermediate (Silver)", "Advanced (Gold)", "Weekly (Special)"],
+                        default_value="All",
                         tag="combo_category_filter",
                         width=180,
                         callback=self._cb_change_filter,
                     )
 
-                dpg.add_text("Activez les Setups souhaités. Toutes les sessions horaires de ce Setup seront surveillées.", color=[150, 150, 150, 255])
+                dpg.add_text("Enable desired Setups. All race sessions for this Setup will be monitored.", color=[150, 150, 150, 255])
                 dpg.add_separator()
                 dpg.add_spacer(height=4)
 
                 with dpg.group(tag="group_races_cards_container"):
                     self._build_all_setup_cards()
 
-            # Colonne Droite : Grille Chronologique & Diagnostics de File Audio
+            # Right Column: Chronological Grid & Audio Queue Diagnostics
             with dpg.child_window(width=-1, height=-1, border=True, tag="child_sched_right_col"):
-                dpg.add_text("Planning Chronologique des Prochaines Courses :", color=[0, 210, 255, 255])
-                dpg.add_text("Toutes les sessions des Setups triées par heure de départ.", color=[150, 150, 150, 255])
+                dpg.add_text("Upcoming Races Chronological Schedule:", color=[0, 210, 255, 255])
+                dpg.add_text("All sessions from Setups sorted by start time.", color=[150, 150, 150, 255])
                 dpg.add_separator()
                 dpg.add_spacer(height=4)
 
-                # Table du planning (statique et performante sans suppression dynamique)
+                # Schedule table (static and performant without dynamic deletion)
                 with dpg.table(
                     header_row=True,
                     resizable=True,
@@ -124,15 +124,15 @@ class LMUScheduleTab:
                     height=310,
                     tag="table_upcoming_races",
                 ):
-                    dpg.add_table_column(label="Heure", width_fixed=True, init_width_or_weight=60)
-                    dpg.add_table_column(label="Niveau", width_fixed=True, init_width_or_weight=75)
+                    dpg.add_table_column(label="Time", width_fixed=True, init_width_or_weight=60)
+                    dpg.add_table_column(label="Level", width_fixed=True, init_width_or_weight=75)
                     dpg.add_table_column(label="Classes", width_fixed=True, init_width_or_weight=90)
-                    dpg.add_table_column(label="Circuit", init_width_or_weight=130)
-                    dpg.add_table_column(label="Série", init_width_or_weight=120)
-                    dpg.add_table_column(label="Statut", width_fixed=True, init_width_or_weight=110)
-                    dpg.add_table_column(label="Décompte", width_fixed=True, init_width_or_weight=95)
+                    dpg.add_table_column(label="Track", init_width_or_weight=130)
+                    dpg.add_table_column(label="Series", init_width_or_weight=120)
+                    dpg.add_table_column(label="Status", width_fixed=True, init_width_or_weight=110)
+                    dpg.add_table_column(label="Countdown", width_fixed=True, init_width_or_weight=95)
 
-                    # Pré-création des lignes pour éviter toute allocation en boucle de rendu
+                    # Pre-create rows to prevent allocation in render loop
                     for i in range(MAX_TABLE_ROWS):
                         with dpg.table_row(tag=f"row_up_{i}"):
                             dpg.add_text("--:--", tag=f"lbl_up_time_{i}", color=[0, 210, 255, 255])
@@ -144,38 +144,38 @@ class LMUScheduleTab:
                             dpg.add_text("---", tag=f"lbl_up_cd_{i}", color=[255, 200, 0, 255])
 
                 dpg.add_spacer(height=8)
-                dpg.add_text("Journal des Annonces Déclenchées :", color=[255, 200, 0, 255])
+                dpg.add_text("Triggered Announcements Log:", color=[255, 200, 0, 255])
                 with dpg.child_window(height=130, border=True, tag="child_notif_logs"):
                     for i in range(MAX_LOG_ENTRIES):
                         with dpg.group(horizontal=True, tag=f"grp_log_{i}", show=False):
                             dpg.add_text("[--:--:--]", tag=f"lbl_log_time_{i}", color=[0, 210, 255, 255])
                             dpg.add_text("[Setup]", tag=f"lbl_log_name_{i}", color=[255, 200, 0, 255])
                             dpg.add_text("Message", tag=f"lbl_log_msg_{i}", color=[240, 240, 240, 255])
-                    dpg.add_text("En attente de notifications...", tag="lbl_notif_empty_history", color=[120, 120, 120, 255])
+                    dpg.add_text("Waiting for notifications...", tag="lbl_notif_empty_history", color=[120, 120, 120, 255])
 
                 dpg.add_spacer(height=6)
-                dpg.add_text("Test Vocal Immédiat (File FIFO) :", color=[0, 210, 255, 255])
+                dpg.add_text("Immediate Voice Test (FIFO Queue):", color=[0, 210, 255, 255])
                 with dpg.group(horizontal=True):
                     dpg.add_button(label="LMGT3 Fixed", width=105, callback=lambda: AudioAnnouncer.play_phrase("lmgt3_fixed"))
                     dpg.add_button(label="ELMS Sprint", width=105, callback=lambda: AudioAnnouncer.play_phrase("elms_sprint_trophy"))
                     dpg.add_button(label="One Stint", width=85, callback=lambda: AudioAnnouncer.play_phrase("one_stint_sprint"))
                     dpg.add_button(label="WEC Weekly", width=95, callback=lambda: AudioAnnouncer.play_phrase("wec_weekly"))
-                    dpg.add_button(label="Inscriptions", width=90, callback=lambda: AudioAnnouncer.play_phrase("registration_open"))
+                    dpg.add_button(label="Registration", width=90, callback=lambda: AudioAnnouncer.play_phrase("registration_open"))
 
     def _build_all_setup_cards(self) -> None:
-        """Construit les cartes de tous les Setups selon le filtre actif."""
+        """Builds all Setup cards according to active filter."""
         category_colors = {
-            "Beginner": [46, 204, 113, 255],      # Vert (Bronze)
+            "Beginner": [46, 204, 113, 255],      # Green (Bronze)
             "Intermediate": [0, 210, 255, 255],   # Cyan (Silver)
-            "Advanced": [241, 196, 15, 255],      # Jaune / Or (Gold)
-            "Weekly": [155, 89, 182, 255],        # Violet (Weekly)
+            "Advanced": [241, 196, 15, 255],      # Yellow / Gold
+            "Weekly": [155, 89, 182, 255],        # Purple (Weekly)
         }
 
         filter_mapping = {
             "Beginner (Bronze)": "Beginner",
             "Intermediate (Silver)": "Intermediate",
             "Advanced (Gold)": "Advanced",
-            "Weekly (Spécial)": "Weekly",
+            "Weekly (Special)": "Weekly",
         }
         target_diff = filter_mapping.get(self._selected_category_filter)
 
@@ -189,18 +189,18 @@ class LMUScheduleTab:
 
     def _build_single_setup_card(self, setup_id: str, cfg: RaceSetupConfig, accent_color: List[int]) -> None:
         """
-        Construit un bloc Setup <Niveau><Classes><Circuit> optimisé.
-        Utilise des groupes simples au lieu de sous-fenêtres imbriquées pour garantir 60 FPS sans lag.
+        Builds an optimized Setup <Level><Classes><Track> block.
+        Uses simple groups instead of nested child windows to ensure 60 FPS without lag.
         """
         with dpg.group(tag=f"card_setup_{setup_id}", parent="group_races_cards_container"):
-            # Ligne 1 : Titre <Niveau> <Classes> @ <Circuit>, Série, Case d'activation et Bouton Test
+            # Row 1: Title <Level> <Classes> @ <Track>, Series, Enable checkbox and Test Button
             with dpg.group(horizontal=True):
                 dpg.add_text(f"[{cfg.difficulty.upper()}]", color=accent_color)
                 dpg.add_text(f"{cfg.car_classes} @ {cfg.circuit}", color=[255, 255, 255, 255])
                 dpg.add_text(f"({cfg.series_name} • {cfg.race_length_min}m)", color=[160, 160, 160, 255])
                 dpg.add_spacer(width=12)
                 dpg.add_checkbox(
-                    label="Activer",
+                    label="Enable",
                     tag=f"chk_setup_enabled_{setup_id}",
                     default_value=cfg.enabled,
                     user_data=(setup_id, "enabled"),
@@ -214,20 +214,20 @@ class LMUScheduleTab:
                     callback=self._cb_test_sound,
                 )
 
-            # Ligne 2 : État dynamique en direct (Départ, Décompte, Inscriptions)
+            # Row 2: Dynamic live status (Start, Countdown, Registrations)
             with dpg.group(horizontal=True):
-                dpg.add_text("Prochain départ :", color=[180, 180, 180, 255])
+                dpg.add_text("Next start:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--", tag=f"lbl_next_start_{setup_id}", color=[46, 204, 113, 255])
                 dpg.add_spacer(width=12)
-                dpg.add_text("Décompte :", color=[180, 180, 180, 255])
+                dpg.add_text("Countdown:", color=[180, 180, 180, 255])
                 dpg.add_text("--m --s", tag=f"lbl_countdown_{setup_id}", color=[255, 200, 0, 255])
                 dpg.add_spacer(width=12)
-                dpg.add_text("Inscriptions :", color=[180, 180, 180, 255])
+                dpg.add_text("Registration:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--", tag=f"lbl_reg_open_{setup_id}", color=[0, 210, 255, 255])
 
-            # Ligne 3 : Grille des 6 coches de rappel
+            # Row 3: Grid of 6 reminder checkboxes
             with dpg.group(horizontal=True):
-                dpg.add_text("Rappels :", color=[180, 180, 180, 255])
+                dpg.add_text("Reminders:", color=[180, 180, 180, 255])
                 dpg.add_spacer(width=4)
                 dpg.add_checkbox(
                     label="15m",
@@ -262,7 +262,7 @@ class LMUScheduleTab:
                 )
                 dpg.add_spacer(width=6)
                 dpg.add_checkbox(
-                    label="Inscriptions",
+                    label="Registration",
                     tag=f"chk_{setup_id}_reg",
                     default_value=cfg.notify_reg_open,
                     user_data=(setup_id, "notify_reg_open"),
@@ -270,7 +270,7 @@ class LMUScheduleTab:
                 )
                 dpg.add_spacer(width=6)
                 dpg.add_checkbox(
-                    label="Départ",
+                    label="Start",
                     tag=f"chk_{setup_id}_start",
                     default_value=cfg.notify_start,
                     user_data=(setup_id, "notify_start"),
@@ -279,7 +279,7 @@ class LMUScheduleTab:
 
             dpg.add_separator()
 
-    # ── Callbacks de Mise à Jour ───────────────────────────────────────────────
+    # ── Update Callbacks ───────────────────────────────────────────────
     def _cb_change_filter(self, sender, app_data):
         self._selected_category_filter = str(app_data)
         children = dpg.get_item_children("group_races_cards_container", 1)
@@ -289,7 +289,7 @@ class LMUScheduleTab:
         self._build_all_setup_cards()
 
     def _cb_uncheck_all(self, sender=None, app_data=None):
-        """Décoche absolument tous les Setups et toutes les coches de rappel en 1 clic."""
+        """Unchecks all Setups and all reminder checkboxes in 1 click."""
         self.schedule_mgr.disable_all_setups_and_reminders()
         for setup_id in self.schedule_mgr.setups:
             for tag in [
@@ -303,22 +303,22 @@ class LMUScheduleTab:
             ]:
                 if dpg.does_item_exist(tag):
                     dpg.set_value(tag, False)
-        logger.info("[LMUScheduleTab] Tout a été décoché avec succès.")
+        logger.info("[LMUScheduleTab] All unchecked successfully.")
 
     def _cb_enable_all_quick(self, notify_minutes: int = 5):
-        """Active tous les Setups avec un rappel 5m en 1 clic."""
+        """Enables all Setups with a 5m reminder in 1 click."""
         self.schedule_mgr.enable_all_quick(notify_minutes=notify_minutes)
         for setup_id, cfg in self.schedule_mgr.setups.items():
             if dpg.does_item_exist(f"chk_setup_enabled_{setup_id}"):
                 dpg.set_value(f"chk_setup_enabled_{setup_id}", True)
             if dpg.does_item_exist(f"chk_{setup_id}_5m"):
                 dpg.set_value(f"chk_{setup_id}_5m", True)
-        logger.info(f"[LMUScheduleTab] Tous les Setups activés avec rappel {notify_minutes}m.")
+        logger.info(f"[LMUScheduleTab] All Setups enabled with reminder {notify_minutes}m.")
 
     def _cb_clear_audio_queue(self, sender=None, app_data=None):
         AudioAnnouncer.clear_queue()
         AudioAnnouncer.stop_current()
-        logger.info("[LMUScheduleTab] File d'attente audio vidée.")
+        logger.info("[LMUScheduleTab] Audio queue cleared.")
 
     def _cb_toggle_master_enabled(self, sender, app_data):
         self.schedule_mgr.master_enabled = bool(app_data)
@@ -334,7 +334,7 @@ class LMUScheduleTab:
 
     def _cb_refresh_api(self, sender=None, app_data=None):
         if dpg.does_item_exist("lbl_sched_api_status"):
-            dpg.set_value("lbl_sched_api_status", "Synchronisation...")
+            dpg.set_value("lbl_sched_api_status", "Synchronizing...")
             dpg.configure_item("lbl_sched_api_status", color=[243, 156, 18, 255])
         self.schedule_mgr.refresh_api_async(callback=self._on_api_sync_done)
 
@@ -351,7 +351,7 @@ class LMUScheduleTab:
 
     def _cb_save_config(self, sender=None, app_data=None, user_data=None):
         self.schedule_mgr.save_config()
-        logger.info("[LMUScheduleTab] Configuration des Setups sauvegardée avec succès.")
+        logger.info("[LMUScheduleTab] Setups configuration saved successfully.")
 
     def _cb_toggle_setup_checkbox(self, sender, app_data, user_data):
         if not user_data or not isinstance(user_data, (tuple, list)) or len(user_data) < 2:
@@ -368,31 +368,31 @@ class LMUScheduleTab:
         if setup_id:
             self.schedule_mgr.test_announcement(str(setup_id), "main")
 
-    # ── Render Loop Tick (Haute Performance) ───────────────────────────────────
+    # ── Render Loop Tick (High Performance) ───────────────────────────────────
     def render_tick(self) -> None:
-        """Appelé à chaque trame de rendu (~1 Hz pour rafraîchissement IHM non-bloquant)."""
+        """Called on every render frame (~1 Hz for non-blocking UI refresh)."""
         now = time.time()
         triggered = self.schedule_mgr.update(now=now)
         if triggered:
             self._refresh_notification_logs()
 
-        # Rafraîchissement cadencé à 1 Hz pour l'IHM
+        # UI refresh clocked at 1 Hz
         if now - self._last_ui_tick < 1.0:
             return
         self._last_ui_tick = now
 
-        # Statut de la file audio
+        # Audio queue status
         q_size = AudioAnnouncer.get_queue_size()
         is_playing = AudioAnnouncer.is_playing()
         if dpg.does_item_exist("lbl_audio_queue_status"):
             if is_playing:
-                dpg.set_value("lbl_audio_queue_status", f"Lecture ({q_size} en file)")
+                dpg.set_value("lbl_audio_queue_status", f"Playing ({q_size} in queue)")
                 dpg.configure_item("lbl_audio_queue_status", color=[241, 196, 15, 255])
             elif q_size > 0:
-                dpg.set_value("lbl_audio_queue_status", f"{q_size} en file d'attente")
+                dpg.set_value("lbl_audio_queue_status", f"{q_size} in queue")
                 dpg.configure_item("lbl_audio_queue_status", color=[255, 200, 0, 255])
             else:
-                dpg.set_value("lbl_audio_queue_status", "0 (Prête)")
+                dpg.set_value("lbl_audio_queue_status", "0 (Ready)")
                 dpg.configure_item("lbl_audio_queue_status", color=[46, 204, 113, 255])
 
         if dpg.does_item_exist("lbl_sched_api_status"):
@@ -402,7 +402,7 @@ class LMUScheduleTab:
         self._refresh_upcoming_table(now)
 
     def _refresh_setup_cards(self, now: float) -> None:
-        """Met à jour les décomptes et heures de départ pour toutes les cartes de Setups."""
+        """Updates countdowns and start times for all Setup cards."""
         for setup_id in self.schedule_mgr.setups:
             event = self.schedule_mgr.get_next_event(setup_id, now=now)
             if not event:
@@ -416,7 +416,7 @@ class LMUScheduleTab:
                 dpg.set_value(lbl_start, event.start_time_str)
 
             if dpg.does_item_exist(lbl_reg):
-                reg_prefix = "Ouvert !" if event.status == "REGISTRATION_OPEN" else event.reg_open_time_str
+                reg_prefix = "Open!" if event.status == "REGISTRATION_OPEN" else event.reg_open_time_str
                 dpg.set_value(lbl_reg, reg_prefix)
                 reg_col = [46, 204, 113, 255] if event.status == "REGISTRATION_OPEN" else [0, 210, 255, 255]
                 dpg.configure_item(lbl_reg, color=reg_col)
@@ -424,19 +424,19 @@ class LMUScheduleTab:
             if dpg.does_item_exist(lbl_count):
                 dpg.set_value(lbl_count, event.countdown_str)
                 if event.status == "REGISTRATION_OPEN":
-                    col = [46, 204, 113, 255]  # Vert
+                    col = [46, 204, 113, 255]  # Green
                 elif 0 < event.time_until_start <= 300:
-                    col = [231, 76, 60, 255]   # Rouge (<5 min)
+                    col = [231, 76, 60, 255]   # Red (<5 min)
                 elif 0 < event.time_until_start <= 900:
-                    col = [241, 196, 15, 255]  # Jaune (<15 min)
+                    col = [241, 196, 15, 255]  # Yellow (<15 min)
                 elif event.status == "IN_PROGRESS":
-                    col = [155, 89, 182, 255]  # Violet
+                    col = [155, 89, 182, 255]  # Purple
                 else:
                     col = [255, 200, 0, 255]
                 dpg.configure_item(lbl_count, color=col)
 
     def _refresh_upcoming_table(self, now: float) -> None:
-        """Met à jour le tableau chronologique des prochaines courses sans recréation dynamique de widgets."""
+        """Updates chronological upcoming races table without dynamic widget recreation."""
         if not dpg.does_item_exist("table_upcoming_races"):
             return
 
@@ -450,10 +450,10 @@ class LMUScheduleTab:
         }
 
         status_labels = {
-            "REGISTRATION_OPEN": "Inscriptions",
-            "IN_PROGRESS": "En cours",
-            "UPCOMING": "À venir",
-            "FINISHED": "Terminée",
+            "REGISTRATION_OPEN": "Registration",
+            "IN_PROGRESS": "In Progress",
+            "UPCOMING": "Upcoming",
+            "FINISHED": "Finished",
         }
 
         category_colors = {
@@ -491,7 +491,7 @@ class LMUScheduleTab:
                 dpg.hide_item(row_tag)
 
     def _refresh_notification_logs(self) -> None:
-        """Affiche les notifications récentes dans la boîte de log sans recréer d'items."""
+        """Displays recent notifications in log box without recreating items."""
         if not dpg.does_item_exist("child_notif_logs"):
             return
 

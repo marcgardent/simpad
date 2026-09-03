@@ -12,8 +12,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtBrakeGaugeWidget(BaseQtHudWidget):
     """
-    Jauge de Frein Pure (Centre-Gauche du HUD compact).
-    Affiche la course réelle de la pédale de frein en Rouge (#ef4444).
+    Pure Brake Gauge (Center-Left of compact HUD).
+    Displays actual brake pedal travel in Red (#ef4444).
     """
 
     def __init__(self):
@@ -29,7 +29,7 @@ class QtBrakeGaugeWidget(BaseQtHudWidget):
     ) -> None:
         raw_brake = float(extra_data.get("brake", sensors.unfiltered_brake * 100.0))
 
-        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_brake = lerp(self.display_brake, raw_brake, 0.65)
 
         scale_x = canvas_w / 800.0

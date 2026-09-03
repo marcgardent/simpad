@@ -9,8 +9,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class BaseDashboard(ABC):
     """
-    Classe de base abstraite pour les dashboards HUD overlay de SimPad.
-    Chaque dashboard gère sa propre fenêtre, sa géométrie et ses widgets.
+    Abstract base class for SimPad overlay HUD dashboards.
+    Each dashboard manages its own window, geometry, and widgets.
     """
 
     def __init__(self, name: str):
@@ -23,20 +23,20 @@ class BaseDashboard(ABC):
 
     @abstractmethod
     def build_ui(self) -> None:
-        """Construit l'interface graphique du dashboard."""
+        """Builds dashboard graphical user interface."""
         pass
 
     @abstractmethod
     def show(self) -> None:
-        """Rend le dashboard visible à l'écran."""
+        """Makes dashboard visible on screen."""
         pass
 
     @abstractmethod
     def hide(self) -> None:
-        """Masque le dashboard de l'écran."""
+        """Hides dashboard from screen."""
         pass
 
     @abstractmethod
     def update_telemetry(self, sensors: VehicleSensors) -> None:
-        """Met à jour les données télémétriques affichées par le dashboard."""
+        """Updates telemetry data displayed by dashboard."""
         pass

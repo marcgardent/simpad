@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Enregistreur dynamique de Rôles (Role Registry).
-Permet l'enregistrement dynamique de rôles via décorateur ou appel programmatique.
+SimPad Race Engineer — Dynamic Role Registry.
+Allows dynamic role registration via decorator or programmatic call.
 """
 
 import logging
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 class RoleRegistry:
     """
-    Registre centralisé des classes de rôles disponibles pour l'ingénieur de course.
-    Suit le patron de conception Registry (SOLID / Open-Closed Principle).
+    Central registry of available race engineer role classes.
+    Follows Registry design pattern (SOLID / Open-Closed Principle).
     """
 
     _registry: Dict[str, Type[BaseRole]] = {}
@@ -28,7 +28,7 @@ class RoleRegistry:
         default_priority: int = 50,
     ) -> Callable[[Type[BaseRole]], Type[BaseRole]]:
         """
-        Décorateur pour enregistrer une classe de rôle dans le registre.
+        Decorator to register a role class in the registry.
 
         Usage:
             @RoleRegistry.register("traffic_spotter", name="Traffic Spotter FSM", default_priority=100)
@@ -45,7 +45,7 @@ class RoleRegistry:
                 "default_priority": default_priority,
                 "class": role_cls,
             }
-            logger.debug(f"[RoleRegistry] Enregistrement du rôle '{role_id}' ({role_name})")
+            logger.debug(f"[RoleRegistry] Registered role '{role_id}' ({role_name})")
             return role_cls
 
         return decorator
@@ -59,7 +59,7 @@ class RoleRegistry:
         description: str = "",
         default_priority: int = 50,
     ) -> None:
-        """Enregistrement programmatique direct d'une classe de rôle."""
+        """Direct programmatic registration of a role class."""
         role_name = name or role_cls.__name__
         cls._registry[role_id] = role_cls
         cls._metadata[role_id] = {
@@ -72,17 +72,17 @@ class RoleRegistry:
 
     @classmethod
     def get_role_class(cls, role_id: str) -> Optional[Type[BaseRole]]:
-        """Retourne la classe du rôle correspondant à role_id, ou None."""
+        """Returns role class matching role_id, or None."""
         return cls._registry.get(role_id)
 
     @classmethod
     def get_metadata(cls, role_id: str) -> Optional[Dict[str, Any]]:
-        """Retourne les métadonnées enregistrées pour un role_id."""
+        """Returns registered metadata for role_id."""
         return cls._metadata.get(role_id)
 
     @classmethod
     def list_roles(cls) -> List[Dict[str, Any]]:
-        """Retourne la liste des métadonnées de tous les rôles enregistrés."""
+        """Returns metadata list for all registered roles."""
         return [
             {
                 "role_id": k,
@@ -95,11 +95,11 @@ class RoleRegistry:
 
     @classmethod
     def is_registered(cls, role_id: str) -> bool:
-        """Vérifie si un rôle est présent dans le registre."""
+        """Checks if a role is registered."""
         return role_id in cls._registry
 
     @classmethod
     def clear(cls) -> None:
-        """Vide le registre (principalement pour les tests unitaires)."""
+        """Clears the registry (primarily for unit tests)."""
         cls._registry.clear()
         cls._metadata.clear()

@@ -12,8 +12,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class QtTcGaugeWidget(BaseQtHudWidget):
     """
-    Jauge TC (Extrême Droite du HUD, à droite de l'Accélérateur).
-    Affiche l'intensité de coupure TC / patinage en Cyan (#00dcff / QColor(0, 220, 255)).
+    TC Gauge (Far Right of HUD, to the right of Throttle).
+    Displays TC cut intensity / wheelspin in Cyan (#00dcff / QColor(0, 220, 255)).
     """
 
     def __init__(self):
@@ -32,7 +32,7 @@ class QtTcGaugeWidget(BaseQtHudWidget):
         else:
             raw_tc = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
 
-        # LERP smoothing (0.65 pour réactivité instantanée 120 Hz)
+        # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_tc = lerp(self.display_tc, raw_tc, 0.65)
 
         scale_x = canvas_w / 800.0

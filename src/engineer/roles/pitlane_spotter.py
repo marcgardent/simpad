@@ -1,10 +1,10 @@
 """
-SimPad Race Engineer — Rôle Pitlane Spotter & Protection Unsafe Release (FSM Haute Précision).
-Surveille la voie des stands pour :
-1. Prévenir tout Unsafe Release (alerte lorsqu'une voiture déboule dans la Fast Lane derrière le box).
-2. Confirmer la voie libre (Safe Release / Clear) pour repartir en toute sécurité.
-3. Alerter sur les bouchons ou véhicules arrêtés devant dans la pitlane.
-4. Signaler les véhicules bord à bord (Alongside) sortant des boxes adjacents.
+SimPad Race Engineer — Pitlane Spotter & Unsafe Release Protection Role (High Precision FSM).
+Monitors the pitlane for:
+1. Preventing Unsafe Release (alerts when a car approaches in Fast Lane behind the pit box).
+2. Confirming clear lane (Safe Release / Clear) to rejoin safely.
+3. Alerting on pitlane traffic jams or stopped vehicles ahead in pitlane.
+4. Signaling vehicles alongside exiting adjacent boxes.
 """
 
 import time
@@ -21,24 +21,24 @@ logger = logging.getLogger(__name__)
 
 
 class PitlaneSpotterState(str, Enum):
-    """États de la machine à états finis (FSM) du Pitlane Spotter."""
-    IDLE = "IDLE"                            # Piste dégagée / En piste ou aucune menace en pitlane
-    BOX_MONITORING = "BOX_MONITORING"        # Joueur au box / arrêt au stand / surveillance active
-    UNSAFE_HAZARD = "UNSAFE_HAZARD"          # Danger ! Véhicule en approche rapide dans la Fast Lane
-    RELEASE_CLEAR = "RELEASE_CLEAR"          # Voie dégagée après passage du danger (Safe Release)
-    PIT_TRAFFIC_AHEAD = "PIT_TRAFFIC_AHEAD"  # Véhicule bloqué ou très lent devant dans la pitlane
-    PIT_OVERLAP = "PIT_OVERLAP"              # Véhicule bord à bord / insertion côte à côte dans les stands
+    """States of the Pitlane Spotter finite state machine (FSM)."""
+    IDLE = "IDLE"                            # Track clear / On track or no pitlane threat
+    BOX_MONITORING = "BOX_MONITORING"        # Player in box / pit stop / active monitoring
+    UNSAFE_HAZARD = "UNSAFE_HAZARD"          # Hazard! Fast approaching vehicle in Fast Lane
+    RELEASE_CLEAR = "RELEASE_CLEAR"          # Lane clear after hazard passed (Safe Release)
+    PIT_TRAFFIC_AHEAD = "PIT_TRAFFIC_AHEAD"  # Blocked or very slow vehicle ahead in pitlane
+    PIT_OVERLAP = "PIT_OVERLAP"              # Side-by-side vehicle / adjacent merge in pitlane
 
 
 @RoleRegistry.register(
     role_id="pitlane_spotter",
     name="Pitlane Spotter & Unsafe Release",
-    description="Machine à états haute précision protégeant contre les Unsafe Release en sortie de box et surveillant le trafic dans la voie des stands.",
+    description="High-precision state machine protecting against unsafe release from pit box and monitoring pitlane traffic.",
     default_priority=95,
 )
 class PitlaneSpotterRole(BaseRole):
     """
-    Rôle de surveillance avancée du trafic dans la pitlane et protection contre les Unsafe Release.
+    Role for advanced traffic monitoring in the pitlane and unsafe release protection.
     """
 
     def __init__(
@@ -74,7 +74,7 @@ class PitlaneSpotterRole(BaseRole):
         self.enable_pit_traffic_ahead = bool(enable_pit_traffic_ahead)
         self.enable_pit_overlap = bool(enable_pit_overlap)
 
-        # Variables dynamiques de suivi
+        # Dynamic tracking variables
         self.target_threat_id: Optional[int] = None
         self.target_threat_name: str = ""
         self._last_state_change_time: float = 0.0
@@ -82,7 +82,7 @@ class PitlaneSpotterRole(BaseRole):
         self._was_in_box: bool = False
         self._hazard_cleared: bool = False
 
-        # Diagnostic en direct
+        # Live diagnostics
         self._live_hazard_dist: float = 0.0
         self._live_hazard_speed_kmh: float = 0.0
         self._live_hazard_ttc: float = float("inf")
@@ -100,51 +100,51 @@ class PitlaneSpotterRole(BaseRole):
         return [
             BoolParam(
                 name="enable_unsafe_release",
-                label="Protection Unsafe Release",
+                label="Unsafe Release Protection",
                 default=True,
-                description="Alerte si une voiture arrive dans la voie rapide lors de l'arrêt ou de la sortie de box",
+                description="Alert if a car approaches in fast lane during pit stop or pit exit",
             ),
             FloatRangeParam(
                 name="unsafe_release_distance_m",
-                label="Distance Alerte Fast Lane",
+                label="Fast Lane Alert Distance",
                 min_val=10.0,
                 max_val=60.0,
                 step=2.0,
                 unit="m",
                 default=28.0,
-                description="Distance arrière maximale dans la voie rapide pour déclencher l'alerte de danger",
+                description="Maximum rear distance in fast lane to trigger hazard alert",
             ),
             FloatRangeParam(
                 name="unsafe_release_ttc_sec",
-                label="Seuil TTC Fast Lane",
+                label="Fast Lane TTC Threshold",
                 min_val=1.0,
                 max_val=5.0,
                 step=0.2,
                 unit="s",
                 default=2.5,
-                description="Temps avant collision (TTC) déclenchant le danger de sortie de stand",
+                description="Time to collision (TTC) triggering pit exit hazard",
             ),
             BoolParam(
                 name="enable_pit_traffic_ahead",
-                label="Alerte Ralentissement Pitlane",
+                label="Pitlane Slow Traffic Alert",
                 default=True,
-                description="Alerte sur les véhicules arrêtés ou au ralenti devant en voie des stands",
+                description="Alert for stopped or idling vehicles ahead in pitlane",
             ),
             FloatRangeParam(
                 name="pit_slow_ahead_distance_m",
-                label="Distance Détection Devant",
+                label="Forward Detection Distance",
                 min_val=15.0,
                 max_val=80.0,
                 step=5.0,
                 unit="m",
                 default=35.0,
-                description="Distance maximale devant pour détecter un véhicule ralenti dans la pitlane",
+                description="Maximum forward distance to detect a slow vehicle in pitlane",
             ),
             BoolParam(
                 name="enable_pit_overlap",
-                label="Alerte Côte-à-Côte Pitlane",
+                label="Pitlane Alongside Alert",
                 default=True,
-                description="Avertit lorsqu'une voiture s'insère à côté dans la pitlane (Alongside)",
+                description="Warns when a car merges alongside in pitlane",
             ),
         ]
 
@@ -156,13 +156,13 @@ class PitlaneSpotterRole(BaseRole):
                     channel=TelemetryChannel.TELEMETRY,
                     preferred_hz=100,
                     required=True,
-                    reason="Vitesse joueur et état stand (in_garage_stall / pit_state)",
+                    reason="Player speed and pit state (in_garage_stall / pit_state)",
                 ),
                 ChannelRequirement(
                     channel=TelemetryChannel.FULL_SCORING,
                     preferred_hz=10,
                     required=True,
-                    reason="Positions 3D et vitesses des adversaires dans la pitlane et fast lane",
+                    reason="3D positions and speeds of opponents in pitlane and fast lane",
                 ),
             ]
         except ImportError:
@@ -176,7 +176,7 @@ class PitlaneSpotterRole(BaseRole):
         }
 
     def is_busy(self) -> bool:
-        """Est occupé si un danger d'unsafe release ou une alerte trafic est active."""
+        """Returns True if unsafe release hazard or traffic alert is active."""
         return self.state in (
             PitlaneSpotterState.UNSAFE_HAZARD,
             PitlaneSpotterState.RELEASE_CLEAR,
@@ -190,7 +190,7 @@ class PitlaneSpotterRole(BaseRole):
                 self.reset()
             return None
 
-        # Si le joueur N'EST PAS dans la pitlane, le rôle reste en veille
+        # If player is NOT in pitlane, role stays idle
         if not context.is_player_in_pits() and not context.is_player_in_garage():
             if self.state != PitlaneSpotterState.IDLE:
                 self.reset()
@@ -206,31 +206,31 @@ class PitlaneSpotterRole(BaseRole):
         track_length = context.get_track_length()
         pit_opponents = context.get_pit_opponents()
 
-        # Évaluer si le joueur est au box (arrêt / révision / démarrage)
+        # Evaluate if player is in box (stopped / servicing / launching)
         pit_state = int(get_vehicle_attr(player_veh, "pit_state", 0))
         in_garage = bool(get_vehicle_attr(player_veh, "in_garage_stall", False))
         is_stationary_or_in_box = (
             in_garage
             or pit_state in (3, 4)  # 3=stopped, 4=exiting
-            or player_speed < 2.5   # Arrêté ou très lent dans le box
+            or player_speed < 2.5   # Stopped or very slow in box
         )
 
         now = time.time()
 
         # =========================================================================
-        # 1. CAS DU JOUEUR AU BOX / ARRÊT AU STAND (PROTECTION UNSAFE RELEASE)
+        # 1. PLAYER IN BOX / PIT STOP CASE (UNSAFE RELEASE PROTECTION)
         # =========================================================================
         if is_stationary_or_in_box and self.enable_unsafe_release:
             self._was_in_box = True
             return self._handle_unsafe_release_monitoring(context, player_veh, pit_opponents, track_length, now)
 
-        # Si le joueur roule dans la pitlane après un arrêt où un danger avait été signalé
+        # If player drives in pitlane after a stop where hazard was flagged
         if self._was_in_box and self.state == PitlaneSpotterState.UNSAFE_HAZARD:
-            # Si le danger est passé alors que le joueur démarre
+            # If hazard cleared while player launches
             return self._check_release_clear(now)
 
         # =========================================================================
-        # 2. CAS DU JOUEUR EN CIRCULATION DANS LA PITLANE (SOUS PIT LIMITER)
+        # 2. PLAYER DRIVING IN PITLANE CASE (UNDER PIT LIMITER)
         # =========================================================================
         self._was_in_box = False
         return self._handle_pitlane_driving_traffic(context, player_veh, player_speed, pit_opponents, track_length, now)
@@ -243,7 +243,7 @@ class PitlaneSpotterRole(BaseRole):
         track_length: float,
         now: float,
     ) -> Optional[EngineerMessage]:
-        """Surveille les voitures qui descendent la Fast Lane par l'arrière pour prévenir l'Unsafe Release."""
+        """Monitors cars traveling down Fast Lane from behind to prevent Unsafe Release."""
         threats = []
 
         for opp in pit_opponents:
@@ -252,8 +252,8 @@ class PitlaneSpotterRole(BaseRole):
             euc_dist = context.compute_euclidean_distance(player_veh, opp)
             dist_effective = min(dist_behind, euc_dist) if dist_behind > 0 else euc_dist
 
-            # Une voiture est une menace si elle arrive par l'arrière dans la voie rapide
-            # avec une vitesse significative (> 20 km/h) et à portée
+            # A car is a threat if it approaches from behind in fast lane
+            # with significant speed (> 20 km/h) and in range
             if 0.0 < dist_behind <= self.unsafe_release_distance_m or (0.0 < euc_dist <= self.unsafe_release_distance_m and dist_behind >= -2.0):
                 speed_delta = max(0.1, opp_speed)
                 ttc = dist_effective / speed_delta if speed_delta > 0.5 else float("inf")
@@ -285,7 +285,7 @@ class PitlaneSpotterRole(BaseRole):
                 self._last_alert_time = now
                 self._hazard_cleared = False
 
-                # Annonce immédiate et interruptive de danger
+                # Immediate interruptive hazard announcement
                 msg = EngineerMessage(
                     phrase_key="car",
                     priority=self.priority,
@@ -297,12 +297,12 @@ class PitlaneSpotterRole(BaseRole):
 
             return None
 
-        # Si aucune menace n'est détectée
+        # If no threat detected
         self._live_hazard_dist = 0.0
         self._live_hazard_speed_kmh = 0.0
         self._live_hazard_ttc = float("inf")
 
-        # Si on était en alerte de danger et que la voie vient de se libérer -> Safe Release !
+        # If we were in hazard alert and lane just cleared -> Safe Release!
         if self.state == PitlaneSpotterState.UNSAFE_HAZARD:
             self.state = PitlaneSpotterState.RELEASE_CLEAR
             self._last_state_change_time = now
@@ -327,7 +327,7 @@ class PitlaneSpotterRole(BaseRole):
         return None
 
     def _check_release_clear(self, now: float) -> Optional[EngineerMessage]:
-        """Confirme que la voie est libre au moment du redémarrage."""
+        """Confirms that lane is clear when relaunching."""
         self.state = PitlaneSpotterState.RELEASE_CLEAR
         self._last_state_change_time = now
         self._live_pit_info = "Pitlane Clear"
@@ -349,14 +349,14 @@ class PitlaneSpotterRole(BaseRole):
         track_length: float,
         now: float,
     ) -> Optional[EngineerMessage]:
-        """Gère le trafic lors de la circulation dans la pitlane sous limiteur de vitesse."""
-        # 1. Détection de voiture ralentie / bloquée DEVANT dans la pitlane
+        """Handles traffic during pitlane driving under pit speed limiter."""
+        # 1. Detection of slow / stopped vehicle AHEAD in pitlane
         if self.enable_pit_traffic_ahead:
             slow_ahead = []
             for opp in pit_opponents:
                 dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
                 euc_dist = context.compute_euclidean_distance(player_veh, opp)
-                # dist_behind < 0 signifie devant
+                # dist_behind < 0 means ahead
                 if (-self.pit_slow_ahead_distance_m <= dist_behind < -2.0) or (0.0 < euc_dist <= self.pit_slow_ahead_distance_m and dist_behind < 0):
                     opp_speed = context.extract_vehicle_speed_mps(opp)
                     if opp_speed < self.pit_slow_speed_threshold_mps:
@@ -385,7 +385,7 @@ class PitlaneSpotterRole(BaseRole):
                         return msg
                 return None
 
-        # 2. Détection de véhicule bord à bord (Overlap) en pitlane
+        # 2. Detection of alongside vehicle (Overlap) in pitlane
         if self.enable_pit_overlap:
             alongside_cars = []
             for opp in pit_opponents:
@@ -413,7 +413,7 @@ class PitlaneSpotterRole(BaseRole):
                         return msg
                 return None
 
-        # Si la circulation est fluide et sans encombre
+        # If traffic is clear and unobstructed
         if self.state in (PitlaneSpotterState.PIT_TRAFFIC_AHEAD, PitlaneSpotterState.PIT_OVERLAP):
             self.state = PitlaneSpotterState.IDLE
             self._live_pit_info = "Pitlane clear"
