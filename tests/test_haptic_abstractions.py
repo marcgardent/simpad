@@ -65,6 +65,90 @@ class TestHapticAbstractions(unittest.TestCase):
         self.assertEqual(synth._telemetry["abs_l"], 0.75)
         self.assertEqual(synth._telemetry["tc_r"], 0.40)
 
+    def test_sdl3_controller_auto_reconnect_simulation(self):
+        from src.haptics.sdl3_controller import SDL3HapticController
+        from unittest.mock import MagicMock
+        import ctypes
+
+        controller = SDL3HapticController()
+        mock_sdl = MagicMock()
+        controller._sdl_mod = mock_sdl
+        controller._sdl_cdll = None
+
+        current_ids = [1001]
+
+        def fake_get_gamepads(count_ptr):
+            if count_ptr and current_ids:
+                count_ptr._obj.value = len(current_ids)
+                return (ctypes.c_uint32 * len(current_ids))(*current_ids)
+            elif count_ptr:
+                count_ptr._obj.value = 0
+            return None
+
+        mock_sdl.SDL_GetGamepads.side_effect = fake_get_gamepads
+        mock_sdl.SDL_OpenGamepad.return_value = 0x12345678
+        mock_sdl.SDL_GetGamepadName.return_value = b"Xbox Wireless Controller"
+        mock_sdl.SDL_GamepadConnected.return_value = True
+        mock_sdl.SDL_RumbleGamepad.return_value = True
+
+        # 1. Acquire and test connection
+        self.assertTrue(controller.is_connected())
+        self.assertEqual(controller.get_gamepad_name(), "Xbox Wireless Controller")
+
+        # 2. Simulate gamepad disconnection (SDL_RumbleGamepad fails or SDL_GamepadConnected returns False)
+        mock_sdl.SDL_GamepadConnected.return_value = False
+        mock_sdl.SDL_RumbleGamepad.return_value = False
+        self.assertFalse(controller._is_handle_alive())
+
+        # When no gamepads are available (controller is OFF)
+        current_ids = []
+        self.assertFalse(controller.is_connected())
+        self.assertEqual(controller.get_gamepad_name(), "No Gamepad")
+
+        # 3. Simulate controller turned back ON (reconnects with new instance id 1002)
+        current_ids = [1002]
+        mock_sdl.SDL_OpenGamepad.return_value = 0x87654321
+        mock_sdl.SDL_GetGamepadName.return_value = b"Xbox Wireless Controller"
+        mock_sdl.SDL_GamepadConnected.return_value = True
+        mock_sdl.SDL_RumbleGamepad.return_value = True
+
+        # Next call to is_connected or set_vibration immediately recovers
+        self.assertTrue(controller.is_connected())
+        self.assertEqual(controller.get_gamepad_name(), "Xbox Wireless Controller")
+
+        # Sending vibration succeeds on the new handle
+        controller.set_vibration(left_low=0.75, right_high=0.50)
+        self.assertEqual(controller.left_low, 0.75)
+        self.assertEqual(controller.right_high, 0.50)
+
+
+    def test_native_windows_xinput_disconnect_reconnect(self):
+        from src.haptics.windows import NativeWindowsXInputController
+        from unittest.mock import MagicMock
+
+        ctrl = NativeWindowsXInputController(device_index=0)
+        mock_dll = MagicMock()
+        ctrl._dll = mock_dll
+
+        # 1. Connected state (XInputGetState returns ERROR_SUCCESS = 0)
+        mock_dll.XInputGetState.return_value = 0
+        mock_dll.XInputSetState.return_value = 0
+        self.assertTrue(ctrl.is_connected())
+
+        # 2. Disconnected state (controller powers off -> returns 1167)
+        mock_dll.XInputGetState.return_value = 1167
+        mock_dll.XInputSetState.return_value = 1167
+        self.assertFalse(ctrl.is_connected())
+        self.assertEqual(ctrl.get_gamepad_name(), "No Gamepad")
+
+        # 3. Reconnected state (controller powers back on -> returns 0)
+        mock_dll.XInputGetState.return_value = 0
+        mock_dll.XInputSetState.return_value = 0
+        self.assertTrue(ctrl.is_connected())
+        ctrl.set_vibration(left_low=0.8, right_high=0.6)
+        self.assertEqual(ctrl.left_low, 0.8)
+
 
 if __name__ == "__main__":
     unittest.main()
+

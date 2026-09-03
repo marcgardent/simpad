@@ -181,7 +181,7 @@ class LMUPluginManager:
 
         try:
             logger.info(f"[PluginManager] Downloading plugin from {url}...")
-            print(f"[PluginManager] Téléchargement du plugin depuis {url}...", flush=True)
+            print(f"[PluginManager] Downloading plugin from {url}...", flush=True)
             req = urllib.request.Request(
                 url,
                 headers={"User-Agent": "SimPad-PluginInstaller/0.1.2"}
@@ -195,14 +195,14 @@ class LMUPluginManager:
                         with zf.open(member) as src, open(dest_dll, "wb") as dst:
                             shutil.copyfileobj(src, dst)
                         logger.info(f"[PluginManager] Extracted {member} -> {dest_dll}")
-                        print(f"[PluginManager] Extrait {member} -> {dest_dll}", flush=True)
+                        print(f"[PluginManager] Extracted {member} -> {dest_dll}", flush=True)
                         return dest_dll
 
-            logger.error(f"[PluginManager] DLL {PLUGIN_DLL_NAME} introuvable dans l'archive zip")
+            logger.error(f"[PluginManager] DLL {PLUGIN_DLL_NAME} not found in zip archive")
             return None
         except Exception as e:
-            logger.error(f"[PluginManager] Erreur lors du téléchargement/extraction depuis {url}: {e}")
-            print(f"[PluginManager] Erreur téléchargement plugin: {e}", flush=True)
+            logger.error(f"[PluginManager] Error downloading/extracting from {url}: {e}")
+            print(f"[PluginManager] Error downloading plugin: {e}", flush=True)
             return None
 
     @classmethod
@@ -404,11 +404,11 @@ class LMUPluginManager:
         root = project_root or cls.get_project_root()
         src_dll = cls.get_source_dll(root, download_if_missing=True, url=url)
         if not src_dll or not src_dll.exists():
-            return False, f"Impossible de récupérer {PLUGIN_DLL_NAME} depuis {url} ou le cache local."
+            return False, f"Unable to retrieve {PLUGIN_DLL_NAME} from {url} or local cache."
 
         lmu_dirs = cls.get_all_lmu_install_dirs()
         if not lmu_dirs:
-            return False, "Dossier d'installation de Le Mans Ultimate introuvable sur le système."
+            return False, "Le Mans Ultimate installation directory not found on system."
 
         installed_count = 0
         for lmu_dir in lmu_dirs:
@@ -427,8 +427,8 @@ class LMUPluginManager:
                 logger.error(f"[PluginManager] Install error for {lmu_dir}: {e}")
 
         if installed_count > 0:
-            return True, f"Plugin {src_dll.name} installé et configuré avec succès !"
-        return False, "Échec de l'installation du plugin."
+            return True, f"Plugin {src_dll.name} successfully installed and configured!"
+        return False, "Failed to install plugin."
 
     @classmethod
     def install_all(

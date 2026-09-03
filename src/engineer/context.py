@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Contexte d'évaluation pour les rôles de l'ingénieur de course.
-Fournit un accès unifié, propre et optimisé à la télémétrie et aux données de scoring (LMU).
+SimPad Race Engineer — Evaluation context for race engineer roles.
+Provides unified, clean, and optimized access to telemetry and scoring data (LMU).
 """
 
 import math
@@ -67,8 +67,8 @@ ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
 
 def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
     """
-    Récupère un attribut ou une clé de dictionnaire de façon universelle, bidirectionnelle et sûre
-    pour un véhicule (VehicleScoring typé ou dictionnaire de télémétrie).
+    Retrieves an attribute or dictionary key in a universal, bidirectional, and safe manner
+    for a vehicle (typed VehicleScoring or telemetry dictionary).
     """
     if veh is None:
         return default
@@ -77,12 +77,12 @@ def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
     if key not in candidates:
         candidates = [key] + candidates
 
-    # 1. Si c'est un dictionnaire
+    # 1. If it's a dict
     if isinstance(veh, dict):
         for candidate in candidates:
             if candidate in veh and veh[candidate] is not None:
                 return veh[candidate]
-        # Recherche imbriquée dans "lmu"
+        # Nested search in "lmu"
         lmu_dict = veh.get("lmu")
         if isinstance(lmu_dict, dict):
             for candidate in candidates:
@@ -90,14 +90,14 @@ def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
                     return lmu_dict[candidate]
         return default
 
-    # 2. Si c'est un objet (ex: VehicleScoring de isimotor_rawudp_client)
+    # 2. If it's an object (e.g. VehicleScoring from isimotor_rawudp_client)
     for candidate in candidates:
         if hasattr(veh, candidate):
             val = getattr(veh, candidate)
             if val is not None:
                 return val
 
-    # Recherche dans l'extension typée lmu (LMUVehicleScoringExtension / LMUTelemetryExtension)
+    # Search in typed lmu extension (LMUVehicleScoringExtension / LMUTelemetryExtension)
     if hasattr(veh, "lmu") and getattr(veh, "lmu") is not None:
         lmu_obj = getattr(veh, "lmu")
         for candidate in candidates:
@@ -112,8 +112,8 @@ def get_vehicle_attr(veh: Any, key: str, default: Any = None) -> Any:
 @dataclass
 class EngineerContext:
     """
-    Objet de contexte transmis aux rôles lors de chaque cycle de calcul.
-    Encapsule la télémétrie physique et les informations globales de scoring/session (dict ou modèles typés isimotor).
+    Context object passed to roles on every evaluation tick.
+    Encapsulates physical telemetry and global scoring/session info (dict or typed isimotor models).
     """
     telemetry: Optional[Union[TelemetryData, TelemInfo, Any]] = None
     scoring: Optional[Union[Dict[str, Any], FullScoringSession, CompactScoring, Any]] = None
@@ -123,18 +123,18 @@ class EngineerContext:
 
     @staticmethod
     def get_attr(veh: Any, key: str, default: Any = None) -> Any:
-        """Méthode statique utilitaire pour accéder aux attributs d'un véhicule."""
+        """Static helper method to access vehicle attributes."""
         return get_vehicle_attr(veh, key, default)
 
     def get_session_type(self) -> int:
         """
-        Retourne le code mSession reçu dans le paquet de scoring (LMU / rF2) :
+        Returns mSession code received from scoring packet (LMU / rF2):
         0 = TestDay
-        1..4 = Practice (FP1 à FP4)
-        5..8 = Qualifying (Q1 à Q4 / Hyperpole / Private Qual)
+        1..4 = Practice (FP1 to FP4)
+        5..8 = Qualifying (Q1 to Q4 / Hyperpole / Private Qual)
         9 = Warmup
-        10..13 = Race (Course 1 à 4)
-        Retourne -1 si non disponible.
+        10..13 = Race (Race 1 to 4)
+        Returns -1 if unavailable.
         """
         if self.scoring is not None:
             if hasattr(self.scoring, "session"):
@@ -150,19 +150,19 @@ class EngineerContext:
         return -1
 
     def is_qualifying_session(self) -> bool:
-        """Indique si la session active est une qualification (mSession entre 5 et 8 inclus)."""
+        """Indicates whether active session is a qualifying session (mSession between 5 and 8 inclusive)."""
         return self.get_session_type() in (5, 6, 7, 8)
 
     def is_private_qualifying(self) -> bool:
         """
-        Indique si la session active est en qualification privée (Private Qualifying).
-        Dans Le Mans Ultimate, les sessions de qualification (mSession 5-8) sont isolées
-        (voitures fantômes/invisibles, aucun contact physique possible).
+        Indicates whether active session is in private qualifying.
+        In Le Mans Ultimate, qualifying sessions (mSession 5-8) are isolated
+        (ghost/invisible cars, no physical contact possible).
         """
         return self.is_qualifying_session()
 
     def get_track_name(self) -> str:
-        """Retourne le nom du circuit actif depuis le paquet de scoring ou le profil de référence."""
+        """Returns active track name from scoring packet or reference profile."""
         if self.scoring is not None:
             if hasattr(self.scoring, "track_name"):
                 name = str(self.scoring.track_name).strip()
@@ -187,7 +187,7 @@ class EngineerContext:
         return ""
 
     def get_reference_profile(self) -> Optional[Any]:
-        """Retourne le profil du tour de référence actif s'il correspond au circuit en cours."""
+        """Returns active reference lap profile if it matches current track."""
         scoring_track = self.get_track_name()
 
         if self.reference_profile is not None:
@@ -203,7 +203,7 @@ class EngineerContext:
             from src.telemetry.lmu_parser import LMUParser
             delta_eng = getattr(LMUParser, "_delta_engine", None)
             if delta_eng:
-                # L'ingénieur de piste (trafic, repères) utilise systématiquement le tour de référence absolu
+                # Track engineer (traffic, markers) always uses all-time best reference lap
                 prof = delta_eng.all_time_best_profile or delta_eng.current_profile
                 if prof:
                     ref_track = getattr(prof, "track_name", "")
@@ -222,7 +222,7 @@ class EngineerContext:
         track_dist: float,
         profile: Optional[Any] = None,
     ) -> Optional[float]:
-        """Retourne la vitesse du tour de référence à une position de piste donnée (m/s)."""
+        """Returns reference lap speed at given track position (m/s)."""
         ref_prof = profile or self.get_reference_profile()
         if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
             return None
@@ -237,8 +237,8 @@ class EngineerContext:
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
-        Vérifie si une vitesse donnée est dans le 'domaine normal'
-        par rapport au tour de référence à une position précise du circuit.
+        Checks if given speed is within 'normal racing domain'
+        relative to reference lap at exact track position.
         """
         ref_prof = profile or self.get_reference_profile()
         if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
@@ -249,7 +249,7 @@ class EngineerContext:
         ref_speed_kmh = ref_speed_mps * 3.6
         actual_speed_kmh = speed_mps * 3.6
 
-        # Si le tour de référence n'a pas de vitesse valide à cet endroit
+        # If reference lap has no valid speed at this location
         if ref_speed_kmh <= 1.0:
             return True
 
@@ -263,8 +263,8 @@ class EngineerContext:
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
-        Détermine si un véhicule roule dans son domaine de vitesse 'normal'
-        selon sa position sur la piste.
+        Determines if vehicle is driving within its 'normal' speed domain
+        based on track position.
         """
         if veh is None:
             return True
@@ -284,7 +284,7 @@ class EngineerContext:
         profile: Optional[Any] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
-        """Détermine si le véhicule du joueur roule dans son domaine de vitesse normal."""
+        """Determines if player vehicle is driving within normal speed domain."""
         player_veh = self.get_player_vehicle()
         if not player_veh:
             return True
@@ -306,8 +306,8 @@ class EngineerContext:
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
-        Vérifie la condition de filtrage pour les rôles trafic :
-        Il faut qu'au moins l'un des deux (moi OU l'autre) soit hors domaine.
+        Checks filter condition for traffic roles:
+        At least one vehicle (player OR opponent) must be out of normal domain.
         """
         ref_prof = profile or self.get_reference_profile()
         if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
@@ -319,7 +319,7 @@ class EngineerContext:
         return (not player_in) or (not opp_in)
 
     def get_track_length(self) -> float:
-        """Retourne la longueur totale du circuit en mètres."""
+        """Returns total track length in meters."""
         if self.scoring is not None:
             if hasattr(self.scoring, "lap_dist"):
                 lap_dist = float(self.scoring.lap_dist)
@@ -329,10 +329,10 @@ class EngineerContext:
                 lap_dist = float(self.scoring.get("mLapDist", self.scoring.get("lapDist", 0.0)))
                 if lap_dist > 500.0:
                     return lap_dist
-        return 5000.0  # Valeur par défaut de repli
+        return 5000.0  # Fallback default
 
     def get_player_vehicle(self) -> Optional[Any]:
-        """Extrait le véhicule du joueur depuis la session scoring (VehicleScoring ou dict)."""
+        """Extracts player vehicle from scoring session (VehicleScoring or dict)."""
         if not self.scoring:
             return None
 
@@ -357,23 +357,23 @@ class EngineerContext:
         return None
 
     def is_player_in_pits(self) -> bool:
-        """Indique si le véhicule joueur est actuellement dans la pitlane (entre entrée et sortie)."""
+        """Indicates whether player vehicle is currently in pitlane (between entry and exit)."""
         player = self.get_player_vehicle()
         if not player:
             return False
         return self.is_vehicle_in_pits(player)
 
     def is_player_in_garage(self) -> bool:
-        """Indique si le joueur est dans son box / garage ou dans les menus."""
-        # 1. Si la télémétrie physique active confirme que nous sommes en temps réel en piste,
-        # on n'est PAS au garage (empêche tout faux positif lors de micro-transitions de paquets UDP)
+        """Indicates whether player is in garage stall or menus."""
+        # 1. If active physical telemetry confirms realtime on track,
+        # we are NOT in garage (prevents false positives during UDP transitions)
         if self.telemetry is not None and getattr(self.telemetry, "in_realtime", False):
             player = self.get_player_vehicle()
             if player and bool(get_vehicle_attr(player, "in_garage_stall", False)):
                 return True
             return False
 
-        # 2. Vérification au niveau de la session de scoring globale
+        # 2. Check at global scoring session level
         if self.scoring is not None:
             if getattr(self.scoring, "game_phase", 5) == 0:
                 return True
@@ -382,7 +382,7 @@ class EngineerContext:
             if bool(get_vehicle_attr(self.scoring, "in_garage_stall", False)):
                 return True
 
-        # 3. Vérification sur le véhicule joueur
+        # 3. Check on player vehicle
         player = self.get_player_vehicle()
         if player:
             return self.is_vehicle_in_garage(player)
@@ -392,8 +392,8 @@ class EngineerContext:
     @classmethod
     def is_vehicle_in_pits(cls, veh: Any) -> bool:
         """
-        Indique si un véhicule donné est dans la pitlane.
-        Vérifie les drapeaux in_pits/mInPits et l'état pit_state/mPitState (2=entering, 3=stopped, 4=exiting).
+        Indicates whether a given vehicle is in pitlane.
+        Checks in_pits/mInPits flags and pit_state/mPitState (2=entering, 3=stopped, 4=exiting).
         """
         if veh is None:
             return False
@@ -409,22 +409,22 @@ class EngineerContext:
 
     @classmethod
     def is_vehicle_in_garage(cls, veh: Any) -> bool:
-        """Indique si un véhicule donné est dans son garage / box."""
+        """Indicates whether a given vehicle is in its garage / pit stall."""
         if veh is None:
             return False
         return bool(get_vehicle_attr(veh, "in_garage_stall", False))
 
     def get_track_opponents(self) -> List[Any]:
         """
-        Retourne uniquement la liste des véhicules adverses actifs SUR LA PISTE (hors stands et garage).
-        Garantit qu'aucun véhicule en pitlane ne perturbe les calculs de spotter ou de trafic en piste.
+        Returns list of active opponent vehicles ON TRACK (excluding pits and garage).
+        Ensures no pitlane vehicle interferes with on-track spotter or traffic calculations.
         """
         return self.get_opponent_vehicles(include_pits=False, include_garage=False)
 
     def get_pit_opponents(self) -> List[Any]:
         """
-        Retourne la liste des véhicules adverses présents DANS LA PITLANE (hors garage).
-        Permet un traitement distinct du trafic en voie des stands.
+        Returns list of active opponent vehicles IN PITLANE (excluding garage).
+        Enables distinct handling of pitlane traffic.
         """
         if not self.scoring:
             return []
@@ -456,9 +456,9 @@ class EngineerContext:
         include_garage: bool = False,
     ) -> List[Any]:
         """
-        Retourne la liste des véhicules adverses actifs.
-        Exclut le joueur, les véhicules au garage (sauf si include_garage=True),
-        et les voitures aux stands (sauf si include_pits=True).
+        Returns list of active opponent vehicles.
+        Excludes player, vehicles in garage (unless include_garage=True),
+        and cars in pits (unless include_pits=True).
         """
         if not self.scoring:
             return []
@@ -486,7 +486,7 @@ class EngineerContext:
 
     @classmethod
     def extract_vehicle_speed_mps(cls, veh: Any) -> float:
-        """Calcule la vitesse scalaire en m/s d'un véhicule (VehicleScoring ou dict)."""
+        """Calculates scalar speed in m/s of vehicle (VehicleScoring or dict)."""
         if veh is None:
             return 0.0
         if hasattr(veh, "speed_mps"):
@@ -509,8 +509,8 @@ class EngineerContext:
         return 0.0
 
     def get_player_speed_mps(self) -> float:
-        """Retourne la vitesse instantanée du joueur en m/s."""
-        # 1. Depuis la télémétrie haute fréquence si disponible
+        """Returns instantaneous player speed in m/s."""
+        # 1. From high-frequency telemetry if available
         if self.telemetry is not None:
             if hasattr(self.telemetry, "speed_mps"):
                 return float(self.telemetry.speed_mps)
@@ -519,7 +519,7 @@ class EngineerContext:
                 if speeds:
                     return max(speeds)
 
-        # 2. Depuis le véhicule joueur dans le scoring
+        # 2. From player vehicle in scoring
         player_veh = self.get_player_vehicle()
         if player_veh is not None:
             return self.extract_vehicle_speed_mps(player_veh)
@@ -533,10 +533,10 @@ class EngineerContext:
         track_length: Optional[float] = None,
     ) -> float:
         """
-        Calcule la distance relative le long de la spline du circuit.
-        - Valeur > 0 : L'adversaire est DERRIÈRE le joueur (en mètres).
-        - Valeur < 0 : L'adversaire est DEVANT le joueur (en mètres).
-        Gère le rebouclage de la ligne de départ/arrivée (wraparound).
+        Calculates relative distance along track spline.
+        - Value > 0: Opponent is BEHIND player (in meters).
+        - Value < 0: Opponent is AHEAD OF player (in meters).
+        Handles finish line wraparound.
         """
         l_track = track_length or self.get_track_length()
         p_dist = float(get_vehicle_attr(player_veh, "lap_dist", 0.0)) % l_track
@@ -544,13 +544,13 @@ class EngineerContext:
 
         delta = (p_dist - o_dist) % l_track
         if delta < l_track / 2.0:
-            return delta  # Adversaire derrière
+            return delta  # Opponent behind
         else:
-            return delta - l_track  # Adversaire devant (valeur négative)
+            return delta - l_track  # Opponent ahead (negative value)
 
     @classmethod
     def compute_euclidean_distance(cls, veh_a: Any, veh_b: Any) -> float:
-        """Calcule la distance euclidienne 3D entre deux véhicules si la position mPos/pos est disponible."""
+        """Calculates 3D Euclidean distance between two vehicles if mPos/pos position is available."""
         def _get_xyz(v):
             if v is None:
                 return None

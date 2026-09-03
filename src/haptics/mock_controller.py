@@ -1,5 +1,5 @@
 """
-SimPad Mock Haptic Controller — Contrôleur virtuel de secours pour CI/CD et environnements sans matériel.
+SimPad Mock Haptic Controller — Virtual fallback controller for CI/CD and hardware-less environments.
 """
 
 import logging
@@ -9,14 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 class MockHapticController(HapticController):
-    """Implémentation fictive (Mock) du contrôleur haptique."""
+    """Mock implementation of the haptic controller."""
 
     def __init__(self):
         self.left_low = 0.0
         self.left_high = 0.0
         self.right_low = 0.0
         self.right_high = 0.0
-        logger.info("MockHapticController initialisé (mode virtuel/sans matériel).")
+        logger.info("MockHapticController initialized (virtual/mock mode).")
 
     def set_vibration(
         self,

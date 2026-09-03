@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 FRENCH_STOP_WORDS: Set[str] = {
     # Articles, prepositions, conjunctions, pronouns
     "le", "la", "les", "des", "du", "un", "une", "pour", "dans", "avec", "sur", "sous",
-    "par", "vers", "sans", "chez", "mais", "donc", "car", "que", "qui", "quoi", "dont",
+    "par", "vers", "sans", "chez", "mais", "donc", "que", "qui", "quoi", "dont",
     "est", "sont", "cette", "ces", "cet", "tous", "tout", "toutes", "toute", "comme",
     "aussi", "autre", "autres", "meme", "leur", "leurs", "notre", "votre", "nous", "vous",
     "ils", "elles", "afin", "ainsi", "alors", "après", "apres", "avant", "bien", "ceci",
@@ -38,7 +38,7 @@ FRENCH_STOP_WORDS: Set[str] = {
     "valeur", "valeurs", "chaine", "chaîne", "calcul", "virage", "course", "piste", "pilote",
     "ecurie", "écurie", "voiture", "tableau", "compteur", "jauge", "jauges", "affichage",
     "fenetre", "fenêtre", "reception", "réception", "envoi", "flux", "arret", "arrêt",
-    "temps", "seconde", "secondes", "minute", "minutes", "heure", "heures", "secteur", "secteurs",
+    "temps", "seconde", "secondes", "heure", "heures", "secteur", "secteurs",
     "reglement", "règlement", "drapeau", "drapeaux", "intermédiaire", "intermediaire"
 }
 
@@ -55,6 +55,10 @@ WORD_RE = re.compile(r"\b[a-zA-ZÀ-ÿ_]{2,}\b")
 IGNORE_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".idea",
     ".antigravitycli", "build", "dist", "simpad.egg-info", "assets"
+}
+
+IGNORE_FILES = {
+    "french_drift.py"
 }
 
 IGNORE_EXTENSIONS = {
@@ -101,7 +105,9 @@ def is_french_word(word: str) -> bool:
     return False
 
 
-TECHNICAL_EXCLUSIONS = {"sans-serif", "sans_serif", "Le Mans Ultimate", "Le Mans", "safety car"}
+TECHNICAL_EXCLUSIONS = {
+    "sans-serif", "sans_serif", "Le Mans Ultimate", "Le Mans", "Circuit de la Sarthe", "safety car"
+}
 
 
 def scan_file(file_path: Path) -> FileDriftReport:
@@ -119,10 +125,10 @@ def scan_file(file_path: Path) -> FileDriftReport:
         if line_idx == 1 and line.startswith(("#!", "# -*-")):
             continue
 
-        # Ignore technical CSS font tokens like sans-serif
+        # Ignore technical exclusions case-insensitively
         cleaned_line = line
         for exc in TECHNICAL_EXCLUSIONS:
-            cleaned_line = cleaned_line.replace(exc, " ")
+            cleaned_line = re.sub(re.escape(exc), " ", cleaned_line, flags=re.IGNORECASE)
 
         words = WORD_RE.findall(cleaned_line)
         for w in words:
@@ -150,6 +156,8 @@ def scan_directory(root_dir: Path, target_extensions: Set[str]) -> List[FileDrif
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
         for fname in files:
+            if fname in IGNORE_FILES:
+                continue
             fpath = Path(root) / fname
             if fpath.suffix.lower() in IGNORE_EXTENSIONS:
                 continue
@@ -270,6 +278,8 @@ def main():
             continue
 
         if target_path.is_file():
+            if target_path.name in IGNORE_FILES:
+                continue
             if target_path.suffix.lower() in target_exts:
                 rep = scan_file(target_path)
                 if rep.total_occurrences > 0:

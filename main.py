@@ -1,4 +1,4 @@
-"""SimPad Haptic Middleware — Point d'entrée principal (Dear PyGui 60 FPS)."""
+"""SimPad Haptic Middleware — Main entry point (Dear PyGui 60 FPS)."""
 
 import sys
 from pathlib import Path

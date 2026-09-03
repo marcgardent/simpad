@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Architecture modulaire pour l'ingénieur de course virtuel.
-Exportation des abstractions de base, de la fabrique, du registre et du coordinateur.
+SimPad Race Engineer — Modular architecture for virtual race engineer.
+Exports base abstractions, factory, registry, and coordinator.
 """
 
 from src.engineer.base import BaseRole, RoleStatus, EngineerMessage

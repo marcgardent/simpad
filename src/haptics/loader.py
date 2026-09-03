@@ -1,5 +1,5 @@
 """
-SimPad Loader — Chargement dynamique multi-plateforme de la bibliothèque SDL3.
+SimPad Loader — Dynamic cross-platform loading of the SDL3 library.
 """
 
 import ctypes
@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 class SDL3Loader:
     """
-    Abstrait la découverte et le chargement de la bibliothèque SDL3.
-    Ordre de résolution :
-      1. Package Python 'sdl3' (installé via PyPI / uv add sdl3)
-      2. Lib système via ctypes.util.find_library("SDL3")
+    Abstracts discovery and loading of the SDL3 library.
+    Resolution order:
+      1. Python package 'sdl3' (installed via PyPI / uv add sdl3)
+      2. System library via ctypes.util.find_library("SDL3")
     """
 
     _sdl_module: Optional[Any] = None
@@ -24,30 +24,30 @@ class SDL3Loader:
     @classmethod
     def load(cls) -> Tuple[Optional[Any], Optional[ctypes.CDLL]]:
         """
-        Tente de charger SDL3.
-        Retourne un tuple (sdl_module, cdll_handle).
+        Attempts to load SDL3.
+        Returns a tuple (sdl_module, cdll_handle).
         """
         if cls._sdl_module is not None or cls._sdl_cdll is not None:
             return cls._sdl_module, cls._sdl_cdll
 
-        # 1. Package Python `sdl3` (recommandé & cross-platform)
+        # 1. Python package `sdl3` (recommended & cross-platform)
         try:
             import sdl3
             cls._sdl_module = sdl3
-            logger.info("SDL3 initialisé avec succès depuis le package Python 'sdl3'.")
+            logger.info("SDL3 initialized successfully from Python 'sdl3' package.")
             return cls._sdl_module, None
         except ImportError:
-            logger.debug("Package Python 'sdl3' non trouvé, basculement sur ctypes system library.")
+            logger.debug("Python 'sdl3' package not found, falling back to ctypes system library.")
 
-        # 2. Recherche système via ctypes.util.find_library
+        # 2. System lookup via ctypes.util.find_library
         sys_lib = ctypes.util.find_library("SDL3")
         if sys_lib:
             try:
                 cls._sdl_cdll = ctypes.CDLL(sys_lib)
-                logger.info(f"SDL3 chargé depuis la bibliothèque système : {sys_lib}")
+                logger.info(f"SDL3 loaded from system library: {sys_lib}")
                 return None, cls._sdl_cdll
             except Exception as e:
-                logger.debug(f"Impossible de charger la lib système {sys_lib} : {e}")
+                logger.debug(f"Unable to load system library {sys_lib}: {e}")
 
-        logger.warning("Aucune instance de SDL3 n'a pu être chargée (package PyPI ou lib système).")
+        logger.warning("No instance of SDL3 could be loaded (PyPI package or system lib).")
         return None, None

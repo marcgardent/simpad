@@ -1,7 +1,7 @@
 """
 SimPad Official LMU Race Schedule & Notification Engine.
-Intégration directe avec l'API officielle LMU (https://api.lmuschedule.com/racingschedules).
-Gestion et activation par SETUP <Niveau> <Classes> <Circuit> avec diffusion audio FIFO anti-collision.
+Direct integration with the official LMU API (https://api.lmuschedule.com/racingschedules).
+Management and activation by SETUP <Level> <Classes> <Circuit> with collision-free FIFO audio broadcasting.
 """
 
 import os
@@ -46,37 +46,37 @@ API_HEADERS = {
 
 
 def clean_series_key(name: str) -> str:
-    """Génère une clé d'identification normalisée pour une chaîne."""
+    """Generates a normalized identification key for a string."""
     return name.lower().replace(" ", "_").replace("-", "_").replace("(", "").replace(")", "").replace(",", "").strip("_")
 
 
 def make_setup_key(difficulty: str, car_classes: str, circuit: str) -> str:
-    """Génère la clé unique d'un Setup <Niveau><Classes><Circuit>."""
+    """Generates unique key for a Setup <Level><Classes><Circuit>."""
     return clean_series_key(f"{difficulty}_{car_classes}_{circuit}")
 
 
 @dataclass
 class RaceSetupConfig:
-    """Configuration individuelle pour chaque Setup <Niveau><Classes><Circuit>."""
-    setup_id: str                         # Clé unique (ex: "lmgt3_fixed" ou "beginner_gt3_fuji_wec")
-    difficulty: str = "Beginner"          # <Niveau> : "Beginner", "Intermediate", "Advanced", "Weekly"
+    """Individual configuration for each Setup <Level><Classes><Circuit>."""
+    setup_id: str                         # Unique key (e.g. "lmgt3_fixed" or "beginner_gt3_fuji_wec")
+    difficulty: str = "Beginner"          # <Level> : "Beginner", "Intermediate", "Advanced", "Weekly"
     car_classes: str = "GT3"              # <Classes> : "GT3", "LMP2 (ELMS), LMP3, GT3", "HYP, GT3"
     circuit: str = ""                     # <Circuit> : "Fuji (WEC)", "Silverstone (ELMS)"
-    series_name: str = ""                 # Nom de série (ex: "LMGT3 Fixed")
+    series_name: str = ""                 # Series name (e.g. "LMGT3 Fixed")
     race_type: str = "Daily Races"        # "Daily Races", "Weekly Races"
     tier_category: str = "Bronze"         # "Bronze", "Silver", "Gold", "Weekly"
-    race_length_min: int = 20             # Durée en minutes
-    setup_type: str = "fixed"             # "fixed" ou "open"
-    enabled: bool = False                 # Par défaut : Décoché
-    notify_15m: bool = False              # Par défaut : Décoché
-    notify_10m: bool = False              # Par défaut : Décoché
-    notify_5m: bool = False               # Par défaut : Décoché
-    notify_1m: bool = False               # Par défaut : Décoché
-    notify_reg_open: bool = False         # Par défaut : Décoché
-    notify_start: bool = False            # Par défaut : Décoché
-    sound_key: str = ""                   # Clé audio principale
+    race_length_min: int = 20             # Duration in minutes
+    setup_type: str = "fixed"             # "fixed" or "open"
+    enabled: bool = False                 # Default: Unchecked
+    notify_15m: bool = False              # Default: Unchecked
+    notify_10m: bool = False              # Default: Unchecked
+    notify_5m: bool = False               # Default: Unchecked
+    notify_1m: bool = False               # Default: Unchecked
+    notify_reg_open: bool = False         # Default: Unchecked
+    notify_start: bool = False            # Default: Unchecked
+    sound_key: str = ""                   # Primary audio key
 
-    # Alias rétrocompatible
+    # Backward compatible alias
     @property
     def race_id(self) -> str:
         return self.setup_id
@@ -87,7 +87,7 @@ class RaceSetupConfig:
 
     @property
     def display_title(self) -> str:
-        """Titre clair et standardisé : <Niveau> • <Classes> • <Circuit>"""
+        """Clear standardized title: <Level> • <Classes> • <Circuit>"""
         return f"[{self.difficulty}] {self.car_classes} @ {self.circuit}"
 
     def __post_init__(self):
@@ -99,7 +99,7 @@ class RaceSetupConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RaceSetupConfig":
-        # Compatibilité avec anciennes clés de configuration
+        # Backward compatibility with legacy configuration keys
         mapped_data = dict(data)
         if "race_id" in mapped_data and "setup_id" not in mapped_data:
             mapped_data["setup_id"] = mapped_data["race_id"]
@@ -108,36 +108,38 @@ class RaceSetupConfig:
         return cls(**{k: v for k, v in mapped_data.items() if k in cls.__dataclass_fields__})
 
 
-# Alias pour rétrocompatibilité
+# Backward compatible alias
 RaceTierConfig = RaceSetupConfig
 
 
 @dataclass
 class RaceEvent:
-    """Session de course LMU générée dynamiquement pour un Setup <Niveau><Classes><Circuit>."""
-    setup_id: str                         # Clé unique du Setup
-    series_name: str                      # Nom de la série (ex: "LMGT3 Fixed")
-    difficulty: str                       # <Niveau> : "Beginner", "Intermediate", "Advanced", "Weekly"
+    """LMU race session dynamically generated for a Setup <Level><Classes><Circuit>."""
+    setup_id: str                         # Setup unique key
+    series_name: str                      # Series name (e.g. "LMGT3 Fixed")
+    difficulty: str                       # <Level> : "Beginner", "Intermediate", "Advanced", "Weekly"
     car_classes: str                      # <Classes> : "GT3", "LMP2", etc.
     track_name: str                       # <Circuit> : "Fuji (WEC)", etc.
     tier_category: str                    # "Bronze", "Silver", "Gold", "Weekly"
-    start_time: float                     # Timestamp epoch début de course
-    end_time: float                       # Timestamp epoch fin de course
-    reg_open_time: float                  # Timestamp epoch ouverture inscriptions (T-15 min)
+    start_time: float                     # Race start epoch timestamp
+    end_time: float                       # Race end epoch timestamp
+    reg_open_time: float                  # Registration open epoch timestamp (T-15 min)
     setup_type: str                       # "fixed", "open"
-    race_length_min: int                  # Durée en minutes
+    race_length_min: int                  # Duration in minutes
     status: str                           # "UPCOMING", "REGISTRATION_OPEN", "IN_PROGRESS", "FINISHED"
-    time_until_start: float               # Secondes restantes avant départ
-    time_until_reg: float                 # Secondes restantes avant inscriptions
+    time_until_start: float               # Seconds remaining before start
+    time_until_reg: float                 # Seconds remaining before registration
 
-    # Alias rétrocompatible
+    # Backward compatible alias
     @property
     def race_id(self) -> str:
         return self.setup_id
 
     @property
-    def name(self) -> str:
-        return self.series_name
+    def race_type(self) -> str:
+        if self.tier_category == "Weekly" or "weekly" in self.series_name.lower():
+            return "Weekly Races"
+        return "Daily Races"
 
     @property
     def start_time_str(self) -> str:
@@ -161,12 +163,12 @@ class RaceEvent:
             return f"{mins:02d}m {secs:02d}s"
         elif self.time_until_start > -(self.end_time - self.start_time):
             elapsed = int(-self.time_until_start)
-            return f"En cours ({elapsed // 60}m)"
+            return f"In progress ({elapsed // 60}m)"
         else:
-            return "Terminée"
+            return "Finished"
 
 
-# Référentiel des 10 Setups officiels LMU par défaut
+# Default 10 official LMU Setups repository
 DEFAULT_RACE_SETUPS: Dict[str, RaceSetupConfig] = {
     "lmgt3_fixed": RaceSetupConfig(
         setup_id="lmgt3_fixed",
@@ -294,11 +296,11 @@ DEFAULT_RACE_TIERS = DEFAULT_RACE_SETUPS
 
 
 class LMUScheduleClient:
-    """Client API pour récupérer le planning officiel des courses Le Mans Ultimate."""
+    """API client to fetch official Le Mans Ultimate race schedule."""
 
     @staticmethod
     def fetch_remote_schedule(timeout: int = 8) -> Optional[List[Dict[str, Any]]]:
-        """Effectue la requête HTTPS vers api.lmuschedule.com."""
+        """Performs HTTPS request to api.lmuschedule.com."""
         try:
             req = urllib.request.Request(API_URL, headers=API_HEADERS)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -313,7 +315,7 @@ class LMUScheduleClient:
 
     @staticmethod
     def load_cached_schedule(cache_file: Path = DEFAULT_CACHE_PATH) -> List[Dict[str, Any]]:
-        """Charge les données de planning mises en cache sur le disque."""
+        """Loads schedule data cached on disk."""
         if cache_file.exists():
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
@@ -324,7 +326,7 @@ class LMUScheduleClient:
 
     @staticmethod
     def save_cached_schedule(data: List[Dict[str, Any]], cache_file: Path = DEFAULT_CACHE_PATH) -> None:
-        """Sauvegarde les données de planning en cache local."""
+        """Saves schedule data to local cache."""
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -334,8 +336,8 @@ class LMUScheduleClient:
 
 class LMUScheduleManager:
     """
-    Gestionnaire central du planning et des alertes pour chaque SETUP <Niveau><Classes><Circuit>.
-    Permet d'activer/désactiver globalement un Setup (qui s'applique à tous ses horaires récurrents).
+    Central schedule and notification manager for each SETUP <Level><Classes><Circuit>.
+    Allows globally enabling/disabling a Setup (which applies to all its recurring slots).
     """
 
     def __init__(
@@ -354,22 +356,22 @@ class LMUScheduleManager:
         self._fired_alerts: Set[Tuple[str, str, int, str]] = set()  # (setup_id, series_name, slot_ts, alert_type)
         self._raw_series_data: List[Dict[str, Any]] = []
         self.last_sync_time: float = 0.0
-        self.api_status: str = "Initialisation..."
+        self.api_status: str = "Initializing..."
 
-        # Initialise les configurations
+        # Initialize configurations
         self.load_config()
 
-        # Chargement initial du cache local
+        # Initial local cache loading
         cached = LMUScheduleClient.load_cached_schedule(self.cache_file)
         if cached:
             self._raw_series_data = cached
             self._sync_setups_from_raw()
-            self.api_status = f"Connecté ({len(cached)} Setups chargés)"
+            self.api_status = f"Connected ({len(cached)} Setups loaded)"
 
         if auto_fetch:
             self.refresh_api_async()
 
-    # Alias rétrocompatible
+    # Backward compatible alias
     @property
     def races(self) -> Dict[str, RaceSetupConfig]:
         return self.setups
@@ -379,7 +381,7 @@ class LMUScheduleManager:
         self.setups = val
 
     def _sync_setups_from_raw(self) -> None:
-        """Synchronise dynamiquement la liste des Setups <Niveau><Classes><Circuit> issus de l'API."""
+        """Dynamically synchronizes Setups <Level><Classes><Circuit> from API."""
         for item in self._raw_series_data:
             s_name = item.get("series", "")
             diff = item.get("difficulty", "Beginner")
@@ -389,12 +391,12 @@ class LMUScheduleManager:
             setup_type = item.get("setup", "fixed")
             race_len = item.get("raceLength", 20)
 
-            # Identification du Setup
+            # Setup identification
             s_id = clean_series_key(s_name) if s_name else make_setup_key(diff, car_classes, circuit)
             tier_cat = "Bronze" if diff == "Beginner" else ("Silver" if diff == "Intermediate" else ("Weekly" if race_type == "Weekly Races" else "Gold"))
 
             if s_id in self.setups:
-                # Met à jour les métadonnées
+                # Update metadata
                 self.setups[s_id].circuit = circuit
                 self.setups[s_id].car_classes = car_classes
                 self.setups[s_id].difficulty = diff if race_type != "Weekly Races" else "Weekly"
@@ -402,7 +404,7 @@ class LMUScheduleManager:
                 self.setups[s_id].setup_type = setup_type
                 self.setups[s_id].series_name = s_name
             else:
-                # Ajoute le nouveau Setup avec ses coches décochées par défaut
+                # Add new Setup unchecked by default
                 self.setups[s_id] = RaceSetupConfig(
                     setup_id=s_id,
                     difficulty=diff if race_type != "Weekly Races" else "Weekly",
@@ -423,36 +425,44 @@ class LMUScheduleManager:
                     sound_key=s_id,
                 )
 
-    def refresh_api_async(
-        self,
-        callback: Optional[Callable[[bool], None]] = None,
-        on_done: Optional[Callable[[bool], None]] = None
-    ) -> None:
-        """Met à jour les données de l'API en arrière-plan sans bloquer l'application."""
-        cb = callback or on_done
-
-        def _worker():
+    def sync_api(self) -> bool:
+        """Synchronously updates data from API. Returns True on success."""
+        try:
             data = LMUScheduleClient.fetch_remote_schedule()
             if data:
                 self._raw_series_data = data
                 self._sync_setups_from_raw()
                 self.last_sync_time = time.time()
-                self.api_status = f"En direct ({len(data)} Setups actifs)"
+                self.api_status = f"Live ({len(data)} active Setups)"
                 LMUScheduleClient.save_cached_schedule(data, self.cache_file)
                 self.save_config()
                 logger.info(f"[LMUScheduleManager] Refreshed {len(data)} race setups from API.")
-                if cb:
-                    cb(True)
+                return True
             else:
                 if not self._raw_series_data:
-                    self.api_status = "Hors-ligne (Cache local)"
-                if cb:
-                    cb(False)
+                    self.api_status = "Offline (Local Cache)"
+                return False
+        except Exception as e:
+            logger.warning(f"[LMUScheduleManager] Error in sync_api: {e}")
+            return False
+
+    def refresh_api_async(
+        self,
+        callback: Optional[Callable[[bool], None]] = None,
+        on_done: Optional[Callable[[bool], None]] = None
+    ) -> None:
+        """Updates API data in the background without blocking the application."""
+        cb = callback or on_done
+
+        def _worker():
+            ok = self.sync_api()
+            if cb:
+                cb(ok)
 
         threading.Thread(target=_worker, daemon=True, name="LMUScheduleFetchThread").start()
 
     def load_config(self) -> None:
-        """Charge la configuration utilisateur des Setups."""
+        """Loads user Setups configuration."""
         self.setups = {k: RaceSetupConfig.from_dict(v.to_dict()) for k, v in DEFAULT_RACE_SETUPS.items()}
 
         if not self.config_file.exists():
@@ -466,7 +476,7 @@ class LMUScheduleManager:
                 self.audio_enabled = data.get("audio_enabled", True)
                 self.desktop_notifications_enabled = data.get("desktop_notifications_enabled", True)
 
-                # Charge les setups ou rétrocompatibilité avec "races"
+                # Loads setups or backward compatible "races"
                 setups_data = data.get("setups", data.get("races", {}))
                 for s_id, s_conf in setups_data.items():
                     if s_id in self.setups:
@@ -477,7 +487,7 @@ class LMUScheduleManager:
             logger.warning(f"[LMUScheduleManager] Error loading config {self.config_file}: {e}")
 
     def save_config(self) -> None:
-        """Sauvegarde la configuration actuelle des Setups."""
+        """Saves current Setups configuration."""
         try:
             data = {
                 "master_enabled": self.master_enabled,
@@ -492,13 +502,13 @@ class LMUScheduleManager:
             logger.warning(f"[LMUScheduleManager] Error saving config {self.config_file}: {e}")
 
     def enable_all_races(self, enabled: bool = True) -> None:
-        """Active ou désactive tous les Setups en un clic."""
+        """Enables or disables all Setups with a single click."""
         for cfg in self.setups.values():
             cfg.enabled = enabled
         self.save_config()
 
     def disable_all_setups_and_reminders(self) -> None:
-        """Désactive et décoche absolument tous les Setups et tous les rappels."""
+        """Disables and unchecks absolutely all Setups and reminders."""
         for cfg in self.setups.values():
             cfg.enabled = False
             cfg.notify_15m = False
@@ -510,7 +520,7 @@ class LMUScheduleManager:
         self.save_config()
 
     def enable_all_quick(self, notify_minutes: int = 5) -> None:
-        """Active tous les Setups avec un rappel rapide (ex: 5 min)."""
+        """Enables all Setups with a quick reminder (e.g. 5 min)."""
         for cfg in self.setups.values():
             cfg.enabled = True
             cfg.notify_15m = (notify_minutes == 15)
@@ -522,7 +532,7 @@ class LMUScheduleManager:
         self.save_config()
 
     def get_all_real_events(self, now: Optional[float] = None) -> List[RaceEvent]:
-        """Transforme toutes les sessions de course de l'API en objets RaceEvent."""
+        """Transforms all race sessions from API into RaceEvent objects."""
         current_time = now if now is not None else time.time()
         events: List[RaceEvent] = []
 
@@ -547,7 +557,7 @@ class LMUScheduleManager:
                     end_ts = start_ts + (race_len * 60)
                     reg_open_ts = start_ts - reg_lead_sec
 
-                    # Conserve les courses se terminant après current_time
+                    # Keep races ending after current_time
                     if end_ts >= current_time:
                         time_to_start = start_ts - current_time
                         time_to_reg = reg_open_ts - current_time
@@ -586,7 +596,7 @@ class LMUScheduleManager:
         return events
 
     def get_next_event(self, setup_id: str, now: Optional[float] = None) -> Optional[RaceEvent]:
-        """Retourne la prochaine session pour un Setup spécifique."""
+        """Returns the next session for a specific Setup."""
         current_time = now if now is not None else time.time()
         events = self.get_all_real_events(now=current_time)
 
@@ -594,7 +604,7 @@ class LMUScheduleManager:
             if ev.setup_id == setup_id and ev.end_time >= current_time:
                 return ev
 
-        # Fallback si l'API est hors-ligne
+        # Fallback if API is offline
         cfg = self.setups.get(setup_id)
         if cfg:
             fallback_ts = (int(current_time // 1800) + 1) * 1800
@@ -617,7 +627,7 @@ class LMUScheduleManager:
         return None
 
     def get_upcoming_events(self, horizon_hours: float = 6.0, now: Optional[float] = None) -> List[RaceEvent]:
-        """Retourne les prochaines courses triées chronologiquement."""
+        """Returns upcoming races sorted chronologically."""
         current_time = now if now is not None else time.time()
         max_ts = current_time + (horizon_hours * 3600)
         events = self.get_all_real_events(now=current_time)
@@ -625,22 +635,23 @@ class LMUScheduleManager:
 
     def update(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         """
-        Vérifie toutes les courses à venir pour les Setups activés et déclenche les alertes dans la file FIFO.
+        Checks all upcoming races for enabled Setups and triggers alerts in the FIFO queue.
         """
         if not self.master_enabled:
             return []
 
         current_time = now if now is not None else time.time()
+
         triggered_alerts = []
 
-        # Nettoyage des alertes passées depuis plus de 4 heures
+        # Clean up alerts older than 4 hours
         self._fired_alerts = {
             alert_tuple
             for alert_tuple in self._fired_alerts
             if len(alert_tuple) >= 3 and (isinstance(alert_tuple[2], (int, float)) and alert_tuple[2] > (current_time - 14400))
         }
 
-        # Récupère tous les événements à venir dans les 25 prochaines minutes
+        # Retrieve all events upcoming within the next 25 minutes
         upcoming_events = self.get_upcoming_events(horizon_hours=0.45, now=current_time)
 
         for event in upcoming_events:
@@ -651,49 +662,49 @@ class LMUScheduleManager:
             slot_key = int(event.start_time)
             t_rem = event.time_until_start
 
-            # Règles de déclenchement d'alertes selon les coches du Setup
+            # Alert triggering rules based on Setup checkboxes
             alert_rules = [
                 # T-15 minutes
                 (
                     "15m",
                     cfg.notify_15m and (14.5 * 60 <= t_rem <= 15.5 * 60),
                     [cfg.sound_key, "fifteen_minutes"],
-                    f"Départ dans 15 minutes ({cfg.display_title})",
+                    f"Starting in 15 minutes ({cfg.display_title})",
                 ),
                 # T-10 minutes
                 (
                     "10m",
                     cfg.notify_10m and (9.5 * 60 <= t_rem <= 10.5 * 60),
                     [cfg.sound_key, "ten_minutes"],
-                    f"Départ dans 10 minutes ({cfg.display_title})",
+                    f"Starting in 10 minutes ({cfg.display_title})",
                 ),
                 # T-5 minutes
                 (
                     "5m",
                     cfg.notify_5m and (4.5 * 60 <= t_rem <= 5.5 * 60),
                     [cfg.sound_key, "five_minutes"],
-                    f"Départ dans 5 minutes ({cfg.display_title})",
+                    f"Starting in 5 minutes ({cfg.display_title})",
                 ),
                 # T-1 minute
                 (
                     "1m",
                     cfg.notify_1m and (0.5 * 60 <= t_rem <= 1.5 * 60),
                     [cfg.sound_key, "one_minute"],
-                    f"Départ dans 1 minute ({cfg.display_title})",
+                    f"Starting in 1 minute ({cfg.display_title})",
                 ),
-                # Inscriptions ouvertes
+                # Registration open
                 (
                     "reg_open",
                     cfg.notify_reg_open and (-15.0 <= event.time_until_reg <= 15.0),
                     [cfg.sound_key, "registration_open"],
-                    f"Inscriptions ouvertes pour {cfg.display_title} !",
+                    f"Registration open for {cfg.display_title}!",
                 ),
-                # Départ de la course
+                # Race start
                 (
                     "start",
                     cfg.notify_start and (-10.0 <= t_rem <= 10.0),
                     [cfg.sound_key, "race_starting"],
-                    f"Départ imminent pour {cfg.display_title} !",
+                    f"Race starting now for {cfg.display_title}!",
                 ),
             ]
 
@@ -714,6 +725,9 @@ class LMUScheduleManager:
 
         return triggered_alerts
 
+    # Backward compatible alias
+    check_notifications = update
+
     def _trigger_alert(
         self,
         cfg: RaceSetupConfig,
@@ -722,7 +736,7 @@ class LMUScheduleManager:
         sound_sequence: List[str],
         text_msg: str
     ) -> None:
-        """Ajoute l'alerte à la file d'attente audio FIFO et diffuse la notification bureau."""
+        """Adds alert to FIFO audio queue and displays desktop notification."""
         time_str = datetime.datetime.now().strftime("%H:%M:%S")
         log_entry = {
             "time_str": time_str,
@@ -738,19 +752,19 @@ class LMUScheduleManager:
             self.notification_history = self.notification_history[:50]
 
         logger.info(f"[LMUScheduleManager] ALERT: [{cfg.display_title}] {text_msg} (Audio: {sound_sequence})")
-        print(f"[LMU SCHEDULE] 🏁 Alerte Setup : [{cfg.display_title}] {text_msg}", flush=True)
+        print(f"[LMU SCHEDULE] 🏁 Setup Alert: [{cfg.display_title}] {text_msg}", flush=True)
 
         if self.audio_enabled:
             AudioAnnouncer.play_sequence(sound_sequence, interrupt=False)
 
         if self.desktop_notifications_enabled:
             self._send_desktop_notification(
-                title=f"SimPad LMU : {cfg.display_title}",
-                body=f"{text_msg}\nSérie : {event.series_name} ({event.setup_type.upper()} setup)",
+                title=f"SimPad LMU: {cfg.display_title}",
+                body=f"{text_msg}\nSeries: {event.series_name} ({event.setup_type.upper()} setup)",
             )
 
     def _send_desktop_notification(self, title: str, body: str) -> None:
-        """Envoie une notification native de bureau."""
+        """Sends native desktop notification."""
         if sys.platform.startswith("linux") and shutil.which("notify-send"):
             try:
                 subprocess.Popen(
@@ -762,7 +776,7 @@ class LMUScheduleManager:
                 pass
 
     def test_announcement(self, setup_id: str, alert_type: str = "main") -> None:
-        """Joue une annonce sonore de test pour le Setup via la file FIFO."""
+        """Plays a test sound announcement for the Setup via the FIFO queue."""
         cfg = self.setups.get(setup_id)
         if not cfg:
             return

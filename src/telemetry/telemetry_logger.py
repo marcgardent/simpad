@@ -12,8 +12,8 @@ from src.telemetry.sensors import VehicleSensors
 
 class TelemetryDiagnosticLogger:
     """
-    Logger haute fidélité pour capturer et auditer les métriques brutes vs calculées.
-    Enregistre les vitesses de roues, glissements, blocages, pédales brutes vs filtrées, et signaux ECU.
+    High-fidelity logger to capture and audit raw vs calculated metrics.
+    Logs wheel velocities, slip, lock, raw vs filtered pedals, and ECU signals.
     """
 
     _instance: Optional["TelemetryDiagnosticLogger"] = None
@@ -40,7 +40,7 @@ class TelemetryDiagnosticLogger:
                 self._log_file.write(header)
                 self._log_file.flush()
         except Exception as e:
-            print(f"[TelemetryDiagnosticLogger] Erreur ouverture fichier: {e}")
+            print(f"[TelemetryDiagnosticLogger] Error opening file: {e}")
 
     @classmethod
     def get_instance(cls) -> "TelemetryDiagnosticLogger":

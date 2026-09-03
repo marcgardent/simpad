@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 
 class UDPServer:
     """
-    Serveur de télémétrie UDP thread-safe pour Le Mans Ultimate Telemetry Plugin & isiMotor-RawUDP.
-    Encapsule le client standard IsiMotorClient pour le décodage binaire haute fréquence (SIMP)
-    tout en préservant la rétrocompatibilité complète avec les trames JSON et l'API SimPad.
+    Thread-safe UDP telemetry server for Le Mans Ultimate Telemetry Plugin & isiMotor-RawUDP.
+    Encapsulates standard IsiMotorClient for high-frequency binary decoding (SIMP)
+    while preserving full backwards compatibility with JSON streams and the SimPad API.
     """
 
     def __init__(
@@ -61,7 +61,7 @@ class UDPServer:
         self._packet_count: int = 0
 
     def start(self) -> None:
-        """Démarre le serveur UDP et le client IsiMotorClient dans un thread dédié."""
+        """Starts the UDP server and IsiMotorClient in a dedicated thread."""
         if self._client and self._client.is_running:
             return
 
@@ -72,13 +72,13 @@ class UDPServer:
             inbound_port=self.target_port,
         )
         self._setup_callbacks()
-        # Démarre l'ingestion avec le hook unifié binaire + JSON
+        # Starts ingestion with unified binary + JSON hook
         self._client._receiver.start(self._on_datagram_received)
-        logger.info(f"Serveur UDP démarré sur port {self.port} avec IsiMotorClient")
+        logger.info(f"UDP server started on port {self.port} with IsiMotorClient")
         print(f"[UDP] Listening on UDP {self.host}:{self.port} via isimotor_rawudp_client (120 Hz+ ultra-low latency)", flush=True)
 
     def stop(self) -> None:
-        """Arrête le client UDP et détache les listeners."""
+        """Stops UDP client and detaches listeners."""
         self.packet_listener = None
         if self._client:
             try:
@@ -88,7 +88,7 @@ class UDPServer:
             self._client = None
 
     def _setup_callbacks(self) -> None:
-        """Configure les callbacks d'événements du client isiMotor."""
+        """Configures isiMotor client event callbacks."""
         if not self._client:
             return
 
@@ -102,8 +102,8 @@ class UDPServer:
             snap = LMUParser.process_compact_scoring(scoring)
             with self._lock:
                 if self._latest_data is not None:
-                    # Met à jour uniquement les champs chronométriques et de scoring sur le snapshot physique actif
-                    # sans jamais écraser les pédales, le régime moteur, le rapport engagé ni la vitesse
+                    # Updates only timing and scoring fields on active physics snapshot
+                    # without ever overwriting pedal inputs, engine RPM, gear, or speed
                     self._latest_data.raw_scoring = scoring
                     self._latest_data.delta_time = snap.delta_time
                     self._latest_data.estimated_lap_time = snap.estimated_lap_time
@@ -129,7 +129,7 @@ class UDPServer:
             snap = LMUParser.process_full_scoring(session)
             with self._lock:
                 if self._latest_data is not None:
-                    # Met à jour uniquement la session multi-voitures et les chronos sans perturber la physique
+                    # Updates only multi-car session and timing fields without disturbing physics
                     self._latest_data.raw_scoring = session
                     self._latest_data.delta_time = snap.delta_time
                     self._latest_data.estimated_lap_time = snap.estimated_lap_time
@@ -160,7 +160,7 @@ class UDPServer:
                     self._latest_data = snap
 
         def _handle_packet(pkt: Any):
-            # Traitement interne du paquet (FFB, Weather, Graphics, ExtendedState) sans polluer le flux physique
+            # Internal handling of packet (FFB, Weather, Graphics, ExtendedState) without polluting physics stream
             LMUParser.process_packet(pkt)
 
         self._client.on_telemetry = _handle_telem
@@ -174,7 +174,7 @@ class UDPServer:
 
     def _on_datagram_received(self, data: bytes, timestamp: float) -> None:
         """
-        Hook d'ingestion des paquets UDP binaires SIMP via le client isimotor_rawudp_client.
+        Ingestion hook for binary SIMP UDP packets via isimotor_rawudp_client.
         """
         raw_len = len(data)
         with self._lock:
@@ -184,7 +184,7 @@ class UDPServer:
         if not self._client or len(data) < 24 or not data.startswith(b"SIMP") or data[4] != 1:
             return
 
-        # Paquets avec en-tête SIMP v1 standard (24 octets)
+        # Packets with standard SIMP v1 header (24 bytes)
         pkt_type = data[5]
         pkt_type_map = {
             1: "Telemetry",
@@ -209,7 +209,7 @@ class UDPServer:
                 except Exception as e:
                     logger.error(f"Error in packet_listener: {e}")
         elif self.packet_listener is not None:
-            # Morceau / Chunk d'un paquet multi-parties (ex: FullScoring)
+            # Chunk of a multi-part packet (e.g. FullScoring)
             try:
                 self.packet_listener(channel_name, None, raw_len)
             except Exception as e:
@@ -217,8 +217,8 @@ class UDPServer:
 
     def get_latest_data(self, timeout: float = 1.2) -> Optional[TelemetryData]:
         """
-        Récupère les dernières données reçues de manière thread-safe avec maintien (Zero-Order Hold).
-        Permet d'absorber les micro-drops de trames UDP (< 1.2s) sans propager d'état nul/reset.
+        Retrieves latest received data in a thread-safe manner with Zero-Order Hold.
+        Absorbs micro-drops in UDP stream (< 1.2s) without propagating null/reset state.
         """
         with self._lock:
             if self._latest_data is not None:
@@ -227,32 +227,32 @@ class UDPServer:
             return None
 
     def get_latest_telemetry(self) -> Optional[Any]:
-        """Retourne la dernière trame TelemInfo reçue."""
+        """Returns latest TelemInfo packet received."""
         if self._client:
             return self._client.get_latest_telemetry() or LMUParser.get_latest_telemetry_info()
         return LMUParser.get_latest_telemetry_info()
 
     def get_latest_scoring(self) -> Optional[Any]:
-        """Retourne la dernière trame CompactScoring reçue."""
+        """Returns latest CompactScoring packet received."""
         if self._client:
             return self._client.get_latest_scoring() or LMUParser.get_latest_compact_scoring()
         return LMUParser.get_latest_compact_scoring()
 
     def get_latest_full_scoring(self) -> Optional[Any]:
-        """Retourne la dernière session FullScoringSession reçue."""
+        """Returns latest FullScoringSession packet received."""
         if self._client:
             return self._client.get_latest_full_scoring() or LMUParser.get_latest_full_scoring()
         return LMUParser.get_latest_full_scoring()
 
     @property
     def client(self) -> Optional[IsiMotorClient]:
-        """Accès direct à l'instance IsiMotorClient sous-jacente."""
+        """Direct access to underlying IsiMotorClient instance."""
         return self._client
 
     # ── Outbound Control API ──────────────────────────────────────────────────
 
     def send_hw_control(self, command: Any, control_value: float = 1.0, duration_ms: int = 50) -> None:
-        """Transmet une commande de contrôle matériel (HWControlCommand ou str) au simulateur."""
+        """Sends a hardware control command (HWControlCommand or str) to the simulator."""
         if not self._client:
             return
         if hasattr(command, "control_name"):
@@ -269,7 +269,7 @@ class UDPServer:
             )
 
     def send_weather_override(self, command: Any = None, **kwargs) -> None:
-        """Transmet une commande météo (WeatherControlCommand ou kwargs) au simulateur."""
+        """Sends a weather override command (WeatherControlCommand or kwargs) to the simulator."""
         if not self._client:
             return
         if hasattr(command, "ambient_temp"):
@@ -289,46 +289,46 @@ class UDPServer:
             self._client.send_weather_override(**kwargs)
 
     def send_unfreeze_physics(self) -> None:
-        """Envoie la commande de dégel de la physique."""
+        """Sends physics unfreeze command."""
         self.send_hw_control("UnfreezePhysics", control_value=1.0)
 
     def send_pit_lane_speed_limit(self, enabled: bool = True) -> None:
-        """Active ou désactive le limiteur de vitesse des stands."""
+        """Enables or disables the pit lane speed limiter."""
         self.send_hw_control("PitLimiter", control_value=1.0 if enabled else 0.0)
 
     def send_tc_override(self, level: int) -> None:
-        """Envoie une consigne de Traction Control."""
+        """Sends Traction Control override command."""
         self.send_hw_control("TCLevel", control_value=float(level))
 
     def send_abs_override(self, level: int) -> None:
-        """Envoie une consigne d'ABS."""
+        """Sends ABS override command."""
         self.send_hw_control("ABSLevel", control_value=float(level))
 
     # ── Diagnostics & Lifecycle ───────────────────────────────────────────────
 
     def is_receiving_packets(self, timeout: float = 1.0) -> Tuple[bool, float, int]:
         """
-        Vérifie la présence active de paquets UDP.
-        Retourne (is_active, timestamp_dernier_paquet, nb_total_paquets).
+        Checks active presence of UDP packets.
+        Returns (is_active, timestamp_last_packet, total_packet_count).
         """
         with self._lock:
             is_active = (time.time() - self._last_packet_time) < timeout if self._last_packet_time > 0 else False
             return is_active, self._last_packet_time, self._packet_count
 
     def is_receiving(self, timeout: float = 1.0) -> bool:
-        """Retourne True si des paquets UDP ont été reçus récemment."""
+        """Returns True if UDP packets were received recently."""
         return self.is_receiving_packets(timeout)[0]
 
     def stop(self) -> None:
-        """Arrête le serveur UDP et libère le client IsiMotorClient."""
+        """Stops UDP server and releases IsiMotorClient."""
         if self._client:
             self._client.stop()
             self._client = None
-        logger.info("Serveur UDP arrêté.")
+        logger.info("UDP Server stopped.")
 
     @property
     def is_running(self) -> bool:
-        """Indique si le serveur UDP écoute actuellement."""
+        """Indicates whether UDP server is actively listening."""
         return bool(self._client and self._client.is_running)
 
 

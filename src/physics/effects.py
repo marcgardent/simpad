@@ -14,12 +14,12 @@ from src.telemetry.lmu_parser import TelemetryData
 # TODO: [SRP] PhysicsToHaptic should focus strictly on mapping telemetry signals to vibration levels, delegating configuration defaults and math utility functions to dedicated schemas/modules.
 class PhysicsToHaptic:
     """
-    Processeur physique convertissant les capteurs VehicleSensors en intensités haptiques.
-    Gère les 4 effets physiques paramétrables avec courbes de réponse distinctes (Grave et Aigu) :
-      1. Blocage de roues (Freinage / ABS)
-      2. Survirage (Glissement arrière)
-      3. Sousvirage (Glissement avant)
-      4. Patinage des roues (Accélération / TC)
+    Physics processor converting VehicleSensors inputs into haptic intensities.
+    Handles 4 configurable physical effects with distinct response curves (Low and High):
+      1. Wheel lock (Braking / ABS)
+      2. Oversteer (Rear lateral slide)
+      3. Understeer (Front lateral slide)
+      4. Wheel spin (Acceleration / TC)
     """
 
     def __init__(self, config: Dict[str, Any] = None):
@@ -28,22 +28,22 @@ class PhysicsToHaptic:
     @staticmethod
     def get_default_config() -> Dict[str, Any]:
         return {
-            # 1. Freinage / Blocage de roues (ABS) — Seuil à 15%
+            # 1. Braking / Wheel lock (ABS) — Threshold at 15%
             "lock_threshold": 0.15,
             "lock_low_gamma": 1.0, "lock_low_gain": 0.3, "lock_low_cutoff": 0.0,
             "lock_high_gamma": 1.5, "lock_high_gain": 1.0, "lock_high_cutoff": 0.0,
 
-            # 2. Survirage (Oversteer / Glissement AR) — Seuil à 12%
+            # 2. Oversteer / Rear slip — Threshold at 12%
             "oversteer_threshold": 0.12,
             "oversteer_low_gamma": 1.2, "oversteer_low_gain": 1.0, "oversteer_low_cutoff": 0.0,
             "oversteer_high_gamma": 1.0, "oversteer_high_gain": 0.4, "oversteer_high_cutoff": 0.0,
 
-            # 3. Sousvirage (Understeer / Glissement AV) — Seuil à 10%
+            # 3. Understeer / Front slip — Threshold at 10%
             "understeer_threshold": 0.10,
             "understeer_low_gamma": 1.5, "understeer_low_gain": 0.5, "understeer_low_cutoff": 0.0,
             "understeer_high_gamma": 1.0, "understeer_high_gain": 0.8, "understeer_high_cutoff": 0.0,
 
-            # 4. Patinage des roues (TC / Accélération) — Seuil à 18%
+            # 4. Wheel spin (TC / Acceleration) — Threshold at 18%
             "spin_threshold": 0.18,
             "spin_low_gamma": 1.0, "spin_low_gain": 1.0, "spin_low_cutoff": 0.0,
             "spin_high_gamma": 2.0, "spin_high_gain": 0.2, "spin_high_cutoff": 0.0,
@@ -55,8 +55,8 @@ class PhysicsToHaptic:
     # TODO: [SLAP] Keep process() at a single high level of abstraction: extract signals -> compute effect intensities -> mix channels.
     def process(self, telemetry: Union[VehicleSensors, TelemetryData]) -> Tuple[float, float, float, float]:
         """
-        Calcule les intensités vibratoires (left_low, left_high, right_low, right_high)
-        à partir des signaux du domaine VehicleSensors.
+        Computes vibration intensities (left_low, left_high, right_low, right_high)
+        from VehicleSensors domain signals.
         """
         sensors = telemetry.to_sensors() if isinstance(telemetry, TelemetryData) else telemetry
 

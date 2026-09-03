@@ -1,5 +1,5 @@
 """
-SimPad Haptic Mapper — Stratégies de routage et de mixage des canaux haptiques logiques.
+SimPad Haptic Mapper — Routing and mixing strategies for logical haptic channels.
 """
 
 from abc import ABC, abstractmethod
@@ -7,24 +7,24 @@ from typing import Tuple
 
 
 class HapticChannelMapper(ABC):
-    """Interface abstraite pour le mapping des 4 canaux logiques vers les moteurs physiques."""
+    """Abstract interface for mapping 4 logical channels to physical motors."""
 
     @abstractmethod
     def map_channels(
         self, left_low: float, left_high: float, right_low: float, right_high: float
     ) -> Tuple[float, float]:
         """
-        Transforme les 4 canaux logiques en intensités pour les moteurs (Basse fréquence, Haute fréquence).
-        :return: Tuple (low_freq_intensity, high_freq_intensity) normalisé dans [0.0, 1.0].
+        Transforms 4 logical channels into motor intensities (Low frequency, High frequency).
+        :return: Tuple (low_freq_intensity, high_freq_intensity) normalized in [0.0, 1.0].
         """
         pass
 
 
 class DirectMixMapper(HapticChannelMapper):
     """
-    Mixage additif direct 4 canaux -> 2 moteurs.
-    left_low + left_high -> moteur gauche (LF)
-    right_low + right_high -> moteur droit (HF)
+    Direct additive mixing 4 channels -> 2 motors.
+    left_low + left_high -> left motor (LF)
+    right_low + right_high -> right motor (HF)
     """
 
     def map_channels(
@@ -37,9 +37,9 @@ class DirectMixMapper(HapticChannelMapper):
 
 class XInputSeparatedMapper(HapticChannelMapper):
     """
-    Stratégie spécifique pour contrôleurs 2 moteurs type XInput (Xbox 360 / One / Series).
-    Unifie les signaux L/R pour séparer strictement la texture basse fréquence (moteur gauche lourd)
-    de la texture haute fréquence (moteur droit léger/rapide).
+    Specific strategy for 2-motor XInput controllers (Xbox 360 / One / Series).
+    Unifies L/R signals to strictly separate low frequency texture (heavy left motor)
+    from high frequency texture (light/fast right motor).
     """
 
     def map_channels(

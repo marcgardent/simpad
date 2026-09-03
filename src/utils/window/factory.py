@@ -14,16 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class WindowManagerFactory:
-    """Usine d'instanciation automatique du gestionnaire de fenêtres selon la plateforme."""
+    """Factory for automatic window manager instantiation based on platform."""
 
     _instance: BaseWindowManager = None
 
     @classmethod
     def create_manager(cls, force_refresh: bool = False) -> BaseWindowManager:
         """
-        Instancie le gestionnaire de fenêtres approprié pour l'OS hôte.
-        - Sur Windows (sys.platform == 'win32') : WindowsWindowManager
-        - Sur Linux (sys.platform.startswith('linux')) : LinuxWindowManager
+        Instantiates the window manager appropriate for the host OS.
+        - On Windows (sys.platform == 'win32') : WindowsWindowManager
+        - On Linux (sys.platform.startswith('linux')) : LinuxWindowManager
         - Fallback : BaseWindowManager (No-op)
         """
         if cls._instance is not None and not force_refresh:
@@ -32,22 +32,22 @@ class WindowManagerFactory:
         try:
             if sys.platform == "win32":
                 manager = WindowsWindowManager()
-                logger.info("Usine WindowManager : Initialisé avec succès (Windows / Win32).")
+                logger.info("WindowManager Factory: Initialized successfully (Windows / Win32).")
             elif sys.platform.startswith("linux"):
                 manager = LinuxWindowManager()
-                logger.info("Usine WindowManager : Initialisé avec succès (Linux / Wayland / X11).")
+                logger.info("WindowManager Factory: Initialized successfully (Linux / Wayland / X11).")
             else:
                 class GenericFallbackWindowManager(BaseWindowManager):
                     pass
 
                 manager = GenericFallbackWindowManager()
-                logger.info("Usine WindowManager : Plateforme générique non gérée (Fallback).")
+                logger.info("WindowManager Factory: Unsupported generic platform (Fallback).")
 
             cls._instance = manager
             return manager
 
         except Exception as e:
-            logger.warning(f"Usine WindowManager : Échec d'initialisation ({e}). Basculement sur le gestionnaire générique.")
+            logger.warning(f"WindowManager Factory: Initialization failed ({e}). Falling back to generic manager.")
             class GenericFallbackWindowManager(BaseWindowManager):
                 pass
 
@@ -56,5 +56,5 @@ class WindowManagerFactory:
 
     @classmethod
     def get_manager(cls) -> BaseWindowManager:
-        """Retourne l'instance unique du gestionnaire de fenêtres (Singleton)."""
+        """Returns the unique window manager instance (Singleton)."""
         return cls.create_manager()

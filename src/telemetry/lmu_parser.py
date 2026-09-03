@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def format_time_sec(seconds: float) -> str:
-    """Formatte les secondes en représentation propre [MM:]ss.mmm."""
+    """Formats seconds into clean representation [MM:]ss.mmm."""
     if seconds <= 0.0:
         return "--"
     minutes = int(seconds // 60)
@@ -41,7 +41,7 @@ def format_time_sec(seconds: float) -> str:
 
 @dataclass
 class TelemetryData:
-    """Représentation structurée de la télémétrie décodée."""
+    """Structured representation of decoded telemetry."""
     longitudinal_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     longitudinal_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     lateral_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
@@ -162,7 +162,7 @@ class TelemetryData:
 
 class LMUParser:
     """
-    Décodeur standard de paquets UDP binaires SIMP (isiMotor-RawUDP / Le Mans Ultimate).
+    Standard binary SIMP UDP packet decoder (isiMotor-RawUDP / Le Mans Ultimate).
     """
 
     _last_in_realtime: bool = True
@@ -219,22 +219,22 @@ class LMUParser:
 
     @classmethod
     def get_latest_scoring(cls) -> Optional[Union[FullScoringSession, CompactScoring]]:
-        """Retourne le dernier paquet de scoring reçu."""
+        """Returns latest scoring packet received."""
         return cls._last_full_scoring or cls._last_compact_scoring
 
     @classmethod
     def get_latest_full_scoring(cls) -> Optional[FullScoringSession]:
-        """Retourne la dernière session multi-voitures FullScoringSession reçue."""
+        """Returns latest multi-car FullScoringSession received."""
         return cls._last_full_scoring
 
     @classmethod
     def get_latest_compact_scoring(cls) -> Optional[CompactScoring]:
-        """Retourne le dernier paquet CompactScoring reçu."""
+        """Returns latest CompactScoring packet received."""
         return cls._last_compact_scoring
 
     @classmethod
     def get_latest_telemetry_info(cls) -> Optional[TelemInfo]:
-        """Retourne le dernier paquet TelemInfo reçu."""
+        """Returns latest TelemInfo packet received."""
         return cls._last_telem_info
 
     @classmethod
@@ -324,13 +324,13 @@ class LMUParser:
 
     @classmethod
     def process_telemetry(cls, telem: TelemInfo) -> Optional[TelemetryData]:
-        """Traite un paquet binaire TelemInfo issu de isimotor_rawudp_client."""
+        """Processes a binary TelemInfo packet from isimotor_rawudp_client."""
         if cls._last_full_scoring and len(getattr(cls._last_full_scoring, "vehicles", [])) > 1:
             pv = cls._last_full_scoring.player_vehicle
             if pv is not None:
                 slot_id = getattr(telem, "slot_id", 0)
                 if int(slot_id) != int(pv.id):
-                    # Filtrage strict multi-voitures : ce paquet provient d'un adversaire / IA
+                    # Strict multi-car filtering: this packet originates from an opponent / AI
                     return None
 
         cls._last_telem_info = telem
@@ -375,7 +375,7 @@ class LMUParser:
         cls._last_sector2_delta = cls._delta_engine.sector2_delta
         cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
-        # Extraction de l'état d'investigation / limite de piste LMU
+        # LMU track limits / investigation state extraction
         tl_steps = 0
         if hasattr(telem, "lmu") and telem.lmu:
             tl_steps = int(getattr(telem.lmu, "track_limits_steps", 0))
@@ -400,11 +400,11 @@ class LMUParser:
             cls._in_garage_trap = True
             cls._last_in_realtime = False
         elif speed >= 3.0:
-            # Détection de reprise en piste active dès 10.8 km/h
+            # Active on-track detection from 10.8 km/h
             cls._in_garage_trap = False
             cls._last_in_realtime = True
         elif cls._in_garage_trap:
-            # Maintien en pause/garage si arrêt complet après sortie explicite
+            # Maintain pause/garage state if completely stopped after explicit exit
             cls._last_in_realtime = False
         else:
             cls._last_in_realtime = True
@@ -445,7 +445,7 @@ class LMUParser:
 
     @classmethod
     def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
-        """Traite un paquet binaire CompactScoring (SIMP Type 2)."""
+        """Processes a binary CompactScoring packet (SIMP Type 2)."""
         cls._last_compact_scoring = scoring
         current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
         is_in_garage = bool(scoring.in_garage_stall) or (not bool(scoring.in_realtime) and current_speed < 3.0)
@@ -512,7 +512,7 @@ class LMUParser:
 
     @classmethod
     def process_full_scoring(cls, session: FullScoringSession) -> TelemetryData:
-        """Traite une session multi-voitures FullScoringSession (SIMP Type 4)."""
+        """Processes a multi-car session FullScoringSession (SIMP Type 4)."""
         cls._last_full_scoring = session
         player_veh = session.player_vehicle
         session_bests = cls._calculate_session_bests(session.vehicles)
@@ -532,7 +532,7 @@ class LMUParser:
             cls._last_laps_completed = int(player_veh.total_laps)
             cls._last_lap_flag = int(player_veh.count_lap_flag)
 
-            # Extraction de l'état d'investigation / limite de piste LMU depuis VehicleScoring
+            # LMU track limits / investigation state extraction from VehicleScoring
             tl_steps = 0
             if hasattr(player_veh, "lmu") and player_veh.lmu:
                 tl_steps = int(getattr(player_veh.lmu, "track_limits_steps", 0))
@@ -600,7 +600,7 @@ class LMUParser:
 
     @classmethod
     def process_system_event(cls, event: SystemEvent) -> TelemetryData:
-        """Traite un événement de session / cockpit SystemEvent (SIMP Type 3)."""
+        """Processes a session / cockpit SystemEvent (SIMP Type 3)."""
         prev_rt = cls._last_in_realtime
         if getattr(event, "in_realtime", None) is True or getattr(event, "event_id", 0) in (1, 3):
             cls._in_garage_trap = False
@@ -614,7 +614,7 @@ class LMUParser:
                 from src.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
                 OverlayAnomalyLogger.get_instance().log_event(
                     "SYSTEM_EVENT_REALTIME_TOGGLE",
-                    f"SystemEvent(event_id={getattr(event, 'event_id', 0)}) a basculé in_realtime de {prev_rt} à {cls._last_in_realtime}"
+                    f"SystemEvent(event_id={getattr(event, 'event_id', 0)}) toggled in_realtime from {prev_rt} to {cls._last_in_realtime}"
                 )
             except Exception:
                 pass
@@ -623,7 +623,7 @@ class LMUParser:
 
     @classmethod
     def process_packet(cls, pkt: Any) -> Optional[TelemetryData]:
-        """Achemine tout paquet domaine isimotor_rawudp_client vers la méthode spécialisée correspondante."""
+        """Routes any isimotor_rawudp_client domain packet to corresponding specialized method."""
         if isinstance(pkt, TelemInfo):
             return cls.process_telemetry(pkt)
         elif isinstance(pkt, CompactScoring):
@@ -657,7 +657,7 @@ class LMUParser:
 
     @classmethod
     def _build_telemetry_snapshot(cls) -> TelemetryData:
-        """Instancie TelemetryData avec l'état courant."""
+        """Instantiates TelemetryData with current state."""
         return TelemetryData(
             longitudinal_patch_vel=cls._last_lpv,
             longitudinal_ground_vel=cls._last_lgv,
@@ -707,7 +707,7 @@ class LMUParser:
     @classmethod
     def parse(cls, data: bytes) -> Optional[TelemetryData]:
         """
-        Décodeur principal conforme au standard binaire SIMP via isimotor_rawudp_client.
+        Main decoder compliant with binary SIMP standard via isimotor_rawudp_client.
         """
         if not data or len(data) < 24:
             return None

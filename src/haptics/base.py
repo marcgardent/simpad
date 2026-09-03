@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 
 class HapticController(ABC):
-    """Classe abstraite de base pour le contrôle du retour haptique multicanal."""
+    """Abstract base class for multi-channel haptic feedback control."""
 
     @abstractmethod
     def set_vibration(
@@ -14,46 +14,46 @@ class HapticController(ABC):
         duration_ms: int = 0,
     ) -> None:
         """
-        Définit les intensités haptiques en fréquence pour le côté Gauche et le côté Droit.
+        Sets haptic frequency intensities for Left and Right sides.
 
-        :param left_low: Basse fréquence Côté Gauche (0.0 à 1.0)
-        :param left_high: Haute fréquence Côté Gauche (0.0 à 1.0)
-        :param right_low: Basse fréquence Côté Droit (0.0 à 1.0)
-        :param right_high: Haute fréquence Côté Droit (0.0 à 1.0)
-        :param duration_ms: Durée de la vibration en ms
+        :param left_low: Low frequency Left side (0.0 to 1.0)
+        :param left_high: High frequency Left side (0.0 to 1.0)
+        :param right_low: Low frequency Right side (0.0 to 1.0)
+        :param right_high: High frequency Right side (0.0 to 1.0)
+        :param duration_ms: Vibration duration in ms
         """
         pass
 
     @abstractmethod
     def stop(self) -> None:
-        """Arrête immédiatement toutes les vibrations."""
+        """Immediately stops all vibrations."""
         pass
 
     @abstractmethod
     def close(self) -> None:
-        """Libère les ressources matérielles."""
+        """Releases hardware resources."""
         pass
 
     def is_connected(self) -> bool:
-        """Vérifie si un périphérique haptique est connecté."""
+        """Checks if a haptic device is connected."""
         return False
 
     def get_gamepad_name(self) -> str:
-        """Retourne le nom de la manette détectée."""
-        return "Inconnu"
+        """Returns name of detected gamepad."""
+        return "Unknown"
 
     def get_axis(self, axis: int) -> float:
-        """Lit un axe normalisé entre -1.0 et 1.0."""
+        """Reads normalized axis value between -1.0 and 1.0."""
         return 0.0
 
     def get_left_stick_x(self) -> float:
-        """Axe horizontal du stick gauche [-1.0, 1.0]."""
+        """Left stick horizontal axis [-1.0, 1.0]."""
         return 0.0
 
     def get_button(self, button: int) -> bool:
-        """Lit l'état d'un bouton."""
+        """Reads button state."""
         return False
 
     def get_south_button(self) -> bool:
-        """Bouton principal sud (A / Croix)."""
+        """Primary south button (A / Cross)."""
         return False

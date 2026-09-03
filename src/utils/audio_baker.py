@@ -96,21 +96,21 @@ DEFAULT_PHRASES: Dict[str, str] = {
     "wec_xperience": "WEC Experience",
     "wec_weekly": "WEC Weekly",
 
-    # Gear Announcements G1 to G8 (ségrégé du décompte spotter)
+    # Gear Announcements G1 to G8 (segregated from spotter countdown)
     **{f"gear_{i}": f"Gear {i}" for i in range(1, 9)},
 
-    # Turns T1 to T30 (génération dynamique compressée)
+    # Turns T1 to T30 (compressed dynamic generation)
     **{f"turn_{i}": f"Turn {i}" for i in range(1, 31)},
 }
 
 
 class AudioBaker:
     """
-    Gestionnaire de génération (bake) de fichiers audio TTS via Piper.
-    - Vérification d'existence sur disque pour ne baker que ce qui manque.
-    - Barre de progression tqdm détaillée.
-    - Synthèse à la demande (on-demand).
-    - Post-traitement audio : padding silence (anti-coupure DAC) et rééchantillonnage 44.1 kHz.
+    Manager for generating (baking) TTS audio files via Piper.
+    - Checks disk existence to only bake missing files.
+    - Detailed tqdm progress bar.
+    - On-demand synthesis.
+    - Audio post-processing: silence padding (anti-DAC clipping) and 44.1 kHz resampling.
     """
 
     _cached_voice = None
@@ -119,39 +119,39 @@ class AudioBaker:
     @classmethod
     def ensure_model_config(cls, model_path: Path) -> Path:
         """
-        Vérifie la présence du fichier de configuration .onnx.json associé au modèle.
-        S'il est absent, tente de le télécharger automatiquement depuis le dépôt officiel Piper.
+        Checks presence of .onnx.json config file associated with the model.
+        If missing, attempts to download it automatically from official Piper repository.
         """
         config_path = model_path.with_name(f"{model_path.name}.json")
         if not config_path.exists():
             model_filename = model_path.name
             if model_filename in MODEL_CONFIG_URLS:
                 url = MODEL_CONFIG_URLS[model_filename]
-                logger.info(f"[AudioBaker] Config JSON manquante pour {model_filename}, téléchargement depuis {url}...")
+                logger.info(f"[AudioBaker] Missing JSON config for {model_filename}, downloading from {url}...")
                 print(f"[AudioBaker] Downloading missing model config: {config_path.name} ...")
                 urllib.request.urlretrieve(url, config_path)
             else:
                 raise FileNotFoundError(
-                    f"Le fichier de configuration {config_path} est introuvable pour le modèle {model_path}."
+                    f"Configuration file {config_path} not found for model {model_path}."
                 )
         return config_path
 
     @classmethod
     def get_voice(cls, model_path: Optional[Path] = None):
         """
-        Charge et met en cache l'instance PiperVoice pour des synthèses ultra-rapides en mémoire.
+        Loads and caches PiperVoice instance for fast in-memory synthesis.
         """
         try:
             from piper.voice import PiperVoice
         except ImportError as e:
             raise ImportError(
-                "Le paquet 'piper-tts' n'est pas installé dans l'environnement Python. "
-                "Installez-le avec: pip install piper-tts"
+                "Package 'piper-tts' is not installed in the Python environment. "
+                "Install it with: pip install piper-tts"
             ) from e
 
         model_p = Path(model_path or DEFAULT_MODEL_PATH).resolve()
         if not model_p.exists():
-            raise FileNotFoundError(f"Modèle ONNX introuvable à l'emplacement : {model_p}")
+            raise FileNotFoundError(f"ONNX model not found at path: {model_p}")
 
         cls.ensure_model_config(model_p)
 
@@ -174,10 +174,10 @@ class AudioBaker:
         pad_silence_sec: float = 0.08,
     ) -> bool:
         """
-        Génère un fichier audio WAV optimisé pour le texte donné.
-        Si le fichier existe déjà et force=False, la génération est ignorée (cache disque).
-        Ajoute un silence de sécurité (padding) et rééchantillonne en 44.1 kHz pour une compatibilité audio maximale.
-        Retourne True si le fichier a été généré, False s'il existait déjà.
+        Generates an optimized WAV audio file for the given text.
+        If file already exists and force=False, generation is skipped (disk cache).
+        Adds security silence (padding) and resamples to 44.1 kHz for maximum audio compatibility.
+        Returns True if file was generated, False if it already existed.
         """
         output_path = Path(output_path)
 
@@ -189,23 +189,23 @@ class AudioBaker:
         if voice is None:
             voice = cls.get_voice(model_path)
 
-        # Synthèse brute via Piper
+        # Raw synthesis via Piper
         chunks = list(voice.synthesize(text))
         if not chunks:
-            logger.warning(f"[AudioBaker] Aucun chunk audio généré pour '{text}'")
+            logger.warning(f"[AudioBaker] No audio chunks generated for '{text}'")
             return False
 
         orig_sr = voice.config.sample_rate
         raw_bytes = b"".join(chunk.audio_int16_bytes for chunk in chunks)
         samples = np.frombuffer(raw_bytes, dtype=np.int16)
 
-        # Padding silence (évite que les DACs / périphériques Bluetooth ou HDMI ne tronquent le son)
+        # Silence padding (prevents DACs / Bluetooth / HDMI devices from clipping audio)
         if pad_silence_sec > 0:
             silence_samples = int(orig_sr * pad_silence_sec)
             silence = np.zeros(silence_samples, dtype=np.int16)
             samples = np.concatenate([silence, samples, silence])
 
-        # Rééchantillonnage de haute qualité vers target_sample_rate (44.1 kHz standard)
+        # High quality resampling towards target_sample_rate (44.1 kHz standard)
         if target_sample_rate and target_sample_rate != orig_sr and len(samples) > 0:
             num_target_samples = int(len(samples) * target_sample_rate / orig_sr)
             processed_samples = np.interp(
@@ -236,8 +236,8 @@ class AudioBaker:
         force: bool = False,
     ) -> Path:
         """
-        Vérifie si le fichier audio existe sur le disque.
-        S'il n'existe pas, le génère à la demande immédiatement et retourne le chemin vers le fichier .wav.
+        Checks if audio file exists on disk.
+        If missing, generates it immediately on-demand and returns the path to the .wav file.
         """
         out_dir = Path(output_dir or DEFAULT_SOUND_DIR)
         wav_path = out_dir / f"{phrase_key}.wav"
@@ -257,16 +257,16 @@ class AudioBaker:
         force: bool = False,
     ) -> Tuple[int, int]:
         """
-        Génère un lot de phrases avec une barre de progression tqdm.
-        Seuls les fichiers absents du disque sont générés (sauf si force=True).
+        Generates a batch of phrases with a tqdm progress bar.
+        Only files missing from disk are generated (unless force=True).
 
-        Retourne un tuple (nb_baked, nb_skipped).
+        Returns tuple (nb_baked, nb_skipped).
         """
         items = phrases or DEFAULT_PHRASES
         out_dir = Path(output_dir or DEFAULT_SOUND_DIR)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Détection préalable des fichiers à générer
+        # Pre-detection of files to bake
         to_bake = []
         for key, text in items.items():
             wav_path = out_dir / f"{key}.wav"
@@ -276,12 +276,12 @@ class AudioBaker:
         baked_count = 0
         skipped_count = len(items) - len(to_bake)
 
-        # Si aucun fichier à générer, on affiche l'information directement
+        # If no file to generate, display message directly
         if not to_bake:
-            print(f"[AudioBaker] Tous les fichiers ({len(items)}) sont déjà présents sur le disque. Rien à générer.")
+            print(f"[AudioBaker] All files ({len(items)}) are already on disk. Nothing to generate.")
             return baked_count, skipped_count
 
-        # Chargement unique du modèle en mémoire
+        # Load voice model in memory once
         voice = cls.get_voice(model_path)
 
         pbar = tqdm(

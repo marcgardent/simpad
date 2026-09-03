@@ -11,7 +11,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def get_window_manager() -> BaseWindowManager:
-    """Retourne l'instance du gestionnaire de fenêtres approprié pour l'OS hôte."""
+    """Returns the window manager instance appropriate for the host OS."""
     return WindowManagerFactory.get_manager()
 
 

@@ -13,8 +13,8 @@ from typing import Optional, Any
 
 class TrackLimitsLogger:
     """
-    Enregistreur temps réel dédié aux enquêtes de limites de piste, drapeaux de tour et annonces vocales.
-    Permet de vérifier en direct si le jeu/plugin envoie bien les données de track_limits_steps.
+    Real-time logger dedicated to track limit investigations, lap flags, and voice announcements.
+    Allows verifying in real time whether the game/plugin sends track_limits_steps data properly.
     """
 
     _instance: Optional["TrackLimitsLogger"] = None
@@ -44,7 +44,7 @@ class TrackLimitsLogger:
                 self._log_file.write(header)
                 self._log_file.flush()
         except Exception as e:
-            print(f"[TrackLimitsLogger] Erreur ouverture log {self.log_path}: {e}")
+            print(f"[TrackLimitsLogger] Error opening log {self.log_path}: {e}")
 
     @classmethod
     def get_instance(cls) -> "TrackLimitsLogger":
@@ -67,7 +67,7 @@ class TrackLimitsLogger:
         brake_pct: float = 0.0,
         event_note: str = "",
     ) -> None:
-        """Enregistre un échantillon de limite de piste / investigation."""
+        """Logs a track limit / investigation sample."""
         if not self.enabled or self._log_file is None:
             return
 
@@ -81,7 +81,7 @@ class TrackLimitsLogger:
 
         is_active = (track_limits_steps > 0) or (track_cut_state != "green") or bool(event_note)
 
-        # Log si changement d'état OU si actif (échantillon plus fréquent) OU intervalle régulier
+        # Log if state changed OR if active (higher sample rate) OR regular interval
         if not has_changed and not is_active and (now - self._last_log_time < self.sample_interval_sec):
             return
 
@@ -108,12 +108,12 @@ class TrackLimitsLogger:
             pass
 
     def set_enabled(self, enabled: bool) -> None:
-        """Active ou désactive la journalisation des limites de piste."""
+        """Enables or disables track limits logging."""
         self.enabled = enabled
         TrackLimitsLogger.default_enabled = enabled
 
     def log_spotter_action(self, phrase_key: str, interrupt: bool, context_info: str = "") -> None:
-        """Enregistre le déclenchement vocal du spotter."""
+        """Logs spotter audio voice triggering."""
         if not self.enabled or self._log_file is None:
             return
 

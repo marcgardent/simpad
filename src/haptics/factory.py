@@ -1,5 +1,5 @@
 """
-SimPad Haptic Factory — Usine d'instanciation automatique du contrôleur haptique.
+SimPad Haptic Factory — Automatic haptic controller instantiation factory.
 """
 
 import sys
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class HapticBackendFactory:
-    """Usine pour instancier le contrôleur haptique adapté au système et matériel détecté."""
+    """Factory to instantiate the haptic controller suitable for detected system and hardware."""
 
     @staticmethod
     def create_backend(
@@ -22,14 +22,14 @@ class HapticBackendFactory:
         force_mock: bool = False
     ) -> HapticController:
         """
-        Instancie le backend haptique approprié.
-        - Si force_mock=True : Instancie MockHapticController.
-        - Sur Windows : Instancie WindowsHapticController (SDL3 + XInput mapper).
-        - Sur Linux/macOS : Instancie SDL3HapticController (SDL3 + Direct mix mapper).
-        - Fallback : MockHapticController en cas d'absence de driver/lib.
+        Instantiates the appropriate haptic backend.
+        - If force_mock=True: Instantiates MockHapticController.
+        - On Windows: Instantiates WindowsHapticController (SDL3 + XInput mapper).
+        - On Linux/macOS: Instantiates SDL3HapticController (SDL3 + Direct mix mapper).
+        - Fallback: MockHapticController in case of missing driver/library.
         """
         if force_mock:
-            logger.info("Usine haptique : Création forcée du MockHapticController.")
+            logger.info("Haptic Factory: Forced creation of MockHapticController.")
             return MockHapticController()
 
         try:
@@ -39,12 +39,12 @@ class HapticBackendFactory:
                 controller = SDL3HapticController(device_index=device_index, invert_sides=invert_sides)
 
             if controller.is_connected():
-                logger.info(f"Usine haptique : Controller initialisé avec succès ({controller.get_gamepad_name()}).")
+                logger.info(f"Haptic Factory: Controller initialized successfully ({controller.get_gamepad_name()}).")
                 return controller
             else:
-                logger.info("Usine haptique : Aucune manette physique détectée. Utilisation du contrôleur SDL3 en attente de connexion.")
+                logger.info("Haptic Factory: No physical gamepad detected. Using SDL3 controller waiting for connection.")
                 return controller
 
         except Exception as e:
-            logger.warning(f"Usine haptique : Échec d'initialisation du contrôleur physique ({e}). Basculement sur MockHapticController.")
+            logger.warning(f"Haptic Factory: Failed to initialize physical controller ({e}). Falling back to MockHapticController.")
             return MockHapticController()

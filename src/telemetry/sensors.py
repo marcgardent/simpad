@@ -20,59 +20,59 @@ except ImportError:
 @dataclass
 class VehicleSensors:
     """
-    Abstraction normalisée sans dimension des capteurs de glissement (0.0 à 1.0).
+    Dimensionless normalized abstraction of slip sensors (0.0 to 1.0).
     """
 
-    # 1. Glissement longitudinal - Freinage / Blocage de roues (FL, FR, RL, RR)
+    # 1. Longitudinal slip - Braking / Wheel Lock (FL, FR, RL, RR)
     front_left_lock: float = 0.0
     front_right_lock: float = 0.0
     rear_left_lock: float = 0.0
     rear_right_lock: float = 0.0
 
-    # 2. Glissement longitudinal - Accélération / Patinage TC (FL, FR, RL, RR)
+    # 2. Longitudinal slip - Acceleration / TC Spin (FL, FR, RL, RR)
     front_left_spin: float = 0.0
     front_right_spin: float = 0.0
     rear_left_spin: float = 0.0
     rear_right_spin: float = 0.0
 
-    # 3. Glissement latéral - Virage / Décrochage (FL, FR, RL, RR) [0.0 à 1.0]
+    # 3. Lateral slip - Cornering / Sliding (FL, FR, RL, RR) [0.0 to 1.0]
     front_left_lat_slip: float = 0.0
     front_right_lat_slip: float = 0.0
     rear_left_lat_slip: float = 0.0
     rear_right_lat_slip: float = 0.0
 
-    # 3b. Glissement latéral orienté Gauche (-1.0) / Droite (+1.0) pour jauge horizontale
+    # 3b. Signed lateral slip Left (-1.0) / Right (+1.0) for horizontal gauge
     front_left_lat_signed: float = 0.0
     front_right_lat_signed: float = 0.0
     rear_left_lat_signed: float = 0.0
     rear_right_lat_signed: float = 0.0
 
-    # 4. Régime Moteur
+    # 4. Engine RPM
     engine_rpm: float = 0.0
     engine_max_rpm: float = 7500.0
 
-    # 5. Débattement / Suspension Travel des roues (FL, FR, RL, RR) [0.0 à 1.0]
+    # 5. Suspension Travel (FL, FR, RL, RR) [0.0 to 1.0]
     front_left_travel: float = 0.0
     front_right_travel: float = 0.0
     rear_left_travel: float = 0.0
     rear_right_travel: float = 0.0
 
-    # 6. Adhérence Pneumatique / Grip Fraction (FL, FR, RL, RR) [0.0 à 1.0]
+    # 6. Tire Grip Fraction (FL, FR, RL, RR) [0.0 to 1.0]
     front_left_grip: float = 1.0
     front_right_grip: float = 1.0
     rear_left_grip: float = 1.0
     rear_right_grip: float = 1.0
 
-    # Vitesse du véhicule (m/s)
+    # Vehicle speed (m/s)
     vehicle_speed: float = 0.0
 
-    # Pédales non filtrées et filtrées (0.0 à 1.0)
+    # Unfiltered and filtered pedals (0.0 to 1.0)
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
     filtered_throttle: Optional[float] = None
     filtered_brake: Optional[float] = None
 
-    # Télémétrie de session, chrono et énergie
+    # Session telemetry, lap timing and energy
     fuel_level: float = 0.0
     remaining_laps: int = 0
     delta_time: float = 0.0
@@ -98,11 +98,11 @@ class VehicleSensors:
     last_lap_status: str = "default"
     is_lap_freeze_active: bool = False
 
-    # État en piste et rapport engagé
+    # On-track state and engaged gear
     in_realtime: bool = True
     gear: int = 0
 
-    # 7. Données Électronique & Cockpit LMU (isiMotor-RawUDP v0.2.0)
+    # 7. LMU Electronic & Cockpit Data (isiMotor-RawUDP v0.2.0)
     ecu_abs_active_raw: Optional[bool] = None
     ecu_tc_active_raw: Optional[bool] = None
     ecu_abs_level: int = 0
@@ -413,7 +413,7 @@ class VehicleSensors:
         is_lap_freeze_active: bool = False,
         in_realtime: bool = True,
     ) -> "VehicleSensors":
-        """Instancie un objet VehicleSensors directement depuis un paquet binaire TelemInfo de isimotor_rawudp_client."""
+        """Instantiates a VehicleSensors object directly from a binary TelemInfo packet of isimotor_rawudp_client."""
         wheels = getattr(telem, "wheels", ())
         if wheels and len(wheels) >= 4:
             lpv = tuple(float(w.longitudinal_patch_vel) for w in wheels[:4])
@@ -573,7 +573,7 @@ class VehicleSensors:
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────
     @property
     def delta_time_str(self) -> str:
-        """Chrono Delta formaté (ex: '-0.150' ou '+0.240')."""
+        """Formatted Delta Chrono (e.g. '-0.150' or '+0.240')."""
         if not self.has_delta_reference or self.lap_flag != 2 or self.is_pit_lap or not self.in_realtime:
             return "--"
         if self.delta_time < -0.0001:
@@ -583,7 +583,7 @@ class VehicleSensors:
         return "+0.000"
 
     def sector_delta_str(self, sector_num: int) -> str:
-        """Delta Live formaté d'un secteur actif (ex: '-0.150' ou '+0.240')."""
+        """Formatted Live Delta for an active sector (e.g. '-0.150' or '+0.240')."""
         val = getattr(self, f"sector{sector_num}_delta", 0.0)
         if val < 0.0:
             return f"-{abs(val):.3f}"
@@ -595,7 +595,7 @@ class VehicleSensors:
 
     @property
     def sectors_list(self) -> list:
-        """Liste structurée des 3 secteurs pour le SectorTimesWidget."""
+        """Structured list of 3 sectors for SectorTimesWidget."""
         return [
             {
                 "time": self.sector1_time,
@@ -718,7 +718,7 @@ class VehicleSensors:
     @property
     def overrev_intensity(self) -> float:
         """
-        Sur-régime / Upshift Warning Intensity (0.0 to 1.0).
+        Overrev / Upshift Warning Intensity (0.0 to 1.0).
         Ramps up from 0.0 at 90% RPM max to 1.0 at 100% (Redline / Upshift sweet spot).
         Disabled in Neutral (gear == 0).
         """
@@ -732,7 +732,7 @@ class VehicleSensors:
     @property
     def underrev_intensity(self) -> float:
         """
-        Sous-régime / Downshift Warning Intensity (0.0 to 1.0).
+        Underrev / Downshift Warning Intensity (0.0 to 1.0).
         Ramps up from 0.0 at 45% RPM max down to 1.0 at 20% (Idle / Downshift sweet spot).
         Disabled in Neutral (gear == 0).
         """

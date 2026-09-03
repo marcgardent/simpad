@@ -44,7 +44,7 @@ LOGGER_CATEGORY_MAP: Dict[str, List[str]] = {
 
 
 def _configure_root_logger() -> None:
-    """Configure le logger racine avec un formateur clair s'il n'a pas encore de handler."""
+    """Configure root logger with a clear formatter if it has no handler yet."""
     root_logger = logging.getLogger()
     if not root_logger.handlers:
         handler = logging.StreamHandler()
@@ -59,8 +59,8 @@ def _configure_root_logger() -> None:
 
 def apply_logger_config(config: Optional[Dict[str, Any]] = None) -> None:
     """
-    Applique dynamiquement les drapeaux d'activation et niveaux des loggers
-    configurés dans le dictionnaire config (clé 'loggers').
+    Dynamically applies enable flags and log levels for loggers
+    configured in the config dictionary (key 'loggers').
     """
     _configure_root_logger()
 
@@ -72,7 +72,7 @@ def apply_logger_config(config: Optional[Dict[str, Any]] = None) -> None:
         return
 
     for key, value in logger_flags.items():
-        # Gestion des loggers de diagnostic spécifiques
+        # Handle specific diagnostic loggers
         if key == "track_limits":
             try:
                 from src.telemetry.track_limits_logger import TrackLimitsLogger
@@ -101,7 +101,7 @@ def apply_logger_config(config: Optional[Dict[str, Any]] = None) -> None:
                 pass
             continue
 
-        # Détermination du niveau et état activé pour les loggers standard
+        # Determine level and enabled state for standard loggers
         level = logging.INFO
         disabled = False
         if isinstance(value, bool):
@@ -118,14 +118,14 @@ def apply_logger_config(config: Optional[Dict[str, Any]] = None) -> None:
             level = value
             disabled = False
 
-        # Résolution des noms de loggers
+        # Resolve logger names
         target_prefixes = LOGGER_CATEGORY_MAP.get(key, [key])
         for prefix in target_prefixes:
             target_logger = logging.getLogger(prefix)
             target_logger.setLevel(level)
             target_logger.disabled = disabled
 
-            # Mise à jour des sous-loggers existants enregistrés dans le manager
+            # Update existing sub-loggers registered in logger manager
             for name, existing_lg in list(logging.Logger.manager.loggerDict.items()):
                 if isinstance(existing_lg, logging.Logger) and (name == prefix or name.startswith(prefix + ".")):
                     existing_lg.setLevel(level)
@@ -133,12 +133,12 @@ def apply_logger_config(config: Optional[Dict[str, Any]] = None) -> None:
 
 
 def setup_logging(config: Optional[Dict[str, Any]] = None) -> None:
-    """Initialise et applique la configuration de journalisation."""
+    """Initialize and apply logging configuration."""
     apply_logger_config(config)
 
 
 def get_logger_flags(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Retourne la table active des drapeaux de loggers."""
+    """Return active table of logger flags."""
     if config is None:
         config = load_config()
     return config.get("loggers", DEFAULT_LOGGER_FLAGS.copy())
@@ -151,7 +151,7 @@ def set_logger_flag(
     save: bool = False,
     config_path: Path = DEFAULT_CONFIG_PATH,
 ) -> Dict[str, Any]:
-    """Active ou désactive un logger spécifique et applique la modification immédiatement."""
+    """Enable or disable a specific logger and apply change immediately."""
     if config is None:
         config = load_config(config_path)
 
@@ -168,7 +168,7 @@ def set_logger_flag(
 
 
 def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, Any]:
-    """Fusionne récursivement deux dictionnaires sans écraser les clés manquantes."""
+    """Recursively merges two dictionaries without overwriting missing keys."""
     merged = copy.deepcopy(base)
     for k, v in custom.items():
         if isinstance(v, dict) and isinstance(merged.get(k), dict):
@@ -179,7 +179,7 @@ def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, 
 
 
 def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
-    """Charge la configuration depuis un fichier JSON. Fait un fallback sur les valeurs par défaut."""
+    """Load configuration from JSON file. Fallback to default values."""
     if not config_path.exists():
         save_config(DEFAULT_CONFIG, config_path)
         apply_logger_config(DEFAULT_CONFIG)
@@ -192,17 +192,17 @@ def load_config(config_path: Path = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
             apply_logger_config(merged)
             return merged
     except Exception as e:
-        print(f"Erreur lors de la lecture de {config_path}: {e}. Utilisation des valeurs par défaut.")
+        print(f"Error reading {config_path}: {e}. Using default values.")
         apply_logger_config(DEFAULT_CONFIG)
         return copy.deepcopy(DEFAULT_CONFIG)
 
 
 def save_config(config: Dict[str, Any], config_path: Path = DEFAULT_CONFIG_PATH) -> None:
-    """Sauvegarde la configuration au format JSON et applique la configuration des loggers."""
+    """Save configuration to JSON format and apply logger configuration."""
     try:
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
         apply_logger_config(config)
     except Exception as e:
-        print(f"Erreur lors de la sauvegarde de {config_path}: {e}")
+        print(f"Error saving {config_path}: {e}")
 

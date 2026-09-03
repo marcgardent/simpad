@@ -17,7 +17,7 @@ _LOG_FILE = _PROJECT_ROOT / "hud_overlay_glitch.log"
 
 class OverlayAnomalyLogger:
     """
-    Système d'audit et de journalisation haute-visibilité des anomalies HUD / Overlay.
+    High-visibility audit and diagnostic logger for HUD / Overlay anomalies.
     """
 
     _instance: Optional["OverlayAnomalyLogger"] = None
@@ -41,7 +41,7 @@ class OverlayAnomalyLogger:
             self._log_file.write(f"\n{'='*100}\n[{ts}] SIMPAD HUD ANOMALY LOGGER STARTED\n{'='*100}\n")
             self._log_file.flush()
         except Exception as e:
-            print(f"[OverlayAnomalyLogger] Erreur ouverture fichier de log: {e}", flush=True)
+            print(f"[OverlayAnomalyLogger] Error opening log file: {e}", flush=True)
 
     @classmethod
     def get_instance(cls) -> "OverlayAnomalyLogger":
@@ -51,12 +51,12 @@ class OverlayAnomalyLogger:
             return cls._instance
 
     def set_enabled(self, enabled: bool) -> None:
-        """Active ou désactive la journalisation des anomalies HUD."""
+        """Enables or disables HUD anomaly logging."""
         self.enabled = enabled
         OverlayAnomalyLogger.default_enabled = enabled
 
     def log_event(self, category: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
-        """Enregistre un événement anormal dans le fichier de log et sur la console."""
+        """Logs an abnormal event to log file and console."""
         if not self.enabled:
             return
 
@@ -84,56 +84,56 @@ class OverlayAnomalyLogger:
         in_realtime: bool,
         source: str = "TelemInfo",
     ) -> None:
-        """Détecte les ruptures brutales (chute à zéro, saut de vitesse/pédale) d'une trame à l'autre."""
-        # 1. Chute brutale de vitesse (ex: 200 km/h -> 0 km/h en 1 trame)
+        """Detects sudden drops or spikes (fall to zero, sudden pedal jump) across frames."""
+        # 1. Sudden speed drop (e.g. 200 km/h -> 0 km/h in 1 frame)
         if self._prev_speed > 30.0 and speed_kmh < 2.0:
             self.log_event(
                 "SPEED_DROP_ZERO",
-                f"Vitesse écroulée brutalement de {self._prev_speed:.1f} km/h à {speed_kmh:.1f} km/h !",
+                f"Speed dropped abruptly from {self._prev_speed:.1f} km/h to {speed_kmh:.1f} km/h!",
                 {"source": source, "in_realtime": in_realtime, "prev_gear": self._prev_gear, "new_gear": gear}
             )
 
-        # 2. Chute ou pic brutal de l'accélérateur
+        # 2. Sudden throttle drop or spike
         if self._prev_throttle > 35.0 and throttle_pct < 1.0 and speed_kmh > 20.0:
             self.log_event(
                 "THROTTLE_DROP_ZERO",
-                f"Accélérateur écroulé brutalement de {self._prev_throttle:.1f}% à {throttle_pct:.1f}% !",
+                f"Throttle dropped abruptly from {self._prev_throttle:.1f}% to {throttle_pct:.1f}%!",
                 {"source": source, "speed_kmh": round(speed_kmh, 1), "gear": gear}
             )
         elif self._prev_throttle < 10.0 and throttle_pct > 95.0:
             self.log_event(
                 "THROTTLE_SPIKE_100",
-                f"Accélérateur bondi instantanément de {self._prev_throttle:.1f}% à {throttle_pct:.1f}% (100%) !",
+                f"Throttle spiked instantly from {self._prev_throttle:.1f}% to {throttle_pct:.1f}% (100%)!",
                 {"source": source, "speed_kmh": round(speed_kmh, 1), "gear": gear}
             )
 
-        # 3. Chute ou pic brutal du frein
+        # 3. Sudden brake drop or spike
         if self._prev_brake > 35.0 and brake_pct < 1.0 and speed_kmh > 30.0:
             self.log_event(
                 "BRAKE_DROP_ZERO",
-                f"Frein écroulé brutalement de {self._prev_brake:.1f}% à {brake_pct:.1f}% !",
+                f"Brake dropped abruptly from {self._prev_brake:.1f}% to {brake_pct:.1f}%!",
                 {"source": source, "speed_kmh": round(speed_kmh, 1), "gear": gear}
             )
         elif self._prev_brake < 10.0 and brake_pct > 95.0:
             self.log_event(
                 "BRAKE_SPIKE_100",
-                f"Frein bondi instantanément de {self._prev_brake:.1f}% à {brake_pct:.1f}% (100%) !",
+                f"Brake spiked instantly from {self._prev_brake:.1f}% to {brake_pct:.1f}% (100%)!",
                 {"source": source, "speed_kmh": round(speed_kmh, 1), "gear": gear}
             )
 
-        # 4. Saut anormal du rapport de boîte (ex: 4ème -> 0 / Neutre en roulant sans débrayer)
+        # 4. Abnormal gear jump (e.g. 4th -> 0 / Neutral while moving)
         if self._prev_gear >= 2 and gear == 0 and speed_kmh > 40.0:
             self.log_event(
                 "GEAR_RESET_ZERO",
-                f"Rapport de boîte tombé brutalement de {self._prev_gear} à {gear} (Neutre) à {speed_kmh:.1f} km/h !",
+                f"Gear dropped abruptly from {self._prev_gear} to {gear} (Neutral) at {speed_kmh:.1f} km/h!",
                 {"source": source, "in_realtime": in_realtime}
             )
 
-        # 5. Bascule du drapeau in_realtime
+        # 5. in_realtime flag toggle
         if self._prev_in_realtime != in_realtime:
             self.log_event(
                 "REALTIME_STATE_CHANGED",
-                f"Drapeau in_realtime basculé de {self._prev_in_realtime} à {in_realtime}",
+                f"in_realtime flag flipped from {self._prev_in_realtime} to {in_realtime}",
                 {"source": source, "speed_kmh": round(speed_kmh, 1), "gear": gear}
             )
 
@@ -144,10 +144,10 @@ class OverlayAnomalyLogger:
         self._prev_in_realtime = in_realtime
 
     def log_display_mode_change(self, old_mode: str, new_mode: str, reason: str, details: Optional[Dict[str, Any]] = None) -> None:
-        """Enregistre tout changement de mode d'affichage de l'overlay (ingame / pause / desktop)."""
+        """Logs any overlay display mode change (ingame / pause / desktop)."""
         self.log_event(
             "OVERLAY_MODE_CHANGE",
-            f"Mode d'affichage basculé de '{old_mode}' vers '{new_mode}' (Raison: {reason})",
+            f"Display mode switched from '{old_mode}' to '{new_mode}' (Reason: {reason})",
             details
         )
 
@@ -165,18 +165,18 @@ class OverlayAnomalyLogger:
         lap_dist: float = 0.0,
         speed_kmh: float = 0.0,
     ) -> None:
-        """Trace chaque transition ou saut anormal de secteur dans le log."""
+        """Traces each sector transition or abnormal jump in the log."""
         if not hasattr(self, "_prev_sector"):
             self._prev_sector = current_sector
 
         prev_sec = self._prev_sector
 
-        # Log si changement de secteur
+        # Log if sector changed
         if current_sector != prev_sec:
             is_anomaly = (prev_sec, current_sector) not in [(1, 2), (2, 3), (3, 1)]
             category = "SECTOR_GLITCH_JUMP" if is_anomaly else "SECTOR_TRANSITION"
             msg = (
-                f"Secteur basculé de S{prev_sec} à S{current_sector} (raw={raw_sector}) | "
+                f"Sector switched from S{prev_sec} to S{current_sector} (raw={raw_sector}) | "
                 f"S1='{s1_time}' (d={s1_delta:+.3f}s), S2='{s2_time}' (d={s2_delta:+.3f}s), S3='{s3_time}' (d={s3_delta:+.3f}s)"
             )
             self.log_event(

@@ -1,6 +1,6 @@
 """
-SimPad Race Engineer — Abstractions de base pour les Rôles de l'Ingénieur de Course.
-Architecture SOLID, modulaire et extensible.
+SimPad Race Engineer — Base abstractions for Race Engineer Roles.
+SOLID, modular, and extensible architecture.
 """
 
 from abc import ABC, abstractmethod
@@ -20,14 +20,14 @@ except ImportError:
 
 
 class RoleStatus(str, Enum):
-    """État d'activité d'un rôle de l'ingénieur de course."""
-    IDLE = "IDLE"      # Rôle en veille / inactif / aucune alerte
-    BUSY = "BUSY"      # Rôle actif / en cours d'annonce / séquence critique
+    """Activity state of a race engineer role."""
+    IDLE = "IDLE"      # Role idle / inactive / no alerts
+    BUSY = "BUSY"      # Role active / speaking / critical sequence
 
 
 @dataclass
 class EngineerMessage:
-    """Message audio / vocal émis par un rôle."""
+    """Audio / vocal message emitted by a role."""
     phrase_key: str
     priority: int = 50
     interrupt: bool = False
@@ -38,12 +38,12 @@ class EngineerMessage:
 
 class BaseRole(ABC):
     """
-    Classe abstraite de base pour tous les sous-plugins / rôles de l'ingénieur de course.
-    Chaque rôle :
-    - a une responsabilité unique (Clean/Dirty lap, Traffic spotter, etc.),
-    - déclare ses besoins d'abonnement télémétrie (ChannelRequirement),
-    - déclare les sons/phrases vocales nécessaires à son fonctionnement,
-    - a une priorité configurable et indique son état IDLE ou BUSY.
+    Abstract base class for all race engineer roles / sub-plugins.
+    Each role:
+    - has a single responsibility (Clean/Dirty lap, Traffic spotter, etc.),
+    - declares its telemetry subscription needs (ChannelRequirement),
+    - declares required sound phrases for operation,
+    - has configurable priority and reports IDLE or BUSY state.
     """
 
     def __init__(
@@ -64,51 +64,51 @@ class BaseRole(ABC):
 
     @property
     def status(self) -> RoleStatus:
-        """Retourne l'état d'activité courant du rôle (IDLE ou BUSY)."""
+        """Returns current activity status of role (IDLE or BUSY)."""
         if not self.enabled:
             return RoleStatus.IDLE
         return RoleStatus.BUSY if self.is_busy() else RoleStatus.IDLE
 
     @abstractmethod
     def is_busy(self) -> bool:
-        """Indique si le rôle est actuellement engagé dans une séquence active ou critique."""
+        """Indicates whether role is currently engaged in an active or critical sequence."""
         pass
 
     @abstractmethod
     def update(self, context: "EngineerContext") -> Optional[EngineerMessage]:
         """
-        Évalue les données télémétriques et scoring à chaque tick.
-        Retourne un message s'il doit être prononcé, ou None.
+        Evaluates telemetry and scoring data on each tick.
+        Returns a message if speech should trigger, or None.
         """
         pass
 
     def get_channel_requirements(self) -> List[Any]:
         """
-        Déclare les canaux de télémétrie et fréquences préférées requises par ce sous-plugin / rôle.
-        Le plugin principal RaceEngineer agrège les besoins de tous ses sous-plugins.
+        Declares telemetry channels and preferred sample rates required by this role.
+        The main RaceEngineer plugin aggregates requirements across all sub-plugins.
         """
         return []
 
     def get_sound_requirements(self) -> Dict[str, str]:
         """
-        Déclare le catalogue des sons / phrases vocales requis par ce sous-plugin (phrase_key -> texte à synthétiser).
-        Le plugin principal RaceEngineer agrège les sons et gère leur génération/vérification.
+        Declares catalog of sounds / phrases required by this sub-plugin (phrase_key -> TTS text).
+        The main RaceEngineer plugin aggregates sounds and manages verification / generation.
         """
         return {}
 
     def reset(self) -> None:
-        """Réinitialise l'état interne du rôle."""
+        """Resets internal state of role."""
         pass
 
     def get_parameters(self) -> List[Any]:
         """
-        Retourne la liste déclarative des descripteurs de paramètres (RoleParam)
-        propres à ce rôle (ex: BoolParam, IntRangeParam, FloatRangeParam).
+        Returns declarative list of parameter descriptors (RoleParam)
+        specific to this role (e.g. BoolParam, IntRangeParam, FloatRangeParam).
         """
         return []
 
     def get_param_value(self, name: str) -> Any:
-        """Retourne la valeur actuelle d'un paramètre nommé."""
+        """Returns current value of named parameter."""
         if hasattr(self, name):
             return getattr(self, name)
         for p in self.get_parameters():
@@ -117,7 +117,7 @@ class BaseRole(ABC):
         return None
 
     def set_param_value(self, name: str, value: Any) -> None:
-        """Définit la valeur d'un paramètre avec validation et typage."""
+        """Sets parameter value with validation and type casting."""
         for p in self.get_parameters():
             if p.name == name:
                 valid_val = p.cast_and_validate(value)
@@ -126,7 +126,7 @@ class BaseRole(ABC):
         setattr(self, name, value)
 
     def get_state_summary(self) -> Dict[str, Any]:
-        """Retourne un résumé d'état sérialisable pour l'interface graphique (IHM) et le debug."""
+        """Returns serializable state summary for GUI and debugging."""
         summary = {
             "role_id": self.role_id,
             "name": self.name,
@@ -139,7 +139,7 @@ class BaseRole(ABC):
         return summary
 
     def get_config(self) -> Dict[str, Any]:
-        """Retourne les paramètres configurables du rôle pour sauvegarde."""
+        """Returns configurable role parameters for persistence."""
         cfg = {
             "enabled": self.enabled,
             "priority": self.priority,
@@ -149,7 +149,7 @@ class BaseRole(ABC):
         return cfg
 
     def set_config(self, config: Dict[str, Any]) -> None:
-        """Applique une configuration externe."""
+        """Applies external configuration dictionary."""
         if "enabled" in config:
             self.enabled = bool(config["enabled"])
         if "priority" in config:
@@ -159,7 +159,7 @@ class BaseRole(ABC):
                 self.set_param_value(p.name, config[p.name])
 
     def emit_sound(self, phrase_key: str, interrupt: bool = False) -> None:
-        """Joue un son via l'audio engine injecté s'il est configuré."""
+        """Plays sound via injected audio engine if configured."""
         if self.audio_engine:
             if hasattr(self.audio_engine, "play_phrase"):
                 self.audio_engine.play_phrase(phrase_key, interrupt=interrupt)

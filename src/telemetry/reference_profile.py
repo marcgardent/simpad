@@ -1,12 +1,12 @@
 """
-SimPad Telemetry — Modèle de Profil de Tour de Référence et d'Annotations de Piste.
-Gère les données spatiales mètre par mètre (vitesse, accélérateur, frein, volant)
-et les marqueurs de repères (Frein, Turn-In, Virages T1..T30, Rapports de boîte G1..G8).
+SimPad Telemetry — Reference Lap Profile and Track Annotations Model.
+Manages meter-by-meter spatial data (speed, throttle, brake, steering)
+and racing line markers (Brake, Turn-In, Turns T1..T30, Gears G1..G8).
 
-Architecture SOLID (SRP, OCP, DIP) :
-- Télémétrie du meilleur tour : enregistrée et sauvée automatiquement dans 'ref_<track>_<car>.json'.
-- Annotations / Repères : cycle de vie séparé, sauvées automatiquement au fil des modifications
-  dans '<nom_fichier>.marks.json'.
+SOLID Architecture (SRP, OCP, DIP):
+- Best lap telemetry: recorded and automatically saved to 'ref_<track>_<car>.json'.
+- Annotations / Pace notes: separate lifecycle, automatically saved as modifications occur
+  into '<filename>.marks.json'.
 """
 
 from dataclasses import dataclass, field
@@ -19,15 +19,15 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-# Dossier par défaut des profils de tours de référence
+# Default directory for reference lap profiles
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_REF_LAPS_DIR = _PROJECT_ROOT / "profiles" / "ref_laps"
 
 
 def get_marks_filepath(telemetry_filepath: Path) -> Path:
     """
-    Retourne le chemin du fichier d'annotations '.marks.json' associé à un fichier de télémétrie.
-    Exemple: 'ref_spa_hypercar.json' -> 'ref_spa_hypercar.marks.json'.
+    Returns the '.marks.json' annotations file path associated with a telemetry file.
+    Example: 'ref_spa_hypercar.json' -> 'ref_spa_hypercar.marks.json'.
     """
     telemetry_filepath = Path(telemetry_filepath)
     parent = telemetry_filepath.parent
@@ -40,7 +40,7 @@ def get_marks_filepath(telemetry_filepath: Path) -> Path:
 
 
 def clean_name_identifier(name: str) -> str:
-    """Nettoie un nom de circuit ou de véhicule pour nom de fichier sûr."""
+    """Cleans a track or vehicle name into a safe file name identifier."""
     if not name:
         return "unknown"
     return "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in name).strip("_").lower()
@@ -53,15 +53,15 @@ def find_marks_filepath_for_track(
     base_dir: Optional[Path] = None,
 ) -> Optional[Path]:
     """
-    Résolution stricte et déterministe du fichier .marks.json pour un circuit donné.
-    Garantit l'isolation absolue par circuit (aucune fuite d'un autre circuit).
+    Strict and deterministic resolution of the .marks.json file for a given track.
+    Guarantees absolute per-track isolation (no leakage from another track).
 
-    Ordre de priorité :
+    Priority order:
     1. ref_<track>_<car_class>.marks.json
     2. ref_<track>_<car_name>.marks.json
     3. ref_<track>_default.marks.json
     4. ref_<track>.marks.json
-    5. Tout fichier ref_<track>_*.marks.json appartenant strictement à ce circuit.
+    5. Any ref_<track>_*.marks.json file strictly belonging to this track.
     """
     if not track_name:
         return None
@@ -73,21 +73,21 @@ def find_marks_filepath_for_track(
     if not search_dir.exists():
         return None
 
-    # 1. Classe exacte
+    # 1. Exact class
     if vehicle_class:
         v_class_clean = clean_name_identifier(vehicle_class)
         exact_class_path = search_dir / f"ref_{t_clean}_{v_class_clean}.marks.json"
         if exact_class_path.exists():
             return exact_class_path
 
-    # 2. Nom de voiture exact
+    # 2. Exact vehicle name
     if vehicle_name:
         v_name_clean = clean_name_identifier(vehicle_name)
         exact_veh_path = search_dir / f"ref_{t_clean}_{v_name_clean}.marks.json"
         if exact_veh_path.exists():
             return exact_veh_path
 
-    # 3. Marqueurs par défaut du circuit
+    # 3. Track default markers
     track_default = search_dir / f"ref_{t_clean}_default.marks.json"
     if track_default.exists():
         return track_default
@@ -96,7 +96,7 @@ def find_marks_filepath_for_track(
     if track_generic.exists():
         return track_generic
 
-    # 4. Premier fichier de marqueurs existant pour ce circuit
+    # 4. First existing marks file for this track
     candidates = sorted(list(search_dir.glob(f"ref_{t_clean}_*.marks.json")))
     if candidates:
         return candidates[0]
@@ -111,13 +111,13 @@ def find_telemetry_filepath_for_track(
     base_dir: Optional[Path] = None,
 ) -> Optional[Path]:
     """
-    Résolution stricte et déterministe du fichier .json de télémétrie pour un circuit donné.
-    Ordre de priorité :
+    Strict and deterministic resolution of the .json telemetry file for a given track.
+    Priority order:
     1. ref_<track>_<car_class>.json
     2. ref_<track>_<car_name>.json
     3. ref_<track>_default.json
     4. ref_<track>.json
-    5. Tout fichier ref_<track>_*.json (non .marks.json) appartenant strictement à ce circuit.
+    5. Any ref_<track>_*.json file (not .marks.json) strictly belonging to this track.
     """
     if not track_name:
         return None
@@ -129,21 +129,21 @@ def find_telemetry_filepath_for_track(
     if not search_dir.exists():
         return None
 
-    # 1. Classe exacte
+    # 1. Exact class
     if vehicle_class:
         v_class_clean = clean_name_identifier(vehicle_class)
         exact_class_path = search_dir / f"ref_{t_clean}_{v_class_clean}.json"
         if exact_class_path.exists():
             return exact_class_path
 
-    # 2. Nom de voiture exact
+    # 2. Exact vehicle name
     if vehicle_name:
         v_name_clean = clean_name_identifier(vehicle_name)
         exact_veh_path = search_dir / f"ref_{t_clean}_{v_name_clean}.json"
         if exact_veh_path.exists():
             return exact_veh_path
 
-    # 3. Profil par défaut du circuit
+    # 3. Track default profile
     track_default = search_dir / f"ref_{t_clean}_default.json"
     if track_default.exists():
         return track_default
@@ -152,7 +152,7 @@ def find_telemetry_filepath_for_track(
     if track_generic.exists():
         return track_generic
 
-    # 4. Premier fichier de télémétrie existant pour ce circuit (non .marks.json)
+    # 4. First existing telemetry file for this track (not .marks.json)
     candidates = sorted([f for f in search_dir.glob(f"ref_{t_clean}_*.json") if not f.name.endswith(".marks.json")])
     if candidates:
         return candidates[0]
@@ -161,25 +161,25 @@ def find_telemetry_filepath_for_track(
 
 
 class AnnotationType(str, Enum):
-    """Types d'annotations de repères de pilotage."""
-    BRAKE = "brake"        # Marqueur frein (Touche 'B') -> Audio: "Brake"
-    TURN_IN = "turn_in"    # Marqueur point de braquage (Touche 'I') -> Audio: "Turn"
-    TURN = "turn"          # Marqueur de virage (Touche 'T') -> Numérotation auto T1..T30 -> Audio: "Turn 1"..
-    GEAR = "gear"          # Marqueur de rapport de boîte (Touches '1'..'8') -> Audio: "Gear 1".. "Gear 8"
+    """Driving reference annotation types."""
+    BRAKE = "brake"        # Brake marker ('B' key) -> Audio: "Brake"
+    TURN_IN = "turn_in"    # Turn-in marker ('I' key) -> Audio: "Turn"
+    TURN = "turn"          # Turn marker ('T' key) -> Auto numbering T1..T30 -> Audio: "Turn 1"..
+    GEAR = "gear"          # Gear marker ('1'..'8' keys) -> Audio: "Gear 1".. "Gear 8"
 
 
 @dataclass
 class TrackAnnotation:
-    """Représente une annotation/repère sur le circuit."""
+    """Represents an annotation/marker on the track."""
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     type: AnnotationType = AnnotationType.BRAKE
-    distance: float = 0.0  # Distance le long de la piste en mètres
-    gear: Optional[int] = None  # Numéro de rapport si type == GEAR (1 à 8)
-    label: Optional[str] = None  # Label personnalisé optionnel
-    color: Optional[List[int]] = None  # Couleur RGBA personnalisée optionnelle
+    distance: float = 0.0  # Distance along the track in meters
+    gear: Optional[int] = None  # Gear number if type == GEAR (1 to 8)
+    label: Optional[str] = None  # Optional custom label
+    color: Optional[List[int]] = None  # Optional custom RGBA color
 
     def to_dict(self) -> Dict[str, Any]:
-        """Sérialise l'annotation en dictionnaire JSON."""
+        """Serializes annotation to JSON dict."""
         data: Dict[str, Any] = {
             "id": self.id,
             "type": self.type.value if isinstance(self.type, AnnotationType) else str(self.type),
@@ -195,7 +195,7 @@ class TrackAnnotation:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TrackAnnotation":
-        """Désérialise une annotation depuis un dictionnaire JSON."""
+        """Deserializes an annotation from a JSON dict."""
         raw_type = data.get("type", AnnotationType.BRAKE.value)
         try:
             ann_type = AnnotationType(raw_type)
@@ -215,9 +215,9 @@ class TrackAnnotation:
 @dataclass
 class ReferenceLapProfile:
     """
-    Profil spatial mètre par mètre d'un tour de référence.
-    Contient la grille d'échantillonnage 1m (temps, vitesse, frein, accélérateur, volant)
-    et la collection d'annotations de pilotage associées au circuit.
+    Meter-by-meter spatial profile of a reference lap.
+    Contains the 1m sampling grid (time, speed, brake, throttle, steering)
+    and the collection of driving annotations associated with the track.
     """
     track_name: str = ""
     vehicle_name: str = ""
@@ -227,22 +227,22 @@ class ReferenceLapProfile:
     spatial_step: float = 1.0
     num_points: int = 0
     t_grid: List[float] = field(default_factory=list)
-    speed_grid: List[float] = field(default_factory=list)        # Vitesse en m/s
-    throttle_grid: List[float] = field(default_factory=list)     # Accélérateur [0.0 - 1.0]
-    brake_grid: List[float] = field(default_factory=list)        # Frein [0.0 - 1.0]
-    steering_grid: List[float] = field(default_factory=list)     # Volant [-1.0 - 1.0]
-    gear_grid: List[int] = field(default_factory=list)           # Rapport de boîte (0=N, -1=R, 1..8)
-    sector_1_dist: float = 0.0                                   # Position de la boucle chrono Secteur 1 en mètres
-    sector_2_dist: float = 0.0                                   # Position de la boucle chrono Secteur 2 en mètres
-    sector_1_time: float = 0.0                                   # Temps au passage de la boucle 1 (s)
-    sector_2_time: float = 0.0                                   # Temps au passage de la boucle 2 (s)
+    speed_grid: List[float] = field(default_factory=list)        # Speed in m/s
+    throttle_grid: List[float] = field(default_factory=list)     # Throttle [0.0 - 1.0]
+    brake_grid: List[float] = field(default_factory=list)        # Brake [0.0 - 1.0]
+    steering_grid: List[float] = field(default_factory=list)     # Steering [-1.0 - 1.0]
+    gear_grid: List[int] = field(default_factory=list)           # Gear (0=N, -1=R, 1..8)
+    sector_1_dist: float = 0.0                                   # Sector 1 timing loop position in meters
+    sector_2_dist: float = 0.0                                   # Sector 2 timing loop position in meters
+    sector_1_time: float = 0.0                                   # Time at loop 1 (s)
+    sector_2_time: float = 0.0                                   # Time at loop 2 (s)
     annotations: List[TrackAnnotation] = field(default_factory=list)
     _marks_filepath: Optional[Path] = None
 
     def get_sector_at_dist(self, distance: float) -> int:
         """
-        Retourne le secteur (1, 2 ou 3) à une distance donnée en mètres le long du circuit.
-        Utilise les boucles de chronométrage réelles enregistrées lors du tour de référence.
+        Returns sector (1, 2 or 3) at a given distance in meters along the track.
+        Uses actual timing loops recorded during the reference lap.
         """
         if self.sector_1_dist > 0.0 and distance < self.sector_1_dist:
             return 1
@@ -250,7 +250,7 @@ class ReferenceLapProfile:
             return 2
         if self.sector_2_dist > 0.0:
             return 3
-        # Repli si les boucles exactes ne sont pas encore définies
+        # Fallback if exact loops are not yet defined
         if self.track_length > 0.0:
             if distance < (self.track_length / 3.0):
                 return 1
@@ -261,8 +261,8 @@ class ReferenceLapProfile:
 
     def get_turn_number(self, annotation_id: str) -> Optional[int]:
         """
-        Calcule le numéro automatique du virage (1-indexed) pour une annotation de type TURN.
-        La numérotation est recalculée dynamiquement selon l'ordre croissant de la distance sur le circuit.
+        Calculates auto turn number (1-indexed) for TURN annotations.
+        Numbering is recalculated dynamically in increasing order of track distance.
         """
         turn_anns = [a for a in self.annotations if a.type == AnnotationType.TURN]
         turn_anns.sort(key=lambda a: a.distance)
@@ -272,13 +272,13 @@ class ReferenceLapProfile:
         return None
 
     def get_sorted_turns(self) -> List[Tuple[int, TrackAnnotation]]:
-        """Retourne la liste des virages triés par distance avec leur numéro séquentiel (1, 2, 3...)."""
+        """Returns list of turns sorted by distance with their sequential number (1, 2, 3...)."""
         turn_anns = [a for a in self.annotations if a.type == AnnotationType.TURN]
         turn_anns.sort(key=lambda a: a.distance)
         return [(idx, ann) for idx, ann in enumerate(turn_anns, start=1)]
 
     def get_annotation_display_label(self, annotation: TrackAnnotation) -> str:
-        """Retourne le libellé d'affichage court et clair pour l'annotation."""
+        """Returns short and clear display label for the annotation."""
         if annotation.label:
             return annotation.label
 
@@ -295,7 +295,7 @@ class ReferenceLapProfile:
         return "Marker"
 
     def get_annotation_phrase_key(self, annotation: TrackAnnotation) -> str:
-        """Retourne la clé audio (phrase_key) à prononcer pour le Race Engineer."""
+        """Returns audio speech key (phrase_key) for Race Engineer."""
         if annotation.type == AnnotationType.BRAKE:
             return "brake"
         elif annotation.type == AnnotationType.TURN_IN:
@@ -312,11 +312,11 @@ class ReferenceLapProfile:
         return "lap"
 
     def set_marks_filepath(self, filepath: Optional[Path]) -> None:
-        """Définit le chemin cible pour la persistance automatique des annotations."""
+        """Sets target path for automatic marks persistence."""
         self._marks_filepath = Path(filepath) if filepath else None
 
     def get_default_marks_filepath(self) -> Path:
-        """Génère le chemin par défaut du fichier .marks.json pour ce circuit/véhicule."""
+        """Generates default .marks.json file path for this track/vehicle."""
         if self._marks_filepath:
             return self._marks_filepath
         t_clean = clean_name_identifier(self.track_name or "track")
@@ -332,7 +332,7 @@ class ReferenceLapProfile:
         color: Optional[List[int]] = None,
         auto_save: bool = True,
     ) -> TrackAnnotation:
-        """Ajoute une annotation et la persiste automatiquement sur disque."""
+        """Adds an annotation and automatically persists it to disk."""
         max_dist = self.track_length if self.track_length > 0 else 50000.0
         d_clamped = max(0.0, min(max_dist, distance))
 
@@ -352,7 +352,7 @@ class ReferenceLapProfile:
         return ann
 
     def remove_annotation(self, annotation_id: str, auto_save: bool = True) -> bool:
-        """Supprime une annotation par son ID et met à jour le fichier .marks.json."""
+        """Deletes an annotation by its ID and updates the .marks.json file."""
         orig_len = len(self.annotations)
         self.annotations = [a for a in self.annotations if a.id != annotation_id]
         if len(self.annotations) < orig_len:
@@ -362,7 +362,7 @@ class ReferenceLapProfile:
         return False
 
     def move_annotation(self, annotation_id: str, new_distance: float, auto_save: bool = True) -> bool:
-        """Déplace une annotation et persiste automatiquement la nouvelle position."""
+        """Moves an annotation and automatically persists the new position."""
         max_dist = self.track_length if self.track_length > 0 else 50000.0
         d_clamped = max(0.0, min(max_dist, new_distance))
         for ann in self.annotations:
@@ -375,13 +375,13 @@ class ReferenceLapProfile:
         return False
 
     def sort_annotations(self) -> None:
-        """Trie la collection d'annotations par ordre de distance croissante."""
+        """Sorts annotations in increasing distance order."""
         self.annotations.sort(key=lambda a: a.distance)
 
     def get_value_at_dist(self, player_dist: float) -> Dict[str, float]:
         """
-        Effectue une interpolation linéaire O(1) de toutes les grandeurs de télémétrie
-        (temps, vitesse km/h, accélérateur, frein, angle volant) à une position donnée.
+        Performs O(1) linear interpolation of all telemetry quantities
+        (time, speed km/h, throttle, brake, steering angle) at a given position.
         """
         if self.num_points < 2 or not self.t_grid:
             return {
@@ -439,9 +439,9 @@ class ReferenceLapProfile:
             "steering": steer,
         }
 
-    # ── Sérialisation & Persistance Télémetrie (ref_*.json) ────────────────────
+    # ── Telemetry Serialization & Persistence (ref_*.json) ────────────────────
     def telemetry_to_dict(self) -> Dict[str, Any]:
-        """Sérialise uniquement la télémétrie du tour de référence."""
+        """Serializes reference lap telemetry only."""
         return {
             "track_name": self.track_name,
             "vehicle_name": self.vehicle_name,
@@ -463,7 +463,7 @@ class ReferenceLapProfile:
         }
 
     def save_telemetry_to_file(self, filepath: Path) -> bool:
-        """Sauvegarde automatique de la télémétrie du tour de référence sur disque."""
+        """Automatically saves reference lap telemetry to disk."""
         try:
             filepath = Path(filepath)
             filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -475,9 +475,9 @@ class ReferenceLapProfile:
             logger.error(f"[ReferenceLapProfile] Failed to save telemetry to {filepath}: {e}", exc_info=True)
             return False
 
-    # ── Sérialisation & Persistance Annotations (ref_*.marks.json) ────────────
+    # ── Annotations Serialization & Persistence (ref_*.marks.json) ────────────
     def marks_to_dict(self) -> Dict[str, Any]:
-        """Sérialise les annotations de piste avec métadonnées."""
+        """Serializes track annotations with metadata."""
         return {
             "track_name": self.track_name,
             "vehicle_class": self.vehicle_class,
@@ -485,7 +485,7 @@ class ReferenceLapProfile:
         }
 
     def save_marks_to_file(self, filepath: Optional[Path] = None) -> bool:
-        """Sauvegarde automatique au fur et à mesure des modifications dans le fichier .marks.json."""
+        """Automatically saves marks to .marks.json file as modifications occur."""
         target_path = Path(filepath) if filepath else self.get_default_marks_filepath()
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -499,7 +499,7 @@ class ReferenceLapProfile:
             return False
 
     def load_marks_from_file(self, filepath: Path) -> bool:
-        """Charge les annotations depuis un fichier .marks.json dédié."""
+        """Loads annotations from dedicated .marks.json file."""
         try:
             filepath = Path(filepath)
             if not filepath.exists():
@@ -516,12 +516,12 @@ class ReferenceLapProfile:
             logger.error(f"[ReferenceLapProfile] Failed to load marks from {filepath}: {e}", exc_info=True)
             return False
 
-    # ── Chargement Combiné (Télémétrie + Marks) ──────────────────────────────
+    # ── Combined Loading (Telemetry + Marks) ──────────────────────────────────
     @classmethod
     def load_from_file(cls, filepath: Path) -> Optional["ReferenceLapProfile"]:
         """
-        Charge un profil de référence depuis le fichier télémétrie '.json'
-        et charge automatiquement les annotations depuis le fichier '.marks.json' associé.
+        Loads a reference profile from '.json' telemetry file
+        and automatically loads annotations from the associated '.marks.json' file.
         """
         try:
             filepath = Path(filepath)
@@ -567,7 +567,7 @@ class ReferenceLapProfile:
                 annotations=[],
             )
 
-            # Charger les marks associés si existants
+            # Load associated marks if existing
             marks_path = get_marks_filepath(filepath)
             profile.set_marks_filepath(marks_path)
             if marks_path.exists():
@@ -580,7 +580,7 @@ class ReferenceLapProfile:
             return None
 
     def save_to_file(self, filepath: Path) -> bool:
-        """Sauvegarde la télémétrie dans filepath et les annotations dans get_marks_filepath(filepath)."""
+        """Saves telemetry to filepath and annotations to get_marks_filepath(filepath)."""
         ok_telem = self.save_telemetry_to_file(filepath)
         marks_path = get_marks_filepath(filepath)
         ok_marks = self.save_marks_to_file(marks_path)

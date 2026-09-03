@@ -27,7 +27,7 @@ else:
 
 
 class WindowsWindowManager(BaseWindowManager):
-    """Implémentation spécifique à Windows via les API Win32 et DWM."""
+    """Windows-specific implementation via Win32 and DWM APIs."""
 
     def get_foreground_window_title(self) -> str:
         if not user32:

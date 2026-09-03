@@ -21,23 +21,23 @@ except ImportError:
 
 class GLFWWindowManager:
     """
-    Gestionnaire centralisé pour l'initialisation de GLFW, les mesures d'écran
-    et la création de fenêtres overlays transparentes sans bordures.
+    Centralized manager for GLFW initialization, screen measurements,
+    and borderless transparent overlay window creation.
     """
 
     _initialized = False
 
     @classmethod
     def init(cls) -> bool:
-        """Initialise la bibliothèque GLFW s'il n'est pas déjà initialisé."""
+        """Initialize GLFW library if not already initialized."""
         if cls._initialized:
             return True
 
         if not _GLFW_AVAILABLE:
-            raise RuntimeError("Le paquet 'glfw' n'est pas installé dans l'environnement Python.")
+            raise RuntimeError("The 'glfw' package is not installed in the Python environment.")
 
         if not glfw.init():
-            raise RuntimeError("Impossible d'initialiser GLFW")
+            raise RuntimeError("Failed to initialize GLFW")
 
         cls._initialized = True
         logger.info("[GLFW] Window Manager initialized successfully.")
@@ -46,17 +46,17 @@ class GLFWWindowManager:
     @classmethod
     def get_screen_dimensions(cls) -> Tuple[int, int]:
         """
-        Récupère la résolution du moniteur principal via GLFW (width, height).
-        Utilise glfw.get_primary_monitor() et glfw.get_video_mode().
+        Retrieves primary monitor resolution via GLFW (width, height).
+        Uses glfw.get_primary_monitor() and glfw.get_video_mode().
         """
         cls.init()
         monitor = glfw.get_primary_monitor()
         if not monitor:
-            raise RuntimeError("[GLFW] Aucun moniteur principal détecté via GLFW")
+            raise RuntimeError("[GLFW] No primary monitor detected via GLFW")
 
         mode = glfw.get_video_mode(monitor)
         if not mode or mode.size.width <= 0 or mode.size.height <= 0:
-            raise RuntimeError("[GLFW] Réponse de mode vidéo invalide du moniteur principal")
+            raise RuntimeError("[GLFW] Invalid video mode response from primary monitor")
 
         return (int(mode.size.width), int(mode.size.height))
 
@@ -69,29 +69,29 @@ class GLFWWindowManager:
         visible: bool = True
     ) -> Optional[Any]:
         """
-        Crée une fenêtre overlay GLFW (Borderless, Always-On-Top, Transparent Framebuffer, NO_API).
+        Creates a GLFW overlay window (Borderless, Always-On-Top, Transparent Framebuffer, NO_API).
         """
         cls.init()
 
-        # Configuration des hints de la fenêtre GLFW
+        # GLFW window hints configuration
         glfw.window_hint(glfw.CLIENT_API, glfw.NO_API)
         glfw.window_hint(glfw.DECORATED, glfw.FALSE)              # Borderless
         glfw.window_hint(glfw.FLOATING, glfw.TRUE)                # Always-on-top
-        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE) # Fond transparent
+        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE) # Transparent background
         glfw.window_hint(glfw.VISIBLE, glfw.TRUE if visible else glfw.FALSE)
 
         window = glfw.create_window(width, height, title, None, None)
         if not window:
             glfw.terminate()
             cls._initialized = False
-            raise RuntimeError("Erreur création fenêtre GLFW")
+            raise RuntimeError("Error creating GLFW window")
 
         logger.info(f"[GLFW] Created overlay window '{title}' ({width}x{height})")
         return window
 
     @classmethod
     def terminate(cls) -> None:
-        """Termine l'environnement GLFW."""
+        """Terminates the GLFW environment."""
         if cls._initialized and _GLFW_AVAILABLE:
             try:
                 glfw.terminate()

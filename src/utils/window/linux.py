@@ -16,7 +16,7 @@ from src.utils.window.base import BaseWindowManager
 
 
 class LinuxWindowManager(BaseWindowManager):
-    """Implémentation spécifique à Linux (Wayland compositeurs et X11)."""
+    """Linux-specific implementation (Wayland compositors and X11)."""
 
     def __init__(self):
         super().__init__()
@@ -26,9 +26,9 @@ class LinuxWindowManager(BaseWindowManager):
         self._start_async_focus_listener()
 
     def _start_async_focus_listener(self) -> None:
-        """Lance l'écoute asynchrone des événements de focus dans un thread d'arrière-plan (0% CPU, 0ms de latence)."""
+        """Starts asynchronous focus event listening in a background thread (0% CPU, 0ms latency)."""
         try:
-            # 1. Enregistrement unique du script écouteur KWin
+            # 1. Register KWin listener script once
             script_dir = Path.home() / ".cache" / "simpad"
             script_dir.mkdir(parents=True, exist_ok=True)
             script_path = script_dir / "kwin_focus_listener.js"
@@ -52,7 +52,7 @@ class LinuxWindowManager(BaseWindowManager):
                     stderr=subprocess.DEVNULL, timeout=0.5
                 )
 
-            # 2. Thread démon d'écoute continue des logs KWin
+            # 2. Daemon thread listening continuously to KWin logs
             def _tail_worker():
                 try:
                     proc = subprocess.Popen(
@@ -77,11 +77,11 @@ class LinuxWindowManager(BaseWindowManager):
             pass
 
     def get_active_window_info(self) -> Tuple[str, str, int]:
-        """Retourne instantanément les informations de la fenêtre active au premier plan (0ms, 0% CPU)."""
+        """Returns active foreground window info instantly (0ms, 0% CPU)."""
         if self._active_window_info != ("", "", 0):
             return self._active_window_info
 
-        # Fallback instantané X11/Xwayland
+        # Instant X11/Xwayland fallback
         try:
             out = subprocess.check_output(["xprop", "-root", "_NET_ACTIVE_WINDOW"], stderr=subprocess.DEVNULL, timeout=0.1).decode("utf-8", errors="ignore")
             m = re.search(r"0x[0-9a-fA-F]+", out)
@@ -175,7 +175,7 @@ class LinuxWindowManager(BaseWindowManager):
         return res_class.lower()
 
     def get_lmu_pids(self) -> Set[int]:
-        """Retourne l'ensemble des PIDs des processus associés à Le Mans Ultimate (avec cache 1.5s)."""
+        """Returns the set of PIDs associated with Le Mans Ultimate (with 1.5s cache)."""
         now = time.time()
         if (now - self._last_pid_scan_time) < 1.5 and self._cached_lmu_pids:
             return self._cached_lmu_pids
@@ -224,11 +224,11 @@ class LinuxWindowManager(BaseWindowManager):
 
         title, res_class, active_pid = self.get_active_window_info()
 
-        # 1. Correspondance PID directe : le PID de la fenêtre active appartient-il au jeu LMU ?
+        # 1. Direct PID match: does active window PID belong to LMU game?
         if active_pid > 0 and active_pid in lmu_pids:
             return True
 
-        # 2. Correspondance Titre / Classe de fenêtre
+        # 2. Match Title / Window Class
         title_lower = title.lower()
         class_lower = res_class.lower()
         if "le mans" in title_lower or "lemans" in title_lower or "rfactor" in title_lower:
@@ -236,15 +236,14 @@ class LinuxWindowManager(BaseWindowManager):
         if "le mans" in class_lower or "lemans" in class_lower or "rfactor" in class_lower:
             return True
 
-        # 3. L'overlay HUD transparent uniquement (au cas où KWin capte l'activation de l'overlay)
-        # Mais SURTOUT PAS la console Studio parente !
+        # 3. Transparent HUD overlay only (in case KWin captures overlay activation)
         if "hud overlay" in title_lower:
             return True
 
         return False
 
     def _set_kwin_window_state(self, window_title: str, keep_above: bool, no_border: bool) -> None:
-        """Applique dynamiquement l'état keepAbove et noBorder à la fenêtre via KWin DBus (Wayland) et xprop (X11)."""
+        """Dynamically applies keepAbove and noBorder state to the window via KWin DBus (Wayland) and xprop (X11)."""
         b_keep = "true" if keep_above else "false"
         b_border = "true" if no_border else "false"
 
