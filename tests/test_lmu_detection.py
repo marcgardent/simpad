@@ -216,9 +216,9 @@ class TestLMUSteamDetection(unittest.TestCase):
                 user_json = lmu_dir / "UserData" / "player" / "CustomPluginVariables.JSON"
                 self.assertTrue(user_json.exists())
                 json_content = json.loads(user_json.read_text(encoding="utf-8"))
-                self.assertIn("isiMotor_RawUDP", json_content)
-                self.assertEqual(json_content["isiMotor_RawUDP"][" Enabled"], 1)
-                self.assertEqual(json_content["isiMotor_RawUDP"]["TargetPort"], "5000")
+                self.assertIn("isiMotor_RawUDP.dll", json_content)
+                self.assertEqual(json_content["isiMotor_RawUDP.dll"][" Enabled"], 1)
+                self.assertEqual(json_content["isiMotor_RawUDP.dll"]["TargetPort"], "5000")
 
                 # Check settings.json created/configured
                 settings_json = lmu_dir / "UserData" / "player" / "Settings.JSON"
@@ -258,6 +258,92 @@ class TestLMUSteamDetection(unittest.TestCase):
                 self.assertIsNotNone(extracted_dll)
                 self.assertTrue(extracted_dll.exists())
                 self.assertEqual(extracted_dll.read_bytes(), b"binary_dll_content_xyz")
+
+    def test_multi_simulator_detection(self):
+        """Verify detection of both Le Mans Ultimate and rFactor 2 installations."""
+        from src.telemetry.plugin_installer import LMUPluginManager, SUPPORTED_GAMES
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            steam_dir = tmp_path / "SteamLibrary"
+
+            # Create LMU structure
+            lmu_dir = steam_dir / "steamapps" / "common" / "Le Mans Ultimate"
+            lmu_dir.mkdir(parents=True)
+            (lmu_dir / "Le Mans Ultimate.exe").write_bytes(b"exe")
+            (lmu_dir / "Plugins").mkdir(parents=True)
+            (lmu_dir / "Plugins" / "isiMotor_RawUDP.dll").write_bytes(b"dll")
+
+            # Create rFactor 2 structure
+            rf2_dir = steam_dir / "steamapps" / "common" / "rFactor 2"
+            rf2_dir.mkdir(parents=True)
+            (rf2_dir / "rFactor2.exe").write_bytes(b"exe")
+
+            # Mock libraryfolders.vdf
+            vdf_file = tmp_path / "libraryfolders.vdf"
+            vdf_file.write_text(f'"libraryfolders" {{\n  "0" {{\n    "path" "{steam_dir}"\n  }}\n}}')
+
+            with patch("src.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
+                sims = LMUPluginManager.detect_all_simulators()
+                self.assertEqual(len(sims), 2)
+                sim_keys = {s.game_key: s for s in sims}
+                self.assertIn("LMU", sim_keys)
+                self.assertIn("rF2", sim_keys)
+                self.assertTrue(sim_keys["LMU"].plugin_installed)
+                self.assertFalse(sim_keys["rF2"].plugin_installed)
+
+    def test_game_plugin_manager_local_settings_and_propagation(self):
+        """Verify GamePluginManager local settings persistence and multi-game propagation."""
+        from simpad_qt.core.game_plugin_manager import GamePluginManager, ChannelSettings
+        from simpad_qt.core.telemetry_channels import TelemetryChannel
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            local_cfg = tmp_path / "game_plugin_settings.json"
+
+            lmu_dir = tmp_path / "LMU"
+            lmu_dir.mkdir(parents=True)
+            (lmu_dir / "Le Mans Ultimate.exe").write_bytes(b"exe")
+
+            rf2_dir = tmp_path / "rF2"
+            rf2_dir.mkdir(parents=True)
+            (rf2_dir / "rFactor2.exe").write_bytes(b"exe")
+
+            vdf_file = tmp_path / "libraryfolders.vdf"
+            vdf_file.write_text(f'"libraryfolders" {{\n  "0" {{\n    "path" "{tmp_path}"\n  }}\n}}')
+
+            with patch("simpad_qt.core.game_plugin_manager.GamePluginManager.LOCAL_SETTINGS_PATH", local_cfg), \
+                 patch("src.telemetry.plugin_installer.LMUPluginManager.get_all_lmu_install_dirs", return_value=[lmu_dir, rf2_dir]), \
+                 patch("src.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
+
+                gpm = GamePluginManager()
+                gpm.settings.rates[TelemetryChannel.TELEMETRY] = "unlimited"
+                gpm.settings.rates[TelemetryChannel.OPPONENT_TELEMETRY] = "10Hz"
+                gpm.settings.enable_logging = True
+
+                # Apply and propagate
+                ok = gpm.apply_rates_to_game()
+                self.assertTrue(ok)
+
+                # Verify local file was created
+                self.assertTrue(local_cfg.exists())
+                local_data = json.loads(local_cfg.read_text(encoding="utf-8"))
+                self.assertEqual(local_data["rates"]["TELEMETRY"], "unlimited")
+                self.assertEqual(local_data["rates"]["OPPONENT_TELEMETRY"], "10Hz")
+                self.assertTrue(local_data["enable_logging"])
+
+                # Verify both simulators received CustomPluginVariables.JSON
+                for gdir in [lmu_dir, rf2_dir]:
+                    cv = gdir / "UserData" / "player" / "CustomPluginVariables.JSON"
+                    self.assertTrue(cv.exists(), f"Missing JSON in {gdir}")
+                    cdata = json.loads(cv.read_text(encoding="utf-8"))
+                    self.assertIn("isiMotor_RawUDP.dll", cdata)
+                    entry = cdata["isiMotor_RawUDP.dll"]
+                    self.assertEqual(entry["PlayerTelemetryRate"], "unlimited")
+                    self.assertEqual(entry["OpponentTelemetryRate"], "10Hz")
+                    self.assertEqual(entry["EnableLogging"], "Enabled")
 
 
 

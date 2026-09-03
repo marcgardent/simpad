@@ -1,0 +1,11 @@
+{
+  "app": {
+    "dark_theme": true,
+    "target_fps": 60,
+    "overlay_enabled": true,
+    "mock_telemetry": false,
+    "hud_debug_boxes": false
+  },
+  "plugins": {
+    "simpad.builtin.pedal_monitor": {
+      "slot": 

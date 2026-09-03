@@ -9,6 +9,27 @@ from abc import ABC, abstractmethod
 class BaseWindowManager(ABC):
     """Classe abstraite de base pour la gestion des fenêtres et processus selon le système d'exploitation."""
 
+    def __init__(self):
+        self._focus_listeners = []
+
+    def add_focus_listener(self, callback) -> None:
+        """Enregistre un callback réactif appelé immédiatement lors d'un changement de focus de fenêtre."""
+        if callback not in self._focus_listeners:
+            self._focus_listeners.append(callback)
+
+    def remove_focus_listener(self, callback) -> None:
+        """Détache un callback réactif."""
+        if callback in self._focus_listeners:
+            self._focus_listeners.remove(callback)
+
+    def _notify_focus_changed(self) -> None:
+        """Déclenche immédiatement tous les écouteurs de focus enregistrés."""
+        for cb in list(self._focus_listeners):
+            try:
+                cb()
+            except Exception:
+                pass
+
     @abstractmethod
     def get_foreground_window_title(self) -> str:
         """Retourne le titre de la fenêtre active au premier plan."""
@@ -32,7 +53,11 @@ class BaseWindowManager(ABC):
             return True
 
         title = self.get_foreground_window_title().lower().strip()
-        if title == "le mans ultimate" or title.startswith("le mans ultimate") or title == "lemansultimate":
+        if "le mans" in title or "lemans" in title or "rfactor" in title:
+            return True
+
+        # L'overlay HUD transparent uniquement (pas la console Studio parente)
+        if "hud overlay" in title:
             return True
 
         return False

@@ -43,10 +43,17 @@ class UDPServer:
     tout en préservant la rétrocompatibilité complète avec les trames JSON et l'API SimPad.
     """
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 5000, target_port: int = 5001):
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 5000,
+        target_port: int = 5001,
+        packet_listener: Optional[Any] = None,
+    ):
         self.host = host
         self.port = port
         self.target_port = target_port
+        self.packet_listener = packet_listener
         self._client: Optional[IsiMotorClient] = None
         self._lock = threading.Lock()
         self._latest_data: Optional[TelemetryData] = None
@@ -69,6 +76,16 @@ class UDPServer:
         self._client._receiver.start(self._on_datagram_received)
         logger.info(f"Serveur UDP démarré sur port {self.port} avec IsiMotorClient")
         print(f"[UDP] Listening on UDP {self.host}:{self.port} via isimotor_rawudp_client (120 Hz+ ultra-low latency)", flush=True)
+
+    def stop(self) -> None:
+        """Arrête le client UDP et détache les listeners."""
+        self.packet_listener = None
+        if self._client:
+            try:
+                self._client.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping IsiMotorClient: {e}")
+            self._client = None
 
     def _setup_callbacks(self) -> None:
         """Configure les callbacks d'événements du client isiMotor."""
@@ -159,15 +176,44 @@ class UDPServer:
         """
         Hook d'ingestion des paquets UDP binaires SIMP via le client isimotor_rawudp_client.
         """
+        raw_len = len(data)
         with self._lock:
             self._last_packet_time = timestamp
             self._packet_count += 1
 
-        if self._client:
-            packet = self._client._decode_or_reassemble(data, timestamp)
-            if packet is not None:
-                self._client._state.update(packet, timestamp)
-                self._client._dispatcher.dispatch(packet)
+        if not self._client or len(data) < 24 or not data.startswith(b"SIMP") or data[4] != 1:
+            return
+
+        # Paquets avec en-tête SIMP v1 standard (24 octets)
+        pkt_type = data[5]
+        pkt_type_map = {
+            1: "Telemetry",
+            2: "CompactScoring",
+            3: "SystemEvents",
+            4: "FullScoring",
+            7: "Weather",
+            8: "ExtendedState",
+            9: "ForceFeedback",
+            10: "Graphics",
+        }
+        channel_name = pkt_type_map.get(pkt_type, "Telemetry")
+
+        packet = self._client._decode_or_reassemble(data, timestamp)
+        if packet is not None:
+            self._client._state.update(packet, timestamp)
+            self._client._dispatcher.dispatch(packet)
+
+            if self.packet_listener is not None:
+                try:
+                    self.packet_listener(channel_name, packet, raw_len)
+                except Exception as e:
+                    logger.error(f"Error in packet_listener: {e}")
+        elif self.packet_listener is not None:
+            # Morceau / Chunk d'un paquet multi-parties (ex: FullScoring)
+            try:
+                self.packet_listener(channel_name, None, raw_len)
+            except Exception as e:
+                logger.error(f"Error in packet_listener chunk: {e}")
 
     def get_latest_data(self, timeout: float = 1.2) -> Optional[TelemetryData]:
         """

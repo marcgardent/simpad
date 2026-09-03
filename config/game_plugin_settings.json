@@ -1,0 +1,19 @@
+{
+  "target_ip": "127.0.0.1",
+  "target_port": 5000,
+  "inbound_port": 5001,
+  "enable_logging": false,
+  "rates": {
+    "TELEMETRY": "unlimited",
+    "OPPONENT_TELEMETRY": "off",
+    "COMPACT_SCORING": "10Hz",
+    "FULL_SCORING": "5Hz",
+    "WEATHER": "1Hz",
+    "EXTENDED_STATE": "10Hz",
+    "FORCE_FEEDBACK": "off",
+    "GRAPHICS": "off",
+    "TRACK_RULES": "off",
+    "PIT_MENU": "off",
+    "SYSTEM_EVENTS": "Enabled"
+  }
+}

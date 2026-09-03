@@ -44,8 +44,19 @@ _REF_LAPS_DIR = DEFAULT_REF_LAPS_DIR
 _DEBUG_LOG_PATH = _PROJECT_ROOT / "delta_debug.log"
 
 
+DELTA_DEBUG_ENABLED: bool = True
+
+
+def set_delta_debug_enabled(enabled: bool) -> None:
+    """Active ou désactive l'écriture dans delta_debug.log."""
+    global DELTA_DEBUG_ENABLED
+    DELTA_DEBUG_ENABLED = enabled
+
+
 def log_delta_debug(msg: str) -> None:
     """Écrit une ligne de log dans delta_debug.log pour diagnostic en direct."""
+    if not DELTA_DEBUG_ENABLED:
+        return
     try:
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:

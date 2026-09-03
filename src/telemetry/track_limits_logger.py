@@ -19,8 +19,9 @@ class TrackLimitsLogger:
 
     _instance: Optional["TrackLimitsLogger"] = None
     _lock = threading.Lock()
+    default_enabled: bool = True
 
-    def __init__(self, log_path: str = "track_limits_debug.log", sample_interval_sec: float = 0.50):
+    def __init__(self, log_path: str = "track_limits_debug.log", sample_interval_sec: float = 0.50, enabled: Optional[bool] = None):
         self.log_path = log_path
         self.sample_interval_sec = sample_interval_sec
         self._last_log_time = 0.0
@@ -28,7 +29,7 @@ class TrackLimitsLogger:
         self._last_flag: Optional[int] = None
         self._last_state: Optional[str] = None
         self._log_file = None
-        self.enabled = True
+        self.enabled = TrackLimitsLogger.default_enabled if enabled is None else enabled
 
         try:
             file_exists = os.path.exists(self.log_path) and os.path.getsize(self.log_path) > 0
@@ -106,8 +107,16 @@ class TrackLimitsLogger:
         except Exception:
             pass
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Active ou désactive la journalisation des limites de piste."""
+        self.enabled = enabled
+        TrackLimitsLogger.default_enabled = enabled
+
     def log_spotter_action(self, phrase_key: str, interrupt: bool, context_info: str = "") -> None:
         """Enregistre le déclenchement vocal du spotter."""
+        if not self.enabled or self._log_file is None:
+            return
+
         now = time.time()
         time_str = time.strftime("%H:%M:%S", time.localtime(now)) + f".{int((now % 1) * 1000):03d}"
         line = f"[{time_str}] >>> SPOTTER AUDIO EMITTED: phrase='{phrase_key}' (interrupt={interrupt}) | {context_info}\n"

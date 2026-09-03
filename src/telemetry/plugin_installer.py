@@ -11,14 +11,42 @@ import shutil
 import logging
 import zipfile
 import urllib.request
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PLUGIN_RELEASE_URL = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isiMotor-RawUDP-Plugin-v0.2.0-Windows-x64-MinGW-w64.zip"
 PLUGIN_DLL_NAME = "isiMotor_RawUDP.dll"
-LEGACY_DLL_NAMES = ["LeMansUltimateTelemetryPlugin.dll"]
+
+SUPPORTED_GAMES: Dict[str, Dict[str, str]] = {
+    "LMU": {
+        "name": "Le Mans Ultimate",
+        "appid": "2399420",
+        "subpath": "Le Mans Ultimate",
+        "exe": "Le Mans Ultimate.exe",
+    },
+    "rF2": {
+        "name": "rFactor 2",
+        "appid": "365960",
+        "subpath": "rFactor 2",
+        "exe": "rFactor2.exe",
+    },
+}
+
+
+@dataclass
+class SimulatorInstallInfo:
+    """Represents an installed simulator (LMU, rF2, etc.) and its plugin status."""
+    game_key: str              # "LMU", "rF2"
+    name: str                  # "Le Mans Ultimate", "rFactor 2"
+    game_dir: Path
+    exe_path: Path
+    plugin_installed: bool
+    status_message: str
+    custom_variables_paths: List[Path] = field(default_factory=list)
+    settings_paths: List[Path] = field(default_factory=list)
 
 
 def get_steam_vdf_candidate_paths() -> List[Path]:
@@ -195,14 +223,10 @@ class LMUPluginManager:
             return candidate
 
         # 2. Check alternative plugin directories
-        for sub in ["lmu", "isiMotor", "LeMansUltimateTelemetryPlugin", ""]:
+        for sub in ["lmu", "isiMotor", ""]:
             c = root / "assets" / "plugins" / sub / PLUGIN_DLL_NAME
             if c.exists() and c.stat().st_size > 0:
                 return c
-            for leg in LEGACY_DLL_NAMES:
-                c_leg = root / "assets" / "plugins" / sub / leg
-                if c_leg.exists() and c_leg.stat().st_size > 0:
-                    return c_leg
 
         # 3. Download from GitHub release URL
         if download_if_missing:
@@ -223,18 +247,69 @@ class LMUPluginManager:
 
         plugins_dir = lmu_dir / "Plugins"
 
-        # Check modern DLL
+        # Check plugin DLL
         target_dll = plugins_dir / PLUGIN_DLL_NAME
         if target_dll.exists() and target_dll.stat().st_size > 0:
             return True, f"Plugin Active ({PLUGIN_DLL_NAME})", lmu_dir
 
-        # Check legacy DLL names
-        for leg in LEGACY_DLL_NAMES:
-            leg_dll = plugins_dir / leg
-            if leg_dll.exists() and leg_dll.stat().st_size > 0:
-                return True, f"Plugin Active ({leg})", lmu_dir
-
         return False, "Plugin DLL missing in Plugins/", lmu_dir
+
+    @classmethod
+    def detect_all_simulators(cls) -> List[SimulatorInstallInfo]:
+        """
+        Detects all installed isiMotor / rFactor 2 / Le Mans Ultimate game directories.
+        Strictly searches all Steam libraries.
+        """
+        results: List[SimulatorInstallInfo] = []
+        vdf_candidates = get_steam_vdf_candidate_paths()
+        all_lib_paths: List[Path] = []
+
+        for vdf in vdf_candidates:
+            if vdf.exists() and vdf.is_file():
+                for lib in parse_vdf_library_paths(vdf):
+                    if lib not in all_lib_paths:
+                        all_lib_paths.append(lib)
+
+        for game_key, info in SUPPORTED_GAMES.items():
+            for lib in all_lib_paths:
+                game_dir = lib / "steamapps" / "common" / info["subpath"]
+                exe_path = game_dir / info["exe"]
+                if game_dir.exists() and exe_path.exists():
+                    try:
+                        resolved_dir = game_dir.resolve()
+                    except Exception:
+                        resolved_dir = game_dir
+
+                    if any(s.game_dir == resolved_dir for s in results):
+                        continue
+
+                    plugins_dir = resolved_dir / "Plugins"
+                    target_dll = plugins_dir / PLUGIN_DLL_NAME
+                    is_installed = target_dll.exists() and target_dll.stat().st_size > 0
+                    msg = f"Plugin Active ({PLUGIN_DLL_NAME})" if is_installed else "Plugin Missing in Plugins/"
+
+                    cv_paths: List[Path] = []
+                    set_paths: List[Path] = []
+                    for sub in ["UserData/player", "UserData"]:
+                        p_cv = resolved_dir / sub / "CustomPluginVariables.JSON"
+                        if p_cv.parent.exists():
+                            cv_paths.append(p_cv)
+                        p_set = resolved_dir / sub / "Settings.JSON"
+                        if p_set.parent.exists():
+                            set_paths.append(p_set)
+
+                    results.append(SimulatorInstallInfo(
+                        game_key=game_key,
+                        name=info["name"],
+                        game_dir=resolved_dir,
+                        exe_path=exe_path,
+                        plugin_installed=is_installed,
+                        status_message=msg,
+                        custom_variables_paths=cv_paths,
+                        settings_paths=set_paths,
+                    ))
+
+        return results
 
     @classmethod
     def configure_plugin_json(
@@ -243,6 +318,7 @@ class LMUPluginManager:
         target_ip: str = "127.0.0.1",
         target_port: int = 5000,
         inbound_port: int = 5001,
+        enable_logging: bool = False,
     ) -> bool:
         """
         Configures CustomPluginVariables.JSON and Settings.JSON to enable isiMotor_RawUDP streaming.
@@ -251,17 +327,19 @@ class LMUPluginManager:
 
         plugin_entry = {
             " Enabled": 1,
+            "EnableLogging": "Enabled" if enable_logging else "Disabled",
             "TargetIP": str(target_ip),
             "TargetPort": str(target_port),
             "InboundControl": "Enabled",
             "InboundPort": str(inbound_port),
-            "TelemetryRate": "unlimited",
-            "CompactScoringRate": "off",
+            "PlayerTelemetryRate": "unlimited",
+            "OpponentTelemetryRate": "off",
+            "CompactScoringRate": "10Hz",
             "FullScoringRate": "5Hz",
             "WeatherRate": "1Hz",
-            "ExtendedStateRate": "off",
-            "ForceFeedbackRate": "off",
-            "GraphicsRate": "off",
+            "ExtendedStateRate": "5Hz",
+            "ForceFeedbackRate": "unlimited",
+            "GraphicsRate": "60Hz",
             "SystemEvents": "Enabled",
             "UnsubscribedBuffersMask": "0",
             "TrackRulesRate": "off",
@@ -280,7 +358,11 @@ class LMUPluginManager:
                 except Exception:
                     data = {}
 
-            data["isiMotor_RawUDP"] = plugin_entry
+            # Remove legacy unextended key for our plugin to prevent duplicate entries
+            if "isiMotor_RawUDP" in data:
+                del data["isiMotor_RawUDP"]
+
+            data["isiMotor_RawUDP.dll"] = plugin_entry
             user_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
             logger.info(f"[PluginManager] Configured CustomPluginVariables.JSON: {user_json}")
             print(f"[PluginManager] Configured CustomPluginVariables.JSON: {user_json}", flush=True)

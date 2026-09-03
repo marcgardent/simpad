@@ -22,8 +22,9 @@ class OverlayAnomalyLogger:
 
     _instance: Optional["OverlayAnomalyLogger"] = None
     _lock = threading.Lock()
+    default_enabled: bool = True
 
-    def __init__(self, log_path: Path = _LOG_FILE):
+    def __init__(self, log_path: Path = _LOG_FILE, enabled: Optional[bool] = None):
         self.log_path = log_path
         self._prev_speed: float = 0.0
         self._prev_throttle: float = 0.0
@@ -32,6 +33,7 @@ class OverlayAnomalyLogger:
         self._prev_in_realtime: bool = True
         self._prev_display_mode: str = "init"
         self._log_file = None
+        self.enabled = OverlayAnomalyLogger.default_enabled if enabled is None else enabled
 
         try:
             self._log_file = open(self.log_path, "a", encoding="utf-8", buffering=1)
@@ -48,8 +50,16 @@ class OverlayAnomalyLogger:
                 cls._instance = cls()
             return cls._instance
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Active ou désactive la journalisation des anomalies HUD."""
+        self.enabled = enabled
+        OverlayAnomalyLogger.default_enabled = enabled
+
     def log_event(self, category: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Enregistre un événement anormal dans le fichier de log et sur la console."""
+        if not self.enabled:
+            return
+
         ts = time.strftime("%H:%M:%S") + f".{int((time.time() % 1) * 1000):03d}"
         detail_str = ""
         if details:

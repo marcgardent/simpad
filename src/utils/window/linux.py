@@ -19,6 +19,7 @@ class LinuxWindowManager(BaseWindowManager):
     """Implémentation spécifique à Linux (Wayland compositeurs et X11)."""
 
     def __init__(self):
+        super().__init__()
         self._active_window_info: Tuple[str, str, int] = ("", "", 0)
         self._cached_lmu_pids: Set[int] = set()
         self._last_pid_scan_time: float = 0.0
@@ -66,6 +67,7 @@ class LinuxWindowManager(BaseWindowManager):
                             rc = parts[1] if len(parts) > 1 else ""
                             p = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
                             self._active_window_info = (c, rc, p)
+                            self._notify_focus_changed()
                 except Exception:
                     pass
 
@@ -232,6 +234,11 @@ class LinuxWindowManager(BaseWindowManager):
         if "le mans" in title_lower or "lemans" in title_lower or "rfactor" in title_lower:
             return True
         if "le mans" in class_lower or "lemans" in class_lower or "rfactor" in class_lower:
+            return True
+
+        # 3. L'overlay HUD transparent uniquement (au cas où KWin capte l'activation de l'overlay)
+        # Mais SURTOUT PAS la console Studio parente !
+        if "hud overlay" in title_lower:
             return True
 
         return False

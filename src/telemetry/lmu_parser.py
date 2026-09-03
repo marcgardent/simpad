@@ -238,6 +238,19 @@ class LMUParser:
         return cls._last_telem_info
 
     @classmethod
+    def to_vehicle_sensors(cls, data: Any) -> VehicleSensors:
+        """Convert a TelemInfo or TelemetryData instance into VehicleSensors."""
+        if isinstance(data, VehicleSensors):
+            return data
+        if isinstance(data, TelemetryData):
+            return data.to_sensors()
+        if isinstance(data, TelemInfo) or hasattr(data, "wheels"):
+            snap = cls.process_telemetry(data)
+            if snap:
+                return snap.to_sensors()
+        return VehicleSensors()
+
+    @classmethod
     def _calculate_sector_status(cls, val: float, best_val: float, session_best: float) -> str:
         """Determines sector time status color (purple, green, or default)."""
         if session_best < 999900.0 and val <= (session_best + 0.001):

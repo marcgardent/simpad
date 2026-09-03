@@ -7,5 +7,16 @@
     "update_rate_hz": 100,
     "delta_reference_mode": "all_time_best",
     "delta_freeze_duration": 5.0,
-    "delta_ema_samples": 5
+    "delta_ema_samples": 5,
+    "loggers": {
+        "telemetry": false,
+        "engineer": false,
+        "schedule": false,
+        "haptics": false,
+        "gui": false,
+        "utils": false,
+        "track_limits": false,
+        "overlay_anomaly": false,
+        "delta_debug": false
+    }
 }

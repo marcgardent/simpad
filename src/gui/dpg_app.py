@@ -372,6 +372,88 @@ class SimPadDPGApp:
                 dpg.add_text("Chrono Estimé:", color=[180, 180, 180, 255])
                 dpg.add_text("--:--.---", tag="lbl_ref_estimated", color=[255, 105, 180, 255])
 
+        dpg.add_spacer(height=6)
+
+        with dpg.child_window(height=140, border=True):
+            dpg.add_text("Activation des Loggers & Diagnostics :", color=[0, 210, 255, 255])
+            dpg.add_text("Activez ou coupez les flux de logs et fichiers de diagnostic (config.json).", color=[180, 180, 180, 255])
+            dpg.add_separator()
+            dpg.add_spacer(height=6)
+
+            log_cfg = self._app_config.get("loggers", {})
+            with dpg.group(horizontal=True):
+                dpg.add_checkbox(
+                    label="Telemetry",
+                    tag="chk_log_telemetry",
+                    default_value=log_cfg.get("telemetry", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="telemetry",
+                )
+                dpg.add_checkbox(
+                    label="Engineer",
+                    tag="chk_log_engineer",
+                    default_value=log_cfg.get("engineer", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="engineer",
+                )
+                dpg.add_checkbox(
+                    label="Schedule",
+                    tag="chk_log_schedule",
+                    default_value=log_cfg.get("schedule", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="schedule",
+                )
+                dpg.add_checkbox(
+                    label="Haptics",
+                    tag="chk_log_haptics",
+                    default_value=log_cfg.get("haptics", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="haptics",
+                )
+            with dpg.group(horizontal=True):
+                dpg.add_checkbox(
+                    label="GUI",
+                    tag="chk_log_gui",
+                    default_value=log_cfg.get("gui", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="gui",
+                )
+                dpg.add_checkbox(
+                    label="Utils/Audio",
+                    tag="chk_log_utils",
+                    default_value=log_cfg.get("utils", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="utils",
+                )
+                dpg.add_checkbox(
+                    label="Track Limits Log",
+                    tag="chk_log_track_limits",
+                    default_value=log_cfg.get("track_limits", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="track_limits",
+                )
+                dpg.add_checkbox(
+                    label="HUD Anomaly Log",
+                    tag="chk_log_overlay_anomaly",
+                    default_value=log_cfg.get("overlay_anomaly", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="overlay_anomaly",
+                )
+                dpg.add_checkbox(
+                    label="Delta Debug Log",
+                    tag="chk_log_delta_debug",
+                    default_value=log_cfg.get("delta_debug", True),
+                    callback=self._cb_toggle_logger,
+                    user_data="delta_debug",
+                )
+
+    def _cb_toggle_logger(self, sender, app_data, user_data=None):
+        if "loggers" not in self._app_config or not isinstance(self._app_config["loggers"], dict):
+            self._app_config["loggers"] = {}
+        flag_key = user_data if user_data else sender
+        self._app_config["loggers"][flag_key] = bool(app_data)
+        save_config(self._app_config)
+
     def _cb_change_delta_ref_mode(self, sender, app_data):
         delta_eng = getattr(LMUParser, "_delta_engine", None)
         if not delta_eng:
