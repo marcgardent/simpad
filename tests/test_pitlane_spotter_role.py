@@ -8,6 +8,9 @@ from src.engineer.roles.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotte
 from src.engineer.manager import RaceEngineer
 
 
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
+
+
 def make_pitlane_packet(
     player_speed_mps: float = 0.0,
     player_in_pits: bool = True,
@@ -20,40 +23,40 @@ def make_pitlane_packet(
     track_len: float = 5000.0,
 ):
     """Construit un paquet de scoring LMU réaliste en voie des stands."""
-    return {
-        "Type": "ScoringInfoV01",
-        "mLapDist": track_len,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mDriverName": "Player Driver",
-                "mVehicleName": "Ferrari 499P #50",
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": player_lap_dist,
-                "mLocalVel": [0.0, 0.0, player_speed_mps],
-                "mInGarageStall": False,
-                "mInPits": player_in_pits,
-                "mPitState": player_pit_state,
-                "mPos": [10.0, 0.0, player_lap_dist],
-                "mFinishStatus": 0,
-            },
-            {
-                "mID": 2,
-                "mDriverName": "Ian James",
-                "mVehicleName": "Aston Martin #27",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": opp_lap_dist,
-                "mLocalVel": [0.0, 0.0, opp_speed_mps],
-                "mInGarageStall": False,
-                "mInPits": opp_in_pits,
-                "mPitState": opp_pit_state,
-                "mPos": [10.0, 0.0, opp_lap_dist],
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+    p_veh = VehicleScoring(
+        id=1,
+        driver_name="Player Driver",
+        vehicle_name="Ferrari 499P #50",
+        is_player=True,
+        control=0,
+        lap_dist=player_lap_dist,
+        local_vel=TelemVect3(0.0, 0.0, player_speed_mps),
+        in_garage_stall=False,
+        in_pits=player_in_pits,
+        pit_state=player_pit_state,
+        pos=TelemVect3(10.0, 0.0, player_lap_dist),
+        finish_status=0,
+    )
+    opp_veh = VehicleScoring(
+        id=2,
+        driver_name="Ian James",
+        vehicle_name="Aston Martin #27",
+        is_player=False,
+        control=1,
+        lap_dist=opp_lap_dist,
+        local_vel=TelemVect3(0.0, 0.0, opp_speed_mps),
+        in_garage_stall=False,
+        in_pits=opp_in_pits,
+        pit_state=opp_pit_state,
+        pos=TelemVect3(10.0, 0.0, opp_lap_dist),
+        finish_status=0,
+    )
+    return FullScoringSession(
+        session=10,
+        track_name="Test Track",
+        lap_dist=track_len,
+        vehicles=[p_veh, opp_veh],
+    )
 
 
 def test_pitlane_spotter_inactive_when_player_on_track():

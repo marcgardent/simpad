@@ -7,7 +7,19 @@ import unittest
 from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
 from src.engineer.context import EngineerContext
 from src.engineer.manager import RaceEngineer
-from isimotor_rawudp_client import CompactScoring, FullScoringSession, VehicleScoring, TelemInfo, TelemWheel, TelemVect3
+from isimotor_rawudp_client import (
+    CompactScoring,
+    FullScoringSession,
+    VehicleScoring,
+    TelemInfo,
+    TelemWheel,
+    TelemVect3,
+    WeatherControl,
+    ExtendedState,
+    SystemEvent,
+    ForceFeedback,
+    Graphics,
+)
 
 
 class TestTelemetryStateStore(unittest.TestCase):
@@ -156,6 +168,39 @@ class TestTelemetryStateStore(unittest.TestCase):
         # 4. First cut on track -> triggers time_deleted
         self.store.update_compact_scoring(CompactScoring(count_lap_flag=1, in_realtime=1, in_garage_stall=0), timestamp=15.0)
         self.assertEqual(self.store.consume_validity_transition(), "time_deleted")
+
+    def test_all_telemetry_channel_update_methods(self):
+        """Verify TelemetryStateStore provides update methods for all TelemetryChannel values."""
+        from simpad_qt.core.telemetry_channels import TelemetryChannel
+        from simpad_qt.plugins.contracts import TelemetryRawPacket
+        from simpad_qt.plugins.manager import PluginManager
+        from simpad_qt.core.config import ConfigManager
+
+        self.assertTrue(hasattr(self.store, "update_extended_state"))
+        self.assertTrue(hasattr(self.store, "update_opponent_telemetry"))
+        self.assertTrue(hasattr(self.store, "update_system_events"))
+        self.assertTrue(hasattr(self.store, "update_force_feedback"))
+        self.assertTrue(hasattr(self.store, "update_graphics"))
+        self.assertTrue(hasattr(self.store, "update_track_rules"))
+        self.assertTrue(hasattr(self.store, "update_pit_menu"))
+
+        pm = PluginManager(config_manager=ConfigManager())
+        channel_data_map = {
+            TelemetryChannel.TELEMETRY: TelemInfo(),
+            TelemetryChannel.OPPONENT_TELEMETRY: TelemInfo(),
+            TelemetryChannel.COMPACT_SCORING: CompactScoring(),
+            TelemetryChannel.FULL_SCORING: FullScoringSession(),
+            TelemetryChannel.WEATHER: WeatherControl(),
+            TelemetryChannel.EXTENDED_STATE: ExtendedState(),
+            TelemetryChannel.SYSTEM_EVENTS: SystemEvent(),
+            TelemetryChannel.FORCE_FEEDBACK: ForceFeedback(),
+            TelemetryChannel.GRAPHICS: Graphics(),
+            TelemetryChannel.TRACK_RULES: None,
+            TelemetryChannel.PIT_MENU: None,
+        }
+        for ch in TelemetryChannel:
+            pkt = TelemetryRawPacket(channel=ch, data=channel_data_map.get(ch), raw_bytes_len=64)
+            pm.dispatch_packet(pkt)
 
 
 if __name__ == "__main__":

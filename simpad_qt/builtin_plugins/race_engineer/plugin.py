@@ -36,13 +36,12 @@ from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket
 )
 from simpad_qt.core.reference_lap import LapDeltaPacket
-from src.telemetry.sensors import VehicleSensors
-from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.manager import RaceEngineer
-from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
-from src.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
-from src.utils.audio import AudioAnnouncer
-from src.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
+from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.core.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
+from simpad_qt.core.utils.audio import AudioAnnouncer
+from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
 
 logger = logging.getLogger("simpad.plugin.race_engineer")
 

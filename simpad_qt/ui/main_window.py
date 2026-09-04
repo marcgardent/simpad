@@ -23,7 +23,7 @@ from simpad_qt.ui.plugin_manager_widget import PluginManagerWidget
 from simpad_qt.ui.game_plugin_config_widget import GamePluginConfigWidget
 from simpad_qt.ui.status_bar import SimPadCoreStatusBar
 from simpad_qt.ui.theme import DARK_STYLESHEET
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import VehicleSensors
 
 
 class SimPadQtMainWindow(QMainWindow):

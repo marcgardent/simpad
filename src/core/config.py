@@ -32,14 +32,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 LOGGER_CATEGORY_MAP: Dict[str, List[str]] = {
-    "telemetry": ["src.telemetry", "telemetry"],
-    "engineer": ["src.engineer", "engineer"],
-    "schedule": ["src.schedule", "schedule"],
-    "haptics": ["src.haptics", "haptics"],
+    "telemetry": ["src.telemetry", "telemetry", "simpad_qt.core.telemetry"],
+    "engineer": ["src.engineer", "engineer", "simpad_qt.core.engineer"],
+    "schedule": ["src.schedule", "schedule", "simpad_qt.builtin_plugins.paddock_agent.schedule"],
+    "haptics": ["src.haptics", "haptics", "simpad_qt.core.haptics"],
     "gui": ["src.gui", "gui"],
-    "utils": ["src.utils", "utils"],
+    "utils": ["src.utils", "utils", "simpad_qt.core.utils"],
     "core": ["src.core", "core"],
-    "physics": ["src.physics", "physics"],
+    "physics": ["src.physics", "physics", "simpad_qt.core.physics"],
 }
 
 

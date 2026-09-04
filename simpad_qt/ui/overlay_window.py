@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QWidget, QApplication
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.plugins.contracts import IHudWidgetProvider
 from simpad_qt.ui.slot_compositor import HudSlotCompositor
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import VehicleSensors
 
 logger = logging.getLogger("simpad.overlay")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -48,8 +48,10 @@ class SimPadHudOverlayWindow(QWidget):
             screen.geometryChanged.connect(self.update_geometry_to_screen)
 
     def _load_custom_font(self) -> str:
-        """Load Anta-Regular.ttf custom racing font if available."""
-        font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
+        """Load Anta-Regular.ttf custom racing font from plugin fonts folder."""
+        font_path = _PROJECT_ROOT / "simpad_qt" / "builtin_plugins" / "official_cockpit_hud" / "fonts" / "Anta-Regular.ttf"
+        if not font_path.exists():
+            font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
         if font_path.exists():
             font_id = QFontDatabase.addApplicationFont(str(font_path))
             if font_id != -1:

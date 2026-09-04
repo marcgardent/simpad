@@ -26,13 +26,12 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement
 )
-from src.telemetry.sensors import VehicleSensors
-from src.telemetry.state_store import TelemetryStateStore
-from src.haptics.base import HapticController
-from src.haptics.factory import HapticBackendFactory
-from src.haptics.manager import HapticSubpluginManager
-from src.haptics.subplugins.base import BaseHapticSubplugin
-from src.engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam
+from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
+from simpad_qt.core.haptics.base import HapticController
+from simpad_qt.core.haptics.factory import HapticBackendFactory
+from simpad_qt.core.haptics.manager import HapticSubpluginManager
+from simpad_qt.core.haptics.subplugins.base import BaseHapticSubplugin
+from simpad_qt.core.engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam
 
 logger = logging.getLogger("simpad.plugin.haptic_feedback")
 

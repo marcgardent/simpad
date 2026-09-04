@@ -15,14 +15,16 @@ from PySide6.QtCore import QObject, Signal, QTimer
 if TYPE_CHECKING:
     from simpad_qt.plugins.manager import PluginManager
 
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import (
+    VehicleSensors,
+    UDPServer,
+    LMUParser,
+)
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelMetrics, TelemetryRawPacket
 )
 from simpad_qt.core.reference_lap import ReferenceLapManager, LapDeltaPacket
 from simpad_qt.core.mock_telemetry import MockTelemetryGenerator
-from src.telemetry.udp_server import UDPServer
-from src.telemetry.lmu_parser import LMUParser
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession, SystemEvent
 
 logger = logging.getLogger("simpad.telemetry_bus")

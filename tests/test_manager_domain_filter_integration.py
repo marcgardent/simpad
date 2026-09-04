@@ -7,6 +7,7 @@ et que le filtre de domaine fonctionne en conditions réelles (pas d'injection m
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 from src.engineer.manager import RaceEngineer
 from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from src.telemetry.reference_profile import ReferenceLapProfile
@@ -37,55 +38,57 @@ def _make_profile(track_length=5000.0, base_speed_kmh=200.0):
     )
 
 
-def _scoring_both_in_domain(track_len=5000.0):
+def _scoring_both_in_domain(track_len=5000.0) -> FullScoringSession:
     """
     Deux voitures dans le domaine normal (joueur 200 km/h, adversaire 225 km/h, ref 200 km/h).
     Delta = 25 km/h > seuil 20 km/h, TTC = 30 / 6.94 = 4.3s <= 5.0s.
     Sans filtre domaine, le spotter se déclenche. Avec filtre, il ne doit PAS.
     """
-    return {
-        "mLapDist": track_len,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mLapDist": 500.0,
-                "mLocalVel": [0.0, 0.0, 55.55],  # 200 km/h
-            },
-            {
-                "mID": 2,
-                "mIsPlayer": False,
-                "mDriverName": "Normal Racer",
-                "mLapDist": 470.0,  # 30m derrière
-                "mLocalVel": [0.0, 0.0, 62.5],  # 225 km/h
-            },
+    return FullScoringSession(
+        lap_dist=track_len,
+        vehicles=[
+            VehicleScoring(
+                id=1,
+                is_player=True,
+                lap_dist=500.0,
+                local_vel=TelemVect3(0.0, 0.0, 55.55),  # 200 km/h
+            ),
+            VehicleScoring(
+                id=2,
+                is_player=False,
+                control=1,
+                driver_name="Normal Racer",
+                lap_dist=470.0,  # 30m derrière
+                local_vel=TelemVect3(0.0, 0.0, 62.5),  # 225 km/h
+            ),
         ],
-    }
+    )
 
 
-def _scoring_player_crashed(track_len=5000.0):
+def _scoring_player_crashed(track_len=5000.0) -> FullScoringSession:
     """
     Joueur ralenti (80 km/h, hors domaine), adversaire à allure normale (200 km/h).
     Le filtre doit laisser passer l'alerte.
     """
-    return {
-        "mLapDist": track_len,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mLapDist": 500.0,
-                "mLocalVel": [0.0, 0.0, 22.22],  # 80 km/h
-            },
-            {
-                "mID": 2,
-                "mIsPlayer": False,
-                "mDriverName": "Fast Opponent",
-                "mLapDist": 460.0,  # 40m derrière
-                "mLocalVel": [0.0, 0.0, 55.55],  # 200 km/h
-            },
+    return FullScoringSession(
+        lap_dist=track_len,
+        vehicles=[
+            VehicleScoring(
+                id=1,
+                is_player=True,
+                lap_dist=500.0,
+                local_vel=TelemVect3(0.0, 0.0, 22.22),  # 80 km/h
+            ),
+            VehicleScoring(
+                id=2,
+                is_player=False,
+                control=1,
+                driver_name="Fast Opponent",
+                lap_dist=460.0,  # 40m derrière
+                local_vel=TelemVect3(0.0, 0.0, 55.55),  # 200 km/h
+            ),
         ],
-    }
+    )
 
 
 def test_manager_injects_reference_profile_into_context():
@@ -115,7 +118,9 @@ def test_manager_injects_reference_profile_into_context():
 
     scoring_normal = _scoring_both_in_domain()
 
-    with patch("src.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+        MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
         MockLMU._delta_engine = mock_delta_engine
 
         # Les deux dans le domaine → doit être filtré (pas d'alerte)
@@ -152,7 +157,9 @@ def test_manager_domain_filter_allows_anomaly():
 
     scoring_crash = _scoring_player_crashed()
 
-    with patch("src.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+        MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
         MockLMU._delta_engine = mock_delta_engine
 
         # Joueur hors domaine → l'alerte DOIT passer
@@ -186,7 +193,9 @@ def test_manager_no_profile_bypasses_filter():
 
     scoring = _scoring_both_in_domain()
 
-    with patch("src.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+        MockRefMgr.get_instance.return_value.get_active_profile.return_value = None
         MockLMU._delta_engine = mock_delta_engine
 
         # Sans profil, le filtre est bypassé → l'alerte passe (fail-open)

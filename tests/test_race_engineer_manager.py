@@ -172,11 +172,11 @@ def test_race_engineer_file_persistence(tmp_path):
 
 def test_individual_roles_disabled_behavior():
     """Vérifie que les rôles désactivés ne déclenchent aucun son ni alerte."""
+    from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3, CompactScoring
     from src.engineer.roles.lap_validity import LapValidityRole
     from src.engineer.roles.traffic_spotter import TrafficSpotterRole
     from src.engineer.roles.traffic_jam import TrafficJamRole
     from src.engineer.roles.pace_notes import PaceNotesRole
-    from src.telemetry.lmu_parser import TelemetryData
 
     played = []
     def mock_audio(phrase_key, interrupt=False):
@@ -185,21 +185,20 @@ def test_individual_roles_disabled_behavior():
     # 1. Lap Validity désactivé
     lap_role = LapValidityRole(audio_engine=mock_audio, enabled=False)
     assert lap_role.status == RoleStatus.IDLE
-    ctx_clean = EngineerContext(telemetry=TelemetryData(lap_flag=2))
+    ctx_clean = EngineerContext(scoring=CompactScoring(count_lap_flag=2))
     assert lap_role.update(ctx_clean) is None
     assert len(played) == 0
 
     # 2. Traffic Spotter désactivé
     spotter_role = TrafficSpotterRole(audio_engine=mock_audio, enabled=False)
     assert spotter_role.status == RoleStatus.IDLE
-    scoring_threat = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {"mID": 1, "mIsPlayer": True, "mLapDist": 500.0, "mLocalVel": [0, 0, 50]},
-            {"mID": 2, "mIsPlayer": False, "mLapDist": 460.0, "mLocalVel": [0, 0, 60]},
-        ]
-    }
+    scoring_threat = FullScoringSession(
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(id=1, is_player=True, lap_dist=500.0, local_vel=TelemVect3(0.0, 0.0, 50.0)),
+            VehicleScoring(id=2, is_player=False, control=1, lap_dist=460.0, local_vel=TelemVect3(0.0, 0.0, 60.0)),
+        ],
+    )
     assert spotter_role.update(EngineerContext(scoring=scoring_threat)) is None
     assert spotter_role.status == RoleStatus.IDLE
     assert len(played) == 0
@@ -207,14 +206,13 @@ def test_individual_roles_disabled_behavior():
     # 3. Traffic Jam désactivé
     jam_role = TrafficJamRole(audio_engine=mock_audio, enabled=False)
     assert jam_role.status == RoleStatus.IDLE
-    scoring_slow = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {"mID": 1, "mIsPlayer": True, "mLapDist": 500.0, "mLocalVel": [0, 0, 50]},
-            {"mID": 2, "mIsPlayer": False, "mLapDist": 540.0, "mLocalVel": [0, 0, 5]},
-        ]
-    }
+    scoring_slow = FullScoringSession(
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(id=1, is_player=True, lap_dist=500.0, local_vel=TelemVect3(0.0, 0.0, 50.0)),
+            VehicleScoring(id=2, is_player=False, control=1, lap_dist=540.0, local_vel=TelemVect3(0.0, 0.0, 5.0)),
+        ],
+    )
     assert jam_role.update(EngineerContext(scoring=scoring_slow)) is None
     assert jam_role.status == RoleStatus.IDLE
     assert len(played) == 0

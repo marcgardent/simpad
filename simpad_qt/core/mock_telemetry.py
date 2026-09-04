@@ -7,7 +7,7 @@ import math
 import time
 from typing import Optional
 from PySide6.QtCore import QObject, QTimer, Signal
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import VehicleSensors
 
 
 class MockTelemetryGenerator(QObject):

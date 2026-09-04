@@ -14,7 +14,7 @@ from typing import Optional
 from PySide6.QtCore import QObject, Signal, QTimer
 
 from simpad_qt.core.game_process_watcher import GameStatus, GameFocusState
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import VehicleSensors
 
 logger = logging.getLogger("simpad.overlay_state_machine")
 

@@ -23,8 +23,7 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket
 )
-from src.telemetry.sensors import VehicleSensors
-from src.telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 
 
 @dataclass

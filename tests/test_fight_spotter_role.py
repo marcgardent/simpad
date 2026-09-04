@@ -21,6 +21,9 @@ from src.engineer.roles.fight_spotter import (
 )
 
 
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
+
+
 def make_spotter_packet(
     player_pos=(100.0, 500.0),
     player_vel=(0.0, 30.0),  # ~108 km/h vers le Nord (+Z)
@@ -31,47 +34,56 @@ def make_spotter_packet(
 ):
     """Génère un paquet de scoring LMU pour tester le Fight Spotter."""
     opp_list = opponents or []
-    veh_list = [
-        {
-            "mID": 1,
-            "mDriverName": "Player Driver",
-            "mVehicleName": "Porsche 963 #5",
-            "mIsPlayer": True,
-            "mControl": 0,
-            "mLapDist": player_pos[1],
-            "mPos": [player_pos[0], 0.0, player_pos[1]],
-            "mLocalVel": [player_vel[0], 0.0, player_vel[1]],
-            "mInGarageStall": False,
-            "mInPits": player_in_pits,
-            "mPitState": 0,
-            "mFinishStatus": 0,
-        }
-    ]
+    cos_y = math.cos(player_yaw)
+    sin_y = math.sin(player_yaw)
+    ori = (
+        TelemVect3(cos_y, 0.0, -sin_y),
+        TelemVect3(0.0, 1.0, 0.0),
+        TelemVect3(sin_y, 0.0, cos_y),
+    )
+    p_veh = VehicleScoring(
+        id=1,
+        driver_name="Player Driver",
+        vehicle_name="Porsche 963 #5",
+        is_player=True,
+        control=0,
+        lap_dist=player_pos[1],
+        pos=TelemVect3(player_pos[0], 0.0, player_pos[1]),
+        local_vel=TelemVect3(player_vel[0], 0.0, player_vel[1]),
+        ori=ori,
+        in_garage_stall=False,
+        in_pits=player_in_pits,
+        pit_state=0,
+        finish_status=0,
+    )
+    veh_list = [p_veh]
 
     for i, opp in enumerate(opp_list, start=2):
         ox, oz = opp.get("pos", (player_pos[0], player_pos[1]))
         vx, vz = opp.get("vel", (0.0, 30.0))
         in_pits = opp.get("in_pits", False)
-        veh_list.append({
-            "mID": opp.get("id", i),
-            "mDriverName": opp.get("name", f"Opponent {i}"),
-            "mVehicleName": "Ferrari 499P #50",
-            "mIsPlayer": False,
-            "mControl": 1,
-            "mLapDist": oz,
-            "mPos": [ox, 0.0, oz],
-            "mLocalVel": [vx, 0.0, vz],
-            "mInGarageStall": False,
-            "mInPits": in_pits,
-            "mPitState": 0,
-            "mFinishStatus": 0,
-        })
+        veh_list.append(VehicleScoring(
+            id=opp.get("id", i),
+            driver_name=opp.get("name", f"Opponent {i}"),
+            vehicle_name="Ferrari 499P #50",
+            is_player=False,
+            control=1,
+            lap_dist=oz,
+            pos=TelemVect3(ox, 0.0, oz),
+            local_vel=TelemVect3(vx, 0.0, vz),
+            ori=ori,
+            in_garage_stall=False,
+            in_pits=in_pits,
+            pit_state=0,
+            finish_status=0,
+        ))
 
-    return {
-        "Type": "ScoringInfoV01",
-        "mLapDist": track_len,
-        "mVehicles": veh_list,
-    }
+    return FullScoringSession(
+        session=10,
+        track_name="Test Circuit",
+        lap_dist=track_len,
+        vehicles=veh_list,
+    )
 
 
 # =============================================================================

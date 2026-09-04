@@ -20,7 +20,7 @@
       "subplugin_configs": {
         "pitlane_spotter": {
           "enabled": false,
-          "priority": 110,
+          "priority": 120,
           "enable_unsafe_release": true,
           "unsafe_release_distance_m": 28.0,
           "unsafe_release_ttc_sec": 2.5,
@@ -32,7 +32,7 @@
         },
         "traffic_spotter": {
           "enabled": false,
-          "priority": 100,
+          "priority": 110,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "speed_delta_min_kmh": 20.0,
@@ -57,7 +57,7 @@
         },
         "traffic_jam": {
           "enabled": false,
-          "priority": 100,
+          "priority": 90,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "slow_speed_threshold_kmh": 40.0,
@@ -66,17 +66,12 @@
         },
         "lap_validity": {
           "enabled": true,
-          "priority": 100,
-          "busy_duration_sec": 1.8,
-          "investigation_debounce_sec": 0.0,
-          "announce_investigation": true,
-          "announce_cleared": true,
-          "announce_penalty": true,
-          "use_actionable_prompt": true
+          "priority": 80,
+          "busy_duration_sec": 1.8
         },
         "fight_spotter": {
           "enabled": false,
-          "priority": 90,
+          "priority": 70,
           "car_length_m": 3.7,
           "car_width_m": 1.9,
           "gap_needed_for_clear_m": 1.5,
@@ -337,6 +332,6 @@
           "sound_key": "gt_masters"
         }
       }
-    }
-  }
-}
+    },
+    "simpad.builtin.official_cockpit_hud": {
+      "slot": 

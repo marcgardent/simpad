@@ -1,7 +1,7 @@
 """
 Official SimPad Center Cockpit HUD Plugin (Qt6 Pure).
 
-Migrates the official SimPad modular overlay:
+Orchestrates the 12 modular HUD widgets:
 - Speedometer & Gear display with <60 km/h backdrop box.
 - Underrev / Overrev warning triangles.
 - 4-Tire tri-axial slip/lock/spin physical model gauges.
@@ -9,33 +9,27 @@ Migrates the official SimPad modular overlay:
 - Electronic assists (ABS purple, TC cyan) with level readouts.
 - Live lap delta timer & finish line lap freeze (purple/green/yellow/invalid).
 - S1, S2, S3 Sector times with live sector delta indicators.
-- Aerodynamic downforce bar (4-stage color ramp) & lap validity indicator dot.
+- Aerodynamic downforce bar (4-stage color ramp).
+- Lap validity & Clean lap badges (SVG icons, separate layer).
 - Remaining energy & laps counter.
 """
 
 from __future__ import annotations
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
-from PySide6.QtCore import Qt, QSize, QRectF, QPointF
-from PySide6.QtGui import (
-    QPainter, QColor, QFont, QPen, QBrush, QFontDatabase
-)
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QComboBox, QCheckBox, QGroupBox, QSlider, QScrollArea, QFrame
-)
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QPainter, QFontDatabase
+from PySide6.QtWidgets import QWidget
 
 from simpad_qt.plugins.contracts import (
     SimPadPlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider, HudSlot
 )
 from simpad_qt.core.reference_lap import LapDeltaPacket
-from src.telemetry.sensors import VehicleSensors
-from src.telemetry.state_store import TelemetryStateStore
-from src.gui.overlay.widgets import (
+from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
+from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     QtGearSpeedWidget,
     QtRevIndicatorWidget,
     QtAbsGaugeWidget,
@@ -46,299 +40,23 @@ from src.gui.overlay.widgets import (
     QtDeltaTimerWidget,
     QtSectorTimesWidget,
     QtAeroBarWidget,
+    QtLapStatusWidget,
     QtEnergyLapsWidget,
 )
+
+# Modular imports from submodules
+from simpad_qt.builtin_plugins.official_cockpit_hud.config import OfficialCockpitHudConfig
+from simpad_qt.builtin_plugins.official_cockpit_hud.preview_canvas import OfficialHudPreviewCanvas
+from simpad_qt.builtin_plugins.official_cockpit_hud.tab_widget import OfficialCockpitHudTabWidget
 
 logger = logging.getLogger("simpad.plugin.official_cockpit_hud")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
-@dataclass
-class OfficialCockpitHudConfig:
-    """Strongly-typed configuration schema for the Official Cockpit HUD."""
-    slot: HudSlot = HudSlot.COCKPIT_CENTER
-    hud_enabled: bool = True
-    speed_unit: str = "kmh"          # "kmh" or "mph"
-    scale: float = 1.0               # 0.7 to 1.5 multiplier
-    show_gear_speed: bool = True
-    show_rev_indicator: bool = True
-    show_pedals: bool = True
-    show_assists: bool = True
-    show_tires: bool = True
-    show_delta: bool = True
-    show_sectors: bool = True
-    show_aero: bool = True
-    show_energy: bool = True
-
-
-class OfficialHudPreviewCanvas(QWidget):
-    """
-    Live interactive vector preview canvas rendered inside the Studio Tab.
-    Displays pixel-identical HUD graphics as seen in-game.
-    """
-
-    def __init__(self, plugin: OfficialCockpitHudPlugin, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.plugin = plugin
-        self.setMinimumSize(640, 300)
-        self.setFixedHeight(310)
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
-
-            w = float(self.width())
-            h = float(self.height())
-
-            # Dark cockpit background container with subtle grid / border
-            bg_rect = QRectF(0, 0, w, h)
-            painter.setPen(QPen(QColor(30, 41, 59, 180), 1.5))
-            painter.setBrush(QBrush(QColor(10, 14, 20, 240)))
-            painter.drawRoundedRect(bg_rect, 8.0, 8.0)
-
-            # Paint HUD widgets inside local coordinate bounds
-            self.plugin.paint_hud(painter, w, h, self.plugin.latest_sensors)
-
-        finally:
-            painter.end()
-
-
-class OfficialCockpitHudTabWidget(QWidget):
-    """
-    Studio Tab Widget for the Official Cockpit HUD.
-    Provides live telemetry previews, real-time metrics readouts, and extensive configuration toggles.
-    """
-
-    def __init__(self, plugin: OfficialCockpitHudPlugin, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.plugin = plugin
-        self._init_ui()
-
-    def _init_ui(self) -> None:
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
-
-        # Scroll area to comfortably house preview + all configuration cards
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(12)
-
-        # ── 1. Live Vector HUD Preview Card ──
-        preview_group = QGroupBox("🏎️ Official Cockpit HUD — Live Dynamic Preview", container)
-        prev_layout = QVBoxLayout(preview_group)
-        self.preview_canvas = OfficialHudPreviewCanvas(self.plugin, preview_group)
-        prev_layout.addWidget(self.preview_canvas)
-        layout.addWidget(preview_group)
-
-        # ── 2. Live Telemetry Data Quick Cards ──
-        data_group = QGroupBox("📊 Live Telemetry Telemetry Status", container)
-        d_layout = QGridLayout(data_group)
-        d_layout.setSpacing(10)
-
-        # Speed / Gear
-        self.lbl_speed_gear = QLabel("0 KM/H  |  Gear: N", data_group)
-        self.lbl_speed_gear.setStyleSheet("font-size: 15px; font-weight: bold; color: #00d2ff;")
-        d_layout.addWidget(QLabel("Speed & Gear:", data_group), 0, 0)
-        d_layout.addWidget(self.lbl_speed_gear, 0, 1)
-
-        # Delta / Last Lap
-        self.lbl_delta = QLabel("Δ --:--.---  (Last: --:--.---)", data_group)
-        self.lbl_delta.setStyleSheet("font-size: 14px; font-weight: bold; color: #22c55e;")
-        d_layout.addWidget(QLabel("Delta & Lap Time:", data_group), 0, 2)
-        d_layout.addWidget(self.lbl_delta, 0, 3)
-
-        # Inputs (Brake / Throttle)
-        self.lbl_pedals = QLabel("THR: 0%  |  BRK: 0%", data_group)
-        self.lbl_pedals.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
-        d_layout.addWidget(QLabel("Pedal Inputs:", data_group), 1, 0)
-        d_layout.addWidget(self.lbl_pedals, 1, 1)
-
-        # Assists (ABS / TC)
-        self.lbl_assists = QLabel("ABS: 0% (lvl 0)  |  TC: 0% (lvl 0)", data_group)
-        self.lbl_assists.setStyleSheet("font-size: 14px; font-weight: bold; color: #a855f7;")
-        d_layout.addWidget(QLabel("Electronic Assists:", data_group), 1, 2)
-        d_layout.addWidget(self.lbl_assists, 1, 3)
-
-        layout.addWidget(data_group)
-
-        # ── 3. Overlay Positioning & Primary Settings ──
-        cfg_group = QGroupBox("⚙️ Overlay Placement & Scaling", container)
-        c_layout = QGridLayout(cfg_group)
-        c_layout.setSpacing(10)
-
-        # Slot selector
-        c_layout.addWidget(QLabel("Screen Slot Position:", cfg_group), 0, 0)
-        self.slot_combo = QComboBox(cfg_group)
-        for s in HudSlot:
-            self.slot_combo.addItem(s.value.replace("_", " ").title(), s)
-        idx = self.slot_combo.findData(self.plugin.config.slot)
-        if idx != -1:
-            self.slot_combo.setCurrentIndex(idx)
-        self.slot_combo.currentIndexChanged.connect(self._on_slot_changed)
-        c_layout.addWidget(self.slot_combo, 0, 1)
-
-        # Speed Unit selector
-        c_layout.addWidget(QLabel("Speedometer Units:", cfg_group), 0, 2)
-        self.unit_combo = QComboBox(cfg_group)
-        self.unit_combo.addItem("KM/H (Metric)", "kmh")
-        self.unit_combo.addItem("MPH (Imperial)", "mph")
-        if self.plugin.config.speed_unit == "mph":
-            self.unit_combo.setCurrentIndex(1)
-        self.unit_combo.currentIndexChanged.connect(self._on_unit_changed)
-        c_layout.addWidget(self.unit_combo, 0, 3)
-
-        # Scale slider
-        self.lbl_scale = QLabel(f"HUD Scale: {int(self.plugin.config.scale * 100)}%", cfg_group)
-        c_layout.addWidget(self.lbl_scale, 1, 0)
-        self.slider_scale = QSlider(Qt.Orientation.Horizontal, cfg_group)
-        self.slider_scale.setRange(70, 150)
-        self.slider_scale.setValue(int(self.plugin.config.scale * 100))
-        self.slider_scale.valueChanged.connect(self._on_scale_changed)
-        c_layout.addWidget(self.slider_scale, 1, 1)
-
-        # Master visible checkbox
-        self.chk_hud_visible = QCheckBox("Enable In-Game Overlay Display", cfg_group)
-        self.chk_hud_visible.setChecked(self.plugin.config.hud_enabled)
-        self.chk_hud_visible.toggled.connect(self._on_hud_toggled)
-        c_layout.addWidget(self.chk_hud_visible, 1, 2, 1, 2)
-
-        layout.addWidget(cfg_group)
-
-        # ── 4. Modular Sub-Component Toggles ──
-        mod_group = QGroupBox("🧩 Modular Component Toggles", container)
-        m_layout = QGridLayout(mod_group)
-        m_layout.setSpacing(10)
-
-        # Speed & Gear
-        self.chk_gear_speed = QCheckBox("Speedometer & Gear Display", mod_group)
-        self.chk_gear_speed.setChecked(self.plugin.config.show_gear_speed)
-        self.chk_gear_speed.toggled.connect(lambda v: self._update_flag("show_gear_speed", v))
-        m_layout.addWidget(self.chk_gear_speed, 0, 0)
-
-        # Rev Indicator Triangles
-        self.chk_rev = QCheckBox("Rev Indicator Triangles (Under/Overrev)", mod_group)
-        self.chk_rev.setChecked(self.plugin.config.show_rev_indicator)
-        self.chk_rev.toggled.connect(lambda v: self._update_flag("show_rev_indicator", v))
-        m_layout.addWidget(self.chk_rev, 0, 1)
-
-        # 4-Tire Dynamics
-        self.chk_tires = QCheckBox("4-Tire Tri-Axial Dynamics (Slip / Lock / Spin)", mod_group)
-        self.chk_tires.setChecked(self.plugin.config.show_tires)
-        self.chk_tires.toggled.connect(lambda v: self._update_flag("show_tires", v))
-        m_layout.addWidget(self.chk_tires, 0, 2)
-
-        # Pedal Inputs
-        self.chk_pedals = QCheckBox("Throttle & Brake Pedal Gauges", mod_group)
-        self.chk_pedals.setChecked(self.plugin.config.show_pedals)
-        self.chk_pedals.toggled.connect(lambda v: self._update_flag("show_pedals", v))
-        m_layout.addWidget(self.chk_pedals, 1, 0)
-
-        # Electronic Assists (ABS / TC)
-        self.chk_assists = QCheckBox("ABS & TC Electronic Assist Bars", mod_group)
-        self.chk_assists.setChecked(self.plugin.config.show_assists)
-        self.chk_assists.toggled.connect(lambda v: self._update_flag("show_assists", v))
-        m_layout.addWidget(self.chk_assists, 1, 1)
-
-        # Live Delta Chrono
-        self.chk_delta = QCheckBox("Live Lap Delta / Finish Lap Time", mod_group)
-        self.chk_delta.setChecked(self.plugin.config.show_delta)
-        self.chk_delta.toggled.connect(lambda v: self._update_flag("show_delta", v))
-        m_layout.addWidget(self.chk_delta, 1, 2)
-
-        # S1, S2, S3 Sectors
-        self.chk_sectors = QCheckBox("S1, S2, S3 Sector Times & Deltas", mod_group)
-        self.chk_sectors.setChecked(self.plugin.config.show_sectors)
-        self.chk_sectors.toggled.connect(lambda v: self._update_flag("show_sectors", v))
-        m_layout.addWidget(self.chk_sectors, 2, 0)
-
-        # Aero Downforce & Lap Validity
-        self.chk_aero = QCheckBox("Aerodynamic Load Bar & Lap Validity Indicator", mod_group)
-        self.chk_aero.setChecked(self.plugin.config.show_aero)
-        self.chk_aero.toggled.connect(lambda v: self._update_flag("show_aero", v))
-        m_layout.addWidget(self.chk_aero, 2, 1)
-
-        # Fuel & Energy
-        self.chk_energy = QCheckBox("Remaining Fuel / Energy & Laps", mod_group)
-        self.chk_energy.setChecked(self.plugin.config.show_energy)
-        self.chk_energy.toggled.connect(lambda v: self._update_flag("show_energy", v))
-        m_layout.addWidget(self.chk_energy, 2, 2)
-
-        layout.addWidget(mod_group)
-        layout.addStretch()
-
-        scroll.setWidget(container)
-        main_layout.addWidget(scroll)
-
-    def update_telemetry_ui(self, sensors: VehicleSensors) -> None:
-        """Update telemetry numbers and refresh preview canvas."""
-        spd = sensors.vehicle_speed * 3.6
-        unit = "KM/H"
-        if self.plugin.config.speed_unit == "mph":
-            spd *= 0.621371
-            unit = "MPH"
-
-        gear_str = "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear))
-        self.lbl_speed_gear.setText(f"{spd:.1f} {unit}  |  Gear: {gear_str}")
-
-        delta_str = sensors.last_lap_time_str if sensors.is_lap_freeze_active else sensors.delta_time_str
-        self.lbl_delta.setText(f"Δ {delta_str}  (Last: {sensors.last_lap_time_str})")
-
-        th = int(sensors.unfiltered_throttle * 100.0)
-        brk = int(sensors.unfiltered_brake * 100.0)
-        self.lbl_pedals.setText(f"THR: {th}%  |  BRK: {brk}%")
-
-        abs_pct = int(sensors.ecu_abs_active * 100.0)
-        tc_pct = int(max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0)
-        self.lbl_assists.setText(f"ABS: {abs_pct}% (lvl {sensors.ecu_abs_level})  |  TC: {tc_pct}% (lvl {sensors.ecu_tc_level})")
-        self.preview_canvas.update()
-
-    def update_delta_ui(self, delta: LapDeltaPacket) -> None:
-        """Update live delta indicators from authoritative LapDeltaPacket."""
-        if not self.isVisible():
-            return
-        delta_display = delta.last_lap_time_str if delta.is_lap_freeze_active else delta.delta_str
-        self.lbl_delta.setText(f"Δ {delta_display}  (Last: {delta.last_lap_time_str})")
-        self.preview_canvas.update()
-
-    def _on_slot_changed(self, index: int) -> None:
-        slot = self.slot_combo.currentData()
-        self.plugin.config.slot = slot
-        self.plugin.save_config()
-
-    def _on_unit_changed(self, index: int) -> None:
-        unit = self.unit_combo.currentData()
-        self.plugin.config.speed_unit = unit
-        self.plugin.save_config()
-        self.preview_canvas.update()
-
-    def _on_scale_changed(self, val: int) -> None:
-        scale = val / 100.0
-        self.plugin.config.scale = scale
-        self.lbl_scale.setText(f"HUD Scale: {val}%")
-        self.plugin.save_config()
-
-    def _on_hud_toggled(self, checked: bool) -> None:
-        self.plugin.config.hud_enabled = checked
-        self.plugin.save_config()
-
-    def _update_flag(self, field_name: str, val: bool) -> None:
-        setattr(self.plugin.config, field_name, val)
-        self.plugin.save_config()
-        self.preview_canvas.update()
-
-
 class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider):
     """
     Official SimPad Center Cockpit Racing HUD Plugin.
-    Implements Tab, Telemetry, and high-performance vector HUD rendering for the entire 11-widget telemetry suite.
+    Implements Tab, Telemetry, and high-performance vector HUD rendering for the 12-widget telemetry suite.
     """
 
     def __init__(self):
@@ -347,7 +65,7 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
             name="Official Cockpit HUD",
             version="2.0.0",
             author="SimPad Team",
-            description="Official SimPad Center Cockpit Racing HUD: Speedometer, Gear, Rev Triangles, 4-Tire Slip Dynamics, Live Delta, Sectors S1/S2/S3, Assists (ABS/TC), Pedals, Downforce & Energy.",
+            description="Official SimPad Center Cockpit Racing HUD: Speedometer, Gear, Rev Triangles, 4-Tire Slip Dynamics, Live Delta, Sectors S1/S2/S3, Assists (ABS/TC), Pedals, Downforce, Clean/Valid Lap Badges & Energy.",
             icon="🏎️",
             tags=("hud", "official", "cockpit", "telemetry", "overlay", "racing")
         ))
@@ -358,7 +76,7 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         # Font configuration
         self.font_family: str = self._load_custom_font()
 
-        # Instantiate all 11 modular HUD widgets
+        # Instantiate all 12 modular HUD widgets
         self.widget_abs = QtAbsGaugeWidget()
         self.widget_brake = QtBrakeGaugeWidget()
         self.widget_tires = QtTiresGaugeWidget()
@@ -367,6 +85,8 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         self.widget_gear_speed = QtGearSpeedWidget(font_family=self.font_family)
         self.widget_rev = QtRevIndicatorWidget()
         self.widget_aero = QtAeroBarWidget()
+        plugin_icons_dir = Path(__file__).resolve().parent / "icons"
+        self.widget_lap_status = QtLapStatusWidget(icons_dir=plugin_icons_dir)
         self.widget_delta = QtDeltaTimerWidget(font_family=self.font_family)
         self.widget_energy = QtEnergyLapsWidget(font_family=self.font_family)
         self.widget_sectors = QtSectorTimesWidget(font_family=self.font_family)
@@ -374,8 +94,10 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         self._active_tab_widget: Optional[OfficialCockpitHudTabWidget] = None
 
     def _load_custom_font(self) -> str:
-        """Load Anta-Regular.ttf custom racing font if available."""
-        font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
+        """Load Anta-Regular.ttf custom racing font from plugin fonts folder."""
+        font_path = Path(__file__).resolve().parent / "fonts" / "Anta-Regular.ttf"
+        if not font_path.exists():
+            font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
         if font_path.exists():
             font_id = QFontDatabase.addApplicationFont(str(font_path))
             if font_id != -1:
@@ -523,6 +245,16 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
             "overrev": sensors.overrev_intensity > 0.1,
             "lap_flag": sensors.lap_flag,
             "is_pit_lap": sensors.is_pit_lap,
+            "hit_count_current_lap": getattr(
+                sensors,
+                "hit_count_current_lap",
+                TelemetryStateStore.get_instance().hit_count_current_lap,
+            ),
+            "is_clean_lap": getattr(
+                sensors,
+                "is_clean_lap",
+                TelemetryStateStore.get_instance().is_clean_lap,
+            ),
         }
 
         # 1. Electronic Assists (ABS / TC)
@@ -547,9 +279,13 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         if self.config.show_rev_indicator:
             self.widget_rev.paint(painter, canvas_w, canvas_h, sensors, extra_data)
 
-        # 6. Aerodynamic Downforce Bar & Lap Validity Dot
+        # 6. Aerodynamic Downforce Bar
         if self.config.show_aero:
             self.widget_aero.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+
+        # 6b. Lap Status & Clean Lap Indicators (Separate Layer)
+        if self.config.show_lap_status:
+            self.widget_lap_status.paint(painter, canvas_w, canvas_h, sensors, extra_data)
 
         # 7. Live Lap Delta & Finished Lap Time
         if self.config.show_delta:
@@ -562,3 +298,12 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         # 9. S1, S2, S3 Sector Times
         if self.config.show_sectors:
             self.widget_sectors.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+
+
+# Re-export for backward compatibility
+__all__ = [
+    "OfficialCockpitHudPlugin",
+    "OfficialCockpitHudConfig",
+    "OfficialCockpitHudTabWidget",
+    "OfficialHudPreviewCanvas",
+]

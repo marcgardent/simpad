@@ -5,6 +5,7 @@ Vérifie la détection du domaine normal et le filtrage (il faut qu'au moins l'u
 
 import unittest
 from unittest.mock import MagicMock
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 from src.engineer.context import EngineerContext
 from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from src.engineer.roles.traffic_jam import TrafficJamRole
@@ -72,10 +73,10 @@ class TestTrafficDomainFilter(unittest.TestCase):
         """Vérifie la condition d'anomalie : il faut au moins l'un des deux hors domaine."""
         ctx = EngineerContext(reference_profile=self.profile)
 
-        p_in = {"mLapDist": 500.0, "mLocalVel": [0.0, 0.0, 55.55]}     # 200 km/h (ref 200) -> IN
-        o_in = {"mLapDist": 470.0, "mLocalVel": [0.0, 0.0, 61.11]}     # 220 km/h (ref 200) -> IN (delta 20 <= 30)
-        p_out = {"mLapDist": 500.0, "mLocalVel": [0.0, 0.0, 25.0]}     # 90 km/h (ref 200) -> OUT (delta 110 > 30)
-        o_out = {"mLapDist": 470.0, "mLocalVel": [0.0, 0.0, 77.77]}    # 280 km/h (ref 200) -> OUT (delta 80 > 30)
+        p_in = VehicleScoring(lap_dist=500.0, local_vel=TelemVect3(0.0, 0.0, 55.55))     # 200 km/h (ref 200) -> IN
+        o_in = VehicleScoring(lap_dist=470.0, local_vel=TelemVect3(0.0, 0.0, 61.11))     # 220 km/h (ref 200) -> IN (delta 20 <= 30)
+        p_out = VehicleScoring(lap_dist=500.0, local_vel=TelemVect3(0.0, 0.0, 25.0))     # 90 km/h (ref 200) -> OUT (delta 110 > 30)
+        o_out = VehicleScoring(lap_dist=470.0, local_vel=TelemVect3(0.0, 0.0, 77.77))    # 280 km/h (ref 200) -> OUT (delta 80 > 30)
 
         # Les deux sont IN -> pas d'anomalie -> False
         self.assertFalse(ctx.has_traffic_domain_anomaly(p_in, o_in, tolerance_kmh=30.0))
@@ -103,24 +104,25 @@ class TestTrafficDomainFilter(unittest.TestCase):
         # Delta TTC déclencherait normalement, MAIS les deux sont dans le domaine normal (200 et 225 vs ref 200).
         ctx_both_in = EngineerContext(
             reference_profile=self.profile,
-            scoring={
-                "mLapDist": 5000.0,
-                "mVehicles": [
-                    {
-                        "mID": 1,
-                        "mIsPlayer": True,
-                        "mLapDist": 500.0,
-                        "mLocalVel": [0.0, 0.0, 55.55],
-                    },
-                    {
-                        "mID": 2,
-                        "mIsPlayer": False,
-                        "mDriverName": "Opponent 1",
-                        "mLapDist": 470.0,
-                        "mLocalVel": [0.0, 0.0, 62.5],
-                    }
+            scoring=FullScoringSession(
+                lap_dist=5000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=500.0,
+                        local_vel=TelemVect3(0.0, 0.0, 55.55),
+                    ),
+                    VehicleScoring(
+                        id=2,
+                        is_player=False,
+                        control=1,
+                        driver_name="Opponent 1",
+                        lap_dist=470.0,
+                        local_vel=TelemVect3(0.0, 0.0, 62.5),
+                    )
                 ]
-            }
+            )
         )
 
         msg = spotter.update(ctx_both_in)
@@ -133,24 +135,25 @@ class TestTrafficDomainFilter(unittest.TestCase):
         # Le joueur est HORS DOMAINE -> L'alerte spotter doit se déclencher !
         ctx_player_out = EngineerContext(
             reference_profile=self.profile,
-            scoring={
-                "mLapDist": 5000.0,
-                "mVehicles": [
-                    {
-                        "mID": 1,
-                        "mIsPlayer": True,
-                        "mLapDist": 500.0,
-                        "mLocalVel": [0.0, 0.0, 22.22],
-                    },
-                    {
-                        "mID": 2,
-                        "mIsPlayer": False,
-                        "mDriverName": "Fast Opponent",
-                        "mLapDist": 460.0,
-                        "mLocalVel": [0.0, 0.0, 55.55],
-                    }
+            scoring=FullScoringSession(
+                lap_dist=5000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=500.0,
+                        local_vel=TelemVect3(0.0, 0.0, 22.22),
+                    ),
+                    VehicleScoring(
+                        id=2,
+                        is_player=False,
+                        control=1,
+                        driver_name="Fast Opponent",
+                        lap_dist=460.0,
+                        local_vel=TelemVect3(0.0, 0.0, 55.55),
+                    )
                 ]
-            }
+            )
         )
 
         msg2 = spotter.update(ctx_player_out)
@@ -185,24 +188,25 @@ class TestTrafficDomainFilter(unittest.TestCase):
         # Avec le filtre de référence, les deux sont dans le domaine normal (38 et 36 vs 40) -> Pas d'alerte !
         ctx_hairpin = EngineerContext(
             reference_profile=self.profile,
-            scoring={
-                "mLapDist": 5000.0,
-                "mVehicles": [
-                    {
-                        "mID": 1,
-                        "mIsPlayer": True,
-                        "mLapDist": 1050.0,
-                        "mLocalVel": [0.0, 0.0, 10.55],
-                    },
-                    {
-                        "mID": 2,
-                        "mIsPlayer": False,
-                        "mDriverName": "Hairpin Driver",
-                        "mLapDist": 1100.0,
-                        "mLocalVel": [0.0, 0.0, 10.0],
-                    }
+            scoring=FullScoringSession(
+                lap_dist=5000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=1050.0,
+                        local_vel=TelemVect3(0.0, 0.0, 10.55),
+                    ),
+                    VehicleScoring(
+                        id=2,
+                        is_player=False,
+                        control=1,
+                        driver_name="Hairpin Driver",
+                        lap_dist=1100.0,
+                        local_vel=TelemVect3(0.0, 0.0, 10.0),
+                    )
                 ]
-            }
+            )
         )
 
         msg = jam_role.update(ctx_hairpin)
@@ -215,24 +219,25 @@ class TestTrafficDomainFilter(unittest.TestCase):
         # Doit déclencher l'alerte "car" !
         ctx_straight = EngineerContext(
             reference_profile=self.profile,
-            scoring={
-                "mLapDist": 5000.0,
-                "mVehicles": [
-                    {
-                        "mID": 1,
-                        "mIsPlayer": True,
-                        "mLapDist": 1950.0,
-                        "mLocalVel": [0.0, 0.0, 54.16],
-                    },
-                    {
-                        "mID": 2,
-                        "mIsPlayer": False,
-                        "mDriverName": "Broken Car",
-                        "mLapDist": 2050.0,
-                        "mLocalVel": [0.0, 0.0, 9.72],
-                    }
+            scoring=FullScoringSession(
+                lap_dist=5000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=1950.0,
+                        local_vel=TelemVect3(0.0, 0.0, 54.16),
+                    ),
+                    VehicleScoring(
+                        id=2,
+                        is_player=False,
+                        control=1,
+                        driver_name="Broken Car",
+                        lap_dist=2050.0,
+                        local_vel=TelemVect3(0.0, 0.0, 9.72),
+                    )
                 ]
-            }
+            )
         )
 
         msg2 = jam_role.update(ctx_straight)

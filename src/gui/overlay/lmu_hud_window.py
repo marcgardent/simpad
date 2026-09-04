@@ -29,9 +29,11 @@ from src.gui.overlay.widgets import (
     QtDeltaTimerWidget,
     QtSectorTimesWidget,
     QtAeroBarWidget,
+    QtLapStatusWidget,
     QtEnergyLapsWidget,
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 from src.utils.window_utils import get_hud_rect, _PROJECT_ROOT
 
 
@@ -48,7 +50,7 @@ class LmuHudQtWindow(QWidget):
         # 1. Load Anta-Regular racing font
         self.font_family = self._load_custom_font()
 
-        # 2. Modular instantiation of 11 HUD widgets
+        # 2. Modular instantiation of 12 HUD widgets
         self._widgets = [
             QtAbsGaugeWidget(),
             QtBrakeGaugeWidget(),
@@ -58,6 +60,7 @@ class LmuHudQtWindow(QWidget):
             QtGearSpeedWidget(font_family=self.font_family),
             QtRevIndicatorWidget(),
             QtAeroBarWidget(),
+            QtLapStatusWidget(),
             QtDeltaTimerWidget(font_family=self.font_family),
             QtEnergyLapsWidget(font_family=self.font_family),
             QtSectorTimesWidget(font_family=self.font_family),
@@ -82,7 +85,9 @@ class LmuHudQtWindow(QWidget):
 
     def _load_custom_font(self) -> str:
         """Loads Anta-Regular.ttf into the Qt font database."""
-        font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
+        font_path = _PROJECT_ROOT / "simpad_qt" / "builtin_plugins" / "official_cockpit_hud" / "fonts" / "Anta-Regular.ttf"
+        if not font_path.exists():
+            font_path = _PROJECT_ROOT / "assets" / "fonts" / "Anta-Regular.ttf"
         if font_path.exists():
             font_id = QFontDatabase.addApplicationFont(str(font_path))
             if font_id != -1:
@@ -182,6 +187,16 @@ class LmuHudQtWindow(QWidget):
                 "overrev": sensors.overrev_intensity > 0.1,
                 "lap_flag": sensors.lap_flag,
                 "is_pit_lap": sensors.is_pit_lap,
+                "hit_count_current_lap": getattr(
+                    sensors,
+                    "hit_count_current_lap",
+                    TelemetryStateStore.get_instance().hit_count_current_lap,
+                ),
+                "is_clean_lap": getattr(
+                    sensors,
+                    "is_clean_lap",
+                    TelemetryStateStore.get_instance().is_clean_lap,
+                ),
             }
         self.update()
 

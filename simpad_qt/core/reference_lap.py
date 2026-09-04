@@ -18,7 +18,7 @@ from typing import Optional, Dict, Any, List, Tuple
 
 from PySide6.QtCore import QObject, Signal
 
-from src.telemetry.reference_profile import (
+from simpad_qt.core.telemetry.reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
     AnnotationType,
@@ -28,7 +28,7 @@ from src.telemetry.reference_profile import (
     find_telemetry_filepath_for_track,
     clean_name_identifier,
 )
-from src.telemetry.delta_engine import (
+from simpad_qt.core.telemetry.delta_engine import (
     DeltaEngine,
     DeltaReferenceMode,
     format_lap_time,
@@ -134,7 +134,7 @@ class ReferenceLapManager(QObject):
         self.config_manager = config_manager
         self.delta_engine = DeltaEngine()
         try:
-            from src.telemetry.lmu_parser import LMUParser
+            from simpad_qt.core.telemetry.lmu_parser import LMUParser
             LMUParser._delta_engine = self.delta_engine
         except Exception:
             pass

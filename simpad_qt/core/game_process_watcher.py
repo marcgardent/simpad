@@ -11,7 +11,7 @@ from typing import Optional
 import threading
 from PySide6.QtCore import QObject, Signal
 
-from src.utils.window_utils import (
+from simpad_qt.core.utils.window_utils import (
     get_lmu_window_status,
     is_lmu_running,
     is_lmu_foreground,
@@ -60,7 +60,7 @@ class GameProcessWatcher(QObject):
         self._wake_event = threading.Event()
 
         try:
-            from src.utils.window_utils import get_window_manager
+            from simpad_qt.core.utils.window_utils import get_window_manager
             self._wm = get_window_manager()
             self._wm.add_focus_listener(self._on_wm_focus_event)
         except Exception:

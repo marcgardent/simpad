@@ -38,9 +38,8 @@ from simpad_qt.core.reference_lap import (
     TrackAnnotation, AnnotationType, DeltaReferenceMode,
     DEFAULT_REF_LAPS_DIR, format_lap_time
 )
-from src.telemetry.sensors import VehicleSensors
-from src.telemetry.state_store import TelemetryStateStore
-from src.utils.audio import AudioAnnouncer
+from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
+from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpad.plugin.reference_lap_studio")
 

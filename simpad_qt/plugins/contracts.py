@@ -18,12 +18,15 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QWidget
 
 # Import normalized telemetry domain model
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry import (
+    VehicleSensors,
+    TelemetryStateStore,
+    TelemetryWakeReason,
+)
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, ChannelMetrics, TelemetryRawPacket
 )
 from simpad_qt.core.reference_lap import LapDeltaPacket
-from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 TConfig = TypeVar("TConfig")
 

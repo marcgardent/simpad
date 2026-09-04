@@ -1,1 +1,0 @@
-"""SimPad — profiles package."""

@@ -253,21 +253,24 @@ def test_telemetry_bus_and_plugin_delta_subscription(qapp, tmp_path):
     ref_mgr.delta_engine._apply_active_profile()
 
     # Feed scoring packet to TelemetryBus
-    scoring_data = {
-        "mTrackName": "LeMans",
-        "mLapDist": 3000.0,
-        "mVehicles": [{
-            "mIsPlayer": True,
-            "mVehicleName": "Porsche",
-            "mLapDist": 1500.0,
-            "mTimeIntoLap": 28.5,  # ref is 30.0s -> delta = -1.5s
-            "mSector": 2,
-            "mCountLapFlag": 2,
-        }]
-    }
+    from isimotor_rawudp_client import VehicleScoring, FullScoringSession
+    player = VehicleScoring(
+        id=1,
+        is_player=True,
+        vehicle_name="Porsche",
+        lap_dist=1500.0,
+        time_into_lap=28.5,  # ref is 30.0s -> delta = -1.5s
+        sector=2,
+        count_lap_flag=2,
+    )
+    scoring_data = FullScoringSession(
+        track_name="LeMans",
+        lap_dist=3000.0,
+        vehicles=[player],
+    )
 
     from simpad_qt.core.telemetry_channels import TelemetryChannel
-    bus.process_raw_packet(TelemetryChannel.COMPACT_SCORING, scoring_data, 184)
+    bus.process_raw_packet(TelemetryChannel.FULL_SCORING, scoring_data, 184)
 
     # Verify dummy plugin received authoritative LapDeltaPacket
     assert len(dummy_plugin.received_deltas) == 1

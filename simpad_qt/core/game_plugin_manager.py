@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 from PySide6.QtCore import QObject, Signal
 
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-from src.telemetry.plugin_installer import LMUPluginManager, SimulatorInstallInfo
+from simpad_qt.core.telemetry.plugin_installer import LMUPluginManager, SimulatorInstallInfo
 
 logger = logging.getLogger("simpad.game_plugin_manager")
 

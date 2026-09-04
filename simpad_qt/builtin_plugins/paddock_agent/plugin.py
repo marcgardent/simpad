@@ -28,10 +28,10 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement
 )
-from src.schedule.manager import (
+from .schedule import (
     LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
 )
-from src.utils.audio import AudioAnnouncer
+from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpad.plugin.paddock_agent")
 

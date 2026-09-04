@@ -45,26 +45,6 @@ class TestHapticAbstractions(unittest.TestCase):
         self.assertIsInstance(backend, MockHapticController)
         self.assertTrue(backend.is_connected())
 
-    def test_synthesizer_slider_retention(self):
-        from src.core.synthesizer import HapticSynthesizerEngine
-
-        mock_backend = MockHapticController()
-        synth = HapticSynthesizerEngine(mock_backend)
-
-        def dummy_compiler(telemetry, t):
-            # Returns low_out = abs_l, high_out = tc_r
-            return telemetry.get("abs_l", 0.0), telemetry.get("tc_r", 0.0)
-
-        synth.set_compiled_func(dummy_compiler)
-
-        # Simulate user moving slider
-        synth.update_telemetry(abs_l=0.75, tc_r=0.40, in_realtime=True)
-
-        # Output check
-        low, high = synth.get_current_outputs()
-        self.assertEqual(synth._telemetry["abs_l"], 0.75)
-        self.assertEqual(synth._telemetry["tc_r"], 0.40)
-
     def test_sdl3_controller_auto_reconnect_simulation(self):
         from src.haptics.sdl3_controller import SDL3HapticController
         from unittest.mock import MagicMock

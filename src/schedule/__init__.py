@@ -1,27 +1,16 @@
 """
-SimPad Official LMU Schedule & Notification Engine.
+Legacy forwarder package for schedule.
+All implementations have been migrated to simpad_qt.builtin_plugins.paddock_agent.schedule.
 """
+import sys
+import simpad_qt.builtin_plugins.paddock_agent.schedule as _schedule
+import simpad_qt.builtin_plugins.paddock_agent.schedule.manager as _manager
 
-from src.schedule.manager import (
-    LMUScheduleManager,
-    LMUScheduleClient,
-    RaceSetupConfig,
-    RaceTierConfig,
-    RaceEvent,
-    DEFAULT_RACE_SETUPS,
-    DEFAULT_RACE_TIERS,
-    clean_series_key,
-    make_setup_key,
-)
+# Populate sys.modules so legacy imports directly resolve
+sys.modules["src.schedule.manager"] = _manager
+manager = _manager
 
-__all__ = [
-    "LMUScheduleManager",
-    "LMUScheduleClient",
-    "RaceSetupConfig",
-    "RaceTierConfig",
-    "RaceEvent",
-    "DEFAULT_RACE_SETUPS",
-    "DEFAULT_RACE_TIERS",
-    "clean_series_key",
-    "make_setup_key",
-]
+for _mod in (_schedule, _manager):
+    for _k, _v in _mod.__dict__.items():
+        if not _k.startswith("__"):
+            globals()[_k] = _v

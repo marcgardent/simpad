@@ -28,8 +28,11 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.config import ConfigManager
 from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryRawPacket, TelemetryChannel
 from simpad_qt.core.reference_lap import LapDeltaPacket
-from src.telemetry.sensors import VehicleSensors
-from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.telemetry import (
+    VehicleSensors,
+    TelemetryStateStore,
+    TelemetryWakeReason,
+)
 
 
 class PluginManager(QObject):
@@ -295,6 +298,8 @@ class PluginManager(QObject):
         if ch == TelemetryChannel.TELEMETRY:
             store.update_telemetry(data, t)
             hook_name = "on_physics_tick"
+        elif ch == TelemetryChannel.OPPONENT_TELEMETRY:
+            store.update_opponent_telemetry(data, t)
         elif ch == TelemetryChannel.COMPACT_SCORING:
             store.update_compact_scoring(data, t)
             hook_name = "on_scoring_update"
@@ -309,6 +314,14 @@ class PluginManager(QObject):
         elif ch == TelemetryChannel.SYSTEM_EVENTS:
             store.update_system_events(data, t)
             hook_name = "on_session_event"
+        elif ch == TelemetryChannel.FORCE_FEEDBACK:
+            store.update_force_feedback(data, t)
+        elif ch == TelemetryChannel.GRAPHICS:
+            store.update_graphics(data, t)
+        elif ch == TelemetryChannel.TRACK_RULES:
+            store.update_track_rules(data, t)
+        elif ch == TelemetryChannel.PIT_MENU:
+            store.update_pit_menu(data, t)
 
         # 2. Dispatch polymorphic hook and IPacketSubscriber callback
         for pid, p in list(self._plugins.items()):

@@ -9,59 +9,62 @@ from src.engineer.base import RoleStatus
 from src.telemetry.lmu_parser import TelemetryData
 
 
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
+
+
 def make_scoring_packet(player_dist, player_speed_mps, opp_dist, opp_speed_mps, track_len=5000.0, opp_id=2):
     """Helper pour construire un paquet de scoring LMU réaliste."""
-    return {
-        "Type": "ScoringInfoV01",
-        "mLapDist": track_len,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mDriverName": "Player Driver",
-                "mVehicleName": "Ferrari 499P #50",
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": player_dist,
-                "mLocalVel": [0.0, 0.0, player_speed_mps],
-                "mInGarageStall": False,
-                "mInPits": False,
-                "mFinishStatus": 0,
-            },
-            {
-                "mID": opp_id,
-                "mDriverName": "Ian James",
-                "mVehicleName": "Aston Martin Vantage #27",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": opp_dist,
-                "mLocalVel": [0.0, 0.0, opp_speed_mps],
-                "mInGarageStall": False,
-                "mInPits": False,
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+    p_veh = VehicleScoring(
+        id=1,
+        driver_name="Player Driver",
+        vehicle_name="Ferrari 499P #50",
+        is_player=True,
+        control=0,
+        lap_dist=float(player_dist),
+        local_vel=TelemVect3(0.0, 0.0, float(player_speed_mps)),
+        in_garage_stall=False,
+        in_pits=False,
+        finish_status=0,
+    )
+    opp = VehicleScoring(
+        id=opp_id,
+        driver_name="Ian James",
+        vehicle_name="Aston Martin Vantage #27",
+        is_player=False,
+        control=1,
+        lap_dist=float(opp_dist),
+        local_vel=TelemVect3(0.0, 0.0, float(opp_speed_mps)),
+        in_garage_stall=False,
+        in_pits=False,
+        finish_status=0,
+    )
+    return FullScoringSession(
+        session=10,
+        track_name="Test Track",
+        lap_dist=float(track_len),
+        vehicles=[p_veh, opp],
+    )
 
 
 def test_distance_behind_calculation_with_wraparound():
     """Vérifie le calcul correct de distance relative avec passage de ligne de départ/arrivée."""
-    ctx = EngineerContext(scoring={"mLapDist": 5000.0})
-    p_veh = {"mLapDist": 100.0}
-    o_veh = {"mLapDist": 80.0}
+    ctx = EngineerContext(scoring=FullScoringSession(lap_dist=5000.0))
+    p_veh = VehicleScoring(lap_dist=100.0)
+    o_veh = VehicleScoring(lap_dist=80.0)
 
     # Adversaire 20m derrière
     dist = ctx.compute_distance_behind(p_veh, o_veh, 5000.0)
     assert dist == pytest.approx(20.0, 0.01)
 
     # Rebouclage : Joueur à 20m, adversaire à 4980m (donc 40m derrière le joueur)
-    p_veh2 = {"mLapDist": 20.0}
-    o_veh2 = {"mLapDist": 4980.0}
+    p_veh2 = VehicleScoring(lap_dist=20.0)
+    o_veh2 = VehicleScoring(lap_dist=4980.0)
     dist2 = ctx.compute_distance_behind(p_veh2, o_veh2, 5000.0)
     assert dist2 == pytest.approx(40.0, 0.01)
 
     # Adversaire 30m devant
-    p_veh3 = {"mLapDist": 100.0}
-    o_veh3 = {"mLapDist": 130.0}
+    p_veh3 = VehicleScoring(lap_dist=100.0)
+    o_veh3 = VehicleScoring(lap_dist=130.0)
     dist3 = ctx.compute_distance_behind(p_veh3, o_veh3, 5000.0)
     assert dist3 == pytest.approx(-30.0, 0.01)
 
@@ -193,40 +196,26 @@ def test_traffic_spotter_multi_car_chaining():
     role = TrafficSpotterRole(audio_engine=mock_audio)
 
     # Paquet avec 2 adversaires
-    scoring_multi = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": 1000.0,
-                "mLocalVel": [0.0, 0.0, 50.0],
-                "mFinishStatus": 0,
-            },
+    scoring_multi = FullScoringSession(
+        session=10,
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(
+                id=1, is_player=True, control=0, lap_dist=1000.0,
+                local_vel=TelemVect3(0.0, 0.0, 50.0), finish_status=0,
+            ),
             # Voiture 1 : Overlap (0.5m derrière)
-            {
-                "mID": 2,
-                "mDriverName": "Car 1",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 999.5,
-                "mLocalVel": [0.0, 0.0, 60.0],
-                "mFinishStatus": 0,
-            },
+            VehicleScoring(
+                id=2, driver_name="Car 1", is_player=False, control=1, lap_dist=999.5,
+                local_vel=TelemVect3(0.0, 0.0, 60.0), finish_status=0,
+            ),
             # Voiture 2 : Juste derrière la 1ère (20m derrière le joueur à +10 m/s -> TTC = 2s)
-            {
-                "mID": 3,
-                "mDriverName": "Car 2",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 980.0,
-                "mLocalVel": [0.0, 0.0, 60.0],
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+            VehicleScoring(
+                id=3, driver_name="Car 2", is_player=False, control=1, lap_dist=980.0,
+                local_vel=TelemVect3(0.0, 0.0, 60.0), finish_status=0,
+            ),
+        ],
+    )
 
     # 1. Initie le suivi sur Voiture 1
     role.update(EngineerContext(scoring=scoring_multi))
@@ -235,40 +224,26 @@ def test_traffic_spotter_multi_car_chaining():
     role.target_vehicle_id = 2
 
     # 2. Voiture 1 passe devant (15m devant), mais Voiture 2 est à 15m derrière avec TTC = 1.5s
-    scoring_multi_pass = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": 1050.0,
-                "mLocalVel": [0.0, 0.0, 50.0],
-                "mFinishStatus": 0,
-            },
+    scoring_multi_pass = FullScoringSession(
+        session=10,
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(
+                id=1, is_player=True, control=0, lap_dist=1050.0,
+                local_vel=TelemVect3(0.0, 0.0, 50.0), finish_status=0,
+            ),
             # Voiture 1 : 15m devant
-            {
-                "mID": 2,
-                "mDriverName": "Car 1",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 1065.0,
-                "mLocalVel": [0.0, 0.0, 60.0],
-                "mFinishStatus": 0,
-            },
+            VehicleScoring(
+                id=2, driver_name="Car 1", is_player=False, control=1, lap_dist=1065.0,
+                local_vel=TelemVect3(0.0, 0.0, 60.0), finish_status=0,
+            ),
             # Voiture 2 : 15m derrière à 60 m/s (TTC = 1.5s)
-            {
-                "mID": 3,
-                "mDriverName": "Car 2",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 1035.0,
-                "mLocalVel": [0.0, 0.0, 60.0],
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+            VehicleScoring(
+                id=3, driver_name="Car 2", is_player=False, control=1, lap_dist=1035.0,
+                local_vel=TelemVect3(0.0, 0.0, 60.0), finish_status=0,
+            ),
+        ],
+    )
 
     msg = role.update(EngineerContext(scoring=scoring_multi_pass))
     # Ne doit PAS avoir dit clear, mais avoir basculé sur la Voiture 2 !
@@ -278,7 +253,7 @@ def test_traffic_spotter_multi_car_chaining():
 
 
 def test_traffic_spotter_ignores_pit_lane_opponents():
-    """Vérifie que les adversaires dans la pitlane (mInPits=True) sont ignorés par le spotter en piste."""
+    """Vérifie que les adversaires dans la pitlane (in_pits=True) sont ignorés par le spotter en piste."""
     played = []
 
     def mock_audio(phrase_key, interrupt=False):
@@ -286,34 +261,21 @@ def test_traffic_spotter_ignores_pit_lane_opponents():
 
     role = TrafficSpotterRole(audio_engine=mock_audio)
 
-    # Adversaire rapide juste derrière le joueur, mais dans la pitlane (mInPits=True)
-    scoring_pit_opp = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": 1000.0,
-                "mLocalVel": [0.0, 0.0, 50.0],
-                "mInPits": False,
-                "mInGarageStall": False,
-                "mFinishStatus": 0,
-            },
-            {
-                "mID": 2,
-                "mDriverName": "Pit Lane Car",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 970.0,
-                "mLocalVel": [0.0, 0.0, 60.0],  # Vitesse plus rapide mais en pitlane
-                "mInPits": True,
-                "mInGarageStall": False,
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+    # Adversaire rapide juste derrière le joueur, mais dans la pitlane (in_pits=True)
+    scoring_pit_opp = FullScoringSession(
+        session=10,
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(
+                id=1, is_player=True, control=0, lap_dist=1000.0,
+                local_vel=TelemVect3(0.0, 0.0, 50.0), in_pits=False, in_garage_stall=False, finish_status=0,
+            ),
+            VehicleScoring(
+                id=2, driver_name="Pit Lane Car", is_player=False, control=1, lap_dist=970.0,
+                local_vel=TelemVect3(0.0, 0.0, 60.0), in_pits=True, in_garage_stall=False, finish_status=0,
+            ),
+        ],
+    )
 
     msg = role.update(EngineerContext(scoring=scoring_pit_opp))
     assert msg is None
@@ -331,34 +293,21 @@ def test_traffic_spotter_deactivated_when_player_in_pits():
 
     role = TrafficSpotterRole(audio_engine=mock_audio)
 
-    # Joueur dans les stands (mInPits=True), une voiture arrive très vite sur la ligne droite des stands
-    scoring_player_in_pits = {
-        "Type": "ScoringInfoV01",
-        "mLapDist": 5000.0,
-        "mVehicles": [
-            {
-                "mID": 1,
-                "mIsPlayer": True,
-                "mControl": 0,
-                "mLapDist": 1000.0,
-                "mLocalVel": [0.0, 0.0, 16.0],  # 60 km/h en pitlane
-                "mInPits": True,
-                "mInGarageStall": False,
-                "mFinishStatus": 0,
-            },
-            {
-                "mID": 2,
-                "mDriverName": "Track Car",
-                "mIsPlayer": False,
-                "mControl": 1,
-                "mLapDist": 960.0,
-                "mLocalVel": [0.0, 0.0, 70.0],  # 250 km/h sur piste
-                "mInPits": False,
-                "mInGarageStall": False,
-                "mFinishStatus": 0,
-            }
-        ]
-    }
+    # Joueur dans les stands (in_pits=True), une voiture arrive très vite sur la ligne droite des stands
+    scoring_player_in_pits = FullScoringSession(
+        session=10,
+        lap_dist=5000.0,
+        vehicles=[
+            VehicleScoring(
+                id=1, is_player=True, control=0, lap_dist=1000.0,
+                local_vel=TelemVect3(0.0, 0.0, 16.0), in_pits=True, in_garage_stall=False, finish_status=0,
+            ),
+            VehicleScoring(
+                id=2, driver_name="Track Car", is_player=False, control=1, lap_dist=960.0,
+                local_vel=TelemVect3(0.0, 0.0, 70.0), in_pits=False, in_garage_stall=False, finish_status=0,
+            ),
+        ],
+    )
 
     msg = role.update(EngineerContext(scoring=scoring_player_in_pits))
     assert msg is None
@@ -368,7 +317,7 @@ def test_traffic_spotter_deactivated_when_player_in_pits():
 
 
 def test_traffic_spotter_tracked_car_enters_pits_aborts():
-    """Vérifie que si la voiture suivie rentre aux stands (mInPits devient True), le spotter lâche la cible proprement."""
+    """Vérifie que si la voiture suivie rentre aux stands (in_pits devient True), le spotter lâche la cible proprement."""
     played = []
 
     def mock_audio(phrase_key, interrupt=False):
@@ -382,9 +331,9 @@ def test_traffic_spotter_tracked_car_enters_pits_aborts():
     assert role.state == TrafficSpotterState.APPROACHING
     assert role.target_vehicle_id == 2
 
-    # 2. La voiture suivie prend la voie des stands (mInPits=True)
+    # 2. La voiture suivie prend la voie des stands (in_pits=True)
     sc2 = make_scoring_packet(player_dist=550.0, player_speed_mps=50.0, opp_dist=530.0, opp_speed_mps=30.0)
-    sc2["mVehicles"][1]["mInPits"] = True
+    sc2.vehicles[1].in_pits = True
 
     msg = role.update(EngineerContext(scoring=sc2))
     assert msg is None

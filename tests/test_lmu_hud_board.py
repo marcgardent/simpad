@@ -6,7 +6,7 @@ import unittest
 from src.utils.window_utils import get_hud_rect, get_screen_dimensions
 from src.gui.dashboards.manager import DashboardManager
 from src.gui.overlay.lmu_hud_window import LmuHudQtWindow
-from src.gui.overlay.widgets import (
+from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     QtAbsGaugeWidget,
     QtBrakeGaugeWidget,
     QtThrottleGaugeWidget,
@@ -19,11 +19,16 @@ from src.gui.overlay.widgets import (
     QtEnergyLapsWidget,
     QtSectorTimesWidget,
 )
-from src.gui.overlay.widgets.tires_gauge import get_qt_tire_colors
+from simpad_qt.builtin_plugins.official_cockpit_hud.widgets.tires_gauge import get_qt_tire_colors
 from src.telemetry.sensors import VehicleSensors
 
 
 class TestQtHudOverlay(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.app = QApplication.instance() or QApplication([])
+
     def test_get_hud_rect_geometry(self):
         """Verify get_hud_rect positioning for 2nd horizontal third and 2nd vertical half."""
         sw, sh = get_screen_dimensions()

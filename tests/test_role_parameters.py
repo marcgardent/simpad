@@ -11,6 +11,7 @@ from src.engineer.context import EngineerContext
 from src.engineer.roles.pace_notes import PaceNotesRole
 from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from src.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 
 
 class DummyCustomRole(BaseRole):
@@ -106,17 +107,18 @@ class TestRoleParameters(unittest.TestCase):
         role.set_reference_profile(profile)
 
         context = EngineerContext(
-            scoring={
-                "mLapDist": 1000.0,
-                "mVehicles": [
-                    {
-                        "mIsPlayer": True,
-                        "mLapDist": 185.0,  # within lead distance of 200m
-                        "mTotalLaps": 1,
-                        "mLocalVel": {"x": 20.0, "y": 0.0, "z": 0.0},
-                    }
+            scoring=FullScoringSession(
+                lap_dist=1000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=185.0,  # within lead distance of 200m
+                        total_laps=1,
+                        local_vel=TelemVect3(0.0, 0.0, 20.0),
+                    )
                 ]
-            },
+            ),
             timestamp=10.0,
             audio_engine=mock_audio,
         )
@@ -134,7 +136,7 @@ class TestRoleParameters(unittest.TestCase):
         self.assertEqual(msg2.phrase_key, "brake")
 
         # 3. Advance vehicle to 205m -> approaching Gear 3 (210m)
-        context.scoring["mVehicles"][0]["mLapDist"] = 205.0
+        context.scoring.vehicles[0].lap_dist = 205.0
         context.timestamp = 12.0
         # Disable gear announcements
         role.set_param_value("enable_gear", False)
@@ -153,25 +155,28 @@ class TestRoleParameters(unittest.TestCase):
         # Opponent behind by 30m approaching at +30 km/h (8.33 m/s) -> TTC = 30 / 8.33 = 3.6s
         # Player at 100 km/h (27.77 m/s), Opponent at 130 km/h (36.11 m/s)
         context = EngineerContext(
-            scoring={
-                "mLapDist": 5000.0,
-                "mVehicles": [
-                    {
-                        "mIsPlayer": True,
-                        "mDriverName": "Player",
-                        "mVehicleName": "Ferrari",
-                        "mLapDist": 1000.0,
-                        "mLocalVel": {"x": 27.77, "y": 0.0, "z": 0.0},
-                    },
-                    {
-                        "mIsPlayer": False,
-                        "mDriverName": "Opponent",
-                        "mVehicleName": "Porsche",
-                        "mLapDist": 970.0,  # 30m behind
-                        "mLocalVel": {"x": 36.11, "y": 0.0, "z": 0.0}, # +30 km/h
-                    }
+            scoring=FullScoringSession(
+                lap_dist=5000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        driver_name="Player",
+                        vehicle_name="Ferrari",
+                        lap_dist=1000.0,
+                        local_vel=TelemVect3(0.0, 0.0, 27.77),
+                    ),
+                    VehicleScoring(
+                        id=2,
+                        is_player=False,
+                        control=1,
+                        driver_name="Opponent",
+                        vehicle_name="Porsche",
+                        lap_dist=970.0,  # 30m behind
+                        local_vel=TelemVect3(0.0, 0.0, 36.11),  # +30 km/h
+                    )
                 ]
-            },
+            ),
             timestamp=10.0,
             audio_engine=mock_audio,
         )

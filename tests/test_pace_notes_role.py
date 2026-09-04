@@ -4,6 +4,7 @@ Unit tests for PaceNotesRole (Race Engineer pace notes and track markers announc
 
 import unittest
 from unittest.mock import MagicMock
+from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 from src.engineer.context import EngineerContext
 from src.engineer.roles.pace_notes import PaceNotesRole
 from src.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
@@ -31,17 +32,18 @@ class TestPaceNotesRole(unittest.TestCase):
     def test_anticipation_and_triggering(self):
         """At 20 m/s with 1.0s anticipation (lead=20m), when car is at 185m, Brake (200m) should trigger!"""
         context = EngineerContext(
-            scoring={
-                "mLapDist": 1000.0,
-                "mVehicles": [
-                    {
-                        "mIsPlayer": True,
-                        "mLapDist": 185.0,  # 15m before 200m -> within 20m window
-                        "mTotalLaps": 1,
-                        "mLocalVel": {"x": 20.0, "y": 0.0, "z": 0.0},
-                    }
+            scoring=FullScoringSession(
+                lap_dist=1000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=185.0,  # 15m before 200m -> within 20m window
+                        total_laps=1,
+                        local_vel=TelemVect3(0.0, 0.0, 20.0),
+                    )
                 ]
-            },
+            ),
             timestamp=10.0,
             audio_engine=self.mock_audio,
         )
@@ -53,7 +55,7 @@ class TestPaceNotesRole(unittest.TestCase):
 
         # Second update at 186m in same lap should NOT re-trigger brake
         context.timestamp = 10.1
-        context.scoring["mVehicles"][0]["mLapDist"] = 186.0
+        context.scoring.vehicles[0].lap_dist = 186.0
         msg2 = self.role.update(context)
         self.assertIsNone(msg2)
 
@@ -61,17 +63,18 @@ class TestPaceNotesRole(unittest.TestCase):
         """As the vehicle progresses along track, gear 2, turn-in, and turn 1 trigger sequentially."""
         # Vehicle at 210m (lead=20m -> reaches gear at 220m)
         context = EngineerContext(
-            scoring={
-                "mLapDist": 1000.0,
-                "mVehicles": [
-                    {
-                        "mIsPlayer": True,
-                        "mLapDist": 210.0,
-                        "mTotalLaps": 1,
-                        "mLocalVel": {"x": 20.0, "y": 0.0, "z": 0.0},
-                    }
+            scoring=FullScoringSession(
+                lap_dist=1000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=210.0,
+                        total_laps=1,
+                        local_vel=TelemVect3(0.0, 0.0, 20.0),
+                    )
                 ]
-            },
+            ),
             timestamp=12.0,
             audio_engine=self.mock_audio,
         )
@@ -81,7 +84,7 @@ class TestPaceNotesRole(unittest.TestCase):
 
         # Vehicle at 235m (lead=20m -> reaches turn 1 at 250m)
         context.timestamp = 13.0
-        context.scoring["mVehicles"][0]["mLapDist"] = 235.0
+        context.scoring.vehicles[0].lap_dist = 235.0
         msg = self.role.update(context)
         self.assertIsNotNone(msg)
         self.assertEqual(msg.phrase_key, "turn_1")
@@ -90,12 +93,18 @@ class TestPaceNotesRole(unittest.TestCase):
         """When a new lap starts (mTotalLaps changes), markers should be reset and can trigger again."""
         # Trigger brake at 185m
         context = EngineerContext(
-            scoring={
-                "mLapDist": 1000.0,
-                "mVehicles": [
-                    {"mIsPlayer": True, "mLapDist": 185.0, "mTotalLaps": 1, "mLocalVel": {"x": 20.0, "y": 0.0, "z": 0.0}}
+            scoring=FullScoringSession(
+                lap_dist=1000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=185.0,
+                        total_laps=1,
+                        local_vel=TelemVect3(0.0, 0.0, 20.0),
+                    )
                 ]
-            },
+            ),
             timestamp=10.0,
             audio_engine=self.mock_audio,
         )
@@ -103,8 +112,8 @@ class TestPaceNotesRole(unittest.TestCase):
         self.assertTrue("b1" in self.role._triggered_ann_ids)
 
         # Advance to next lap
-        context.scoring["mVehicles"][0]["mTotalLaps"] = 2
-        context.scoring["mVehicles"][0]["mLapDist"] = 10.0
+        context.scoring.vehicles[0].total_laps = 2
+        context.scoring.vehicles[0].lap_dist = 10.0
         context.timestamp = 40.0
         self.role.update(context)
 
@@ -115,12 +124,18 @@ class TestPaceNotesRole(unittest.TestCase):
         """When user modifies annotations in real time, PaceNotesRole detects signature change and triggers new notes."""
         # 1. Trigger brake at 185m
         context = EngineerContext(
-            scoring={
-                "mLapDist": 1000.0,
-                "mVehicles": [
-                    {"mIsPlayer": True, "mLapDist": 185.0, "mTotalLaps": 1, "mLocalVel": {"x": 20.0, "y": 0.0, "z": 0.0}}
+            scoring=FullScoringSession(
+                lap_dist=1000.0,
+                vehicles=[
+                    VehicleScoring(
+                        id=1,
+                        is_player=True,
+                        lap_dist=185.0,
+                        total_laps=1,
+                        local_vel=TelemVect3(0.0, 0.0, 20.0),
+                    )
                 ]
-            },
+            ),
             timestamp=10.0,
             audio_engine=self.mock_audio,
         )
