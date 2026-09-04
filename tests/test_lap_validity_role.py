@@ -408,3 +408,131 @@ def test_lap_zero_works_consistently():
     assert msg3 is not None
     assert msg3.phrase_key == "time_cleared"
 
+
+def test_mixed_udp_stream_no_infinite_loop():
+    """Vérifie qu'un flux mixte de paquets haute fréquence (TelemInfo) et CompactScoring ne boucle jamais."""
+    from isimotor_rawudp_client import CompactScoring, TelemInfo
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # 1. Flux normal tour propre
+    telem = TelemInfo(unfiltered_throttle=1.0, gear=3)
+    scoring_clean = CompactScoring(count_lap_flag=2, total_laps=1, in_garage_stall=0)
+
+    # 100 ticks alternant TelemInfo et CompactScoring sur tour propre
+    for _ in range(50):
+        # Tick physique (pas de flag explicite)
+        role.update(EngineerContext(telemetry=telem, scoring=scoring_clean))
+        # Tick scoring (flag=2)
+        role.update(EngineerContext(telemetry=telem, scoring=scoring_clean))
+
+    assert len(played_sounds) == 0  # Aucun son intempestif en régime établi
+
+    # 2. Cut du pilote -> flag passe à 1
+    scoring_cut = CompactScoring(count_lap_flag=1, total_laps=1, in_garage_stall=0)
+    for _ in range(50):
+        role.update(EngineerContext(telemetry=telem, scoring=scoring_cut))
+
+    # Doit avoir joué 'give_time_back' EXACTEMENT 1 fois (pas 50 fois !)
+    assert played_sounds == [("give_time_back", True)]
+
+    # 3. Le pilote rend le temps -> flag repasse à 2
+    for _ in range(50):
+        role.update(EngineerContext(telemetry=telem, scoring=scoring_clean))
+
+    # Doit avoir joué 'time_cleared' EXACTEMENT 1 fois
+    assert played_sounds == [("give_time_back", True), ("time_cleared", False)]
+
+
+def test_cumulative_track_limits_steps_does_not_falsely_trigger_investigation():
+    """Vérifie que des steps d'avertissements cumulés (>0) avec flag=2 (tour propre) ne déclenchent pas d'alerte cut."""
+    from isimotor_rawudp_client import TelemInfo, LMUTelemetryExtension
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # Initialisation tour propre
+    ctx1 = EngineerContext(telemetry=TelemetryData(lap_flag=2, laps_completed=1))
+    role.update(ctx1)
+
+    # 2 avertissements cumulés mais tour actuellement valide (flag=2)
+    telem_with_steps = TelemInfo(lmu=LMUTelemetryExtension(track_limits_steps=2))
+    ctx2 = EngineerContext(telemetry=telem_with_steps, scoring={"mCountLapFlag": 2, "mTotalLaps": 1})
+    for _ in range(20):
+        msg = role.update(ctx2)
+        assert msg is None
+
+    assert len(played_sounds) == 0
+
+
+def test_investigation_ignored_when_incident_state_is_green():
+    """Vérifie que si l'état d'incident est noté en VERT ('green'), l'alerte give_time_back est ignorée."""
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # Initialisation
+    ctx1 = EngineerContext(telemetry=TelemetryData(lap_flag=2, laps_completed=1, track_cut_state="green"))
+    role.update(ctx1)
+
+    # Le jeu indique track_cut_state="green" (temps déjà rendu ou cut mineur en vert) avec flag=1
+    ctx2 = EngineerContext(telemetry=TelemetryData(lap_flag=1, laps_completed=1, track_cut_state="green"))
+    for _ in range(10):
+        msg = role.update(ctx2)
+        assert msg is None
+
+    assert len(played_sounds) == 0
+    assert role.get_state_summary()["incident_state"] == "IDLE"
+
+
+def test_lmu_green_cut_with_grace_period_is_completely_silent(monkeypatch):
+    """
+    Scénario réel LMU :
+    À t=0s : Le joueur coupe, le flag passe à 1 (INVESTIGATION_OPENED), mais le joueur a déjà levé le pied (0% throttle).
+    À t=1.6s : Le jeu affiche directement la bannière VERTE 'Time given back' et repasse à flag=2.
+    Avec une grace period (debounce >= 1.8s), le spotter reste TOTALEMENT SILENCIEUX (zéro 'give time back', zéro 'time cleared').
+    """
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio, investigation_debounce_sec=2.0)
+
+    # Fake clock
+    current_fake_time = 1000.0
+    monkeypatch.setattr(time, "time", lambda: current_fake_time)
+
+    # 1. Initialisation tour propre
+    ctx1 = EngineerContext(telemetry=TelemetryData(lap_flag=2, laps_completed=1, track_limits_steps=0))
+    role.update(ctx1)
+    assert len(played_sounds) == 0
+
+    # 2. À t=1000.0s : Cut léger / Enquête ouverte (flag=1)
+    ctx2 = EngineerContext(telemetry=TelemetryData(lap_flag=1, laps_completed=1, track_limits_steps=0))
+    msg2 = role.update(ctx2)
+    assert msg2 is None  # En attente de debounce, pas d'audio prématuré
+    assert len(played_sounds) == 0
+
+    # 3. À t=1001.6s : Le jeu confirme le vert / temps déjà rendu (flag=2, steps=0)
+    current_fake_time = 1001.6
+    ctx3 = EngineerContext(telemetry=TelemetryData(lap_flag=2, laps_completed=1, track_limits_steps=0))
+    msg3 = role.update(ctx3)
+    assert msg3 is None  # Résolu en vert dans la fenêtre -> SILENCE TOTAL
+    assert len(played_sounds) == 0
+    assert role._is_lap_dirty is False
+    assert role._investigation_announced is False
+
+
+
+

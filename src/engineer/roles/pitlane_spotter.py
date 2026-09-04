@@ -56,6 +56,7 @@ class PitlaneSpotterRole(BaseRole):
         enable_unsafe_release: bool = True,
         enable_pit_traffic_ahead: bool = True,
         enable_pit_overlap: bool = True,
+        hazard_cooldown_sec: float = 4.0,
     ):
         super().__init__(
             role_id=role_id,
@@ -73,6 +74,7 @@ class PitlaneSpotterRole(BaseRole):
         self.enable_unsafe_release = bool(enable_unsafe_release)
         self.enable_pit_traffic_ahead = bool(enable_pit_traffic_ahead)
         self.enable_pit_overlap = bool(enable_pit_overlap)
+        self.hazard_cooldown_sec = float(hazard_cooldown_sec)
 
         # Dynamic tracking variables
         self.target_threat_id: Optional[int] = None
@@ -146,6 +148,16 @@ class PitlaneSpotterRole(BaseRole):
                 default=True,
                 description="Warns when a car merges alongside in pitlane",
             ),
+            FloatRangeParam(
+                name="hazard_cooldown_sec",
+                label="Hazard Re-alert Cooldown",
+                min_val=1.0,
+                max_val=10.0,
+                step=0.5,
+                unit="s",
+                default=4.0,
+                description="Minimum delay before repeating an unsafe release warning",
+            ),
         ]
 
     def get_channel_requirements(self) -> List[Any]:
@@ -206,16 +218,20 @@ class PitlaneSpotterRole(BaseRole):
         track_length = context.get_track_length()
         pit_opponents = context.get_pit_opponents()
 
-        # Evaluate if player is in box (stopped / servicing / launching)
+        # Evaluate if player is in box with speed hysteresis
         pit_state = int(get_vehicle_attr(player_veh, "pit_state", 0))
         in_garage = bool(get_vehicle_attr(player_veh, "in_garage_stall", False))
-        is_stationary_or_in_box = (
-            in_garage
-            or pit_state in (3, 4)  # 3=stopped, 4=exiting
-            or player_speed < 2.5   # Stopped or very slow in box
-        )
 
-        now = time.time()
+        if in_garage or pit_state in (3, 4) or player_speed < 1.5:
+            is_stationary_or_in_box = True
+        elif player_speed > 4.0 or (pit_state not in (3, 4) and not in_garage and player_speed >= 2.5):
+            is_stationary_or_in_box = False
+        else:
+            is_stationary_or_in_box = self._was_in_box
+
+        now = context.timestamp if (context and context.timestamp is not None) else time.time()
+        if now <= 0:
+            now = time.time()
 
         # =========================================================================
         # 1. PLAYER IN BOX / PIT STOP CASE (UNSAFE RELEASE PROTECTION)
@@ -225,14 +241,14 @@ class PitlaneSpotterRole(BaseRole):
             return self._handle_unsafe_release_monitoring(context, player_veh, pit_opponents, track_length, now)
 
         # If player drives in pitlane after a stop where hazard was flagged
-        if self._was_in_box and self.state == PitlaneSpotterState.UNSAFE_HAZARD:
-            # If hazard cleared while player launches
-            return self._check_release_clear(now)
+        if self._was_in_box:
+            self._was_in_box = False
+            if self.state == PitlaneSpotterState.UNSAFE_HAZARD:
+                return self._check_release_clear(now)
 
         # =========================================================================
         # 2. PLAYER DRIVING IN PITLANE CASE (UNDER PIT LIMITER)
         # =========================================================================
-        self._was_in_box = False
         return self._handle_pitlane_driving_traffic(context, player_veh, player_speed, pit_opponents, track_length, now)
 
     def _handle_unsafe_release_monitoring(
@@ -248,17 +264,20 @@ class PitlaneSpotterRole(BaseRole):
 
         for opp in pit_opponents:
             opp_speed = context.extract_vehicle_speed_mps(opp)
+            # Only cars traveling with significant velocity in the fast lane pose an unsafe release hazard
+            if opp_speed < self.pit_slow_speed_threshold_mps:
+                continue
+
             dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
             euc_dist = context.compute_euclidean_distance(player_veh, opp)
             dist_effective = min(dist_behind, euc_dist) if dist_behind > 0 else euc_dist
 
             # A car is a threat if it approaches from behind in fast lane
-            # with significant speed (> 20 km/h) and in range
             if 0.0 < dist_behind <= self.unsafe_release_distance_m or (0.0 < euc_dist <= self.unsafe_release_distance_m and dist_behind >= -2.0):
                 speed_delta = max(0.1, opp_speed)
                 ttc = dist_effective / speed_delta if speed_delta > 0.5 else float("inf")
 
-                if opp_speed >= self.pit_slow_speed_threshold_mps and (dist_effective <= self.unsafe_release_distance_m or ttc <= self.unsafe_release_ttc_sec):
+                if dist_effective <= self.unsafe_release_distance_m or ttc <= self.unsafe_release_ttc_sec:
                     threats.append({
                         "id": get_vehicle_attr(opp, "id", -1),
                         "name": get_vehicle_attr(opp, "driver_name", "Opponent"),
@@ -280,20 +299,25 @@ class PitlaneSpotterRole(BaseRole):
             self._live_pit_info = f"UNSAFE HAZARD: {target['name']} ({self._live_hazard_speed_kmh:.0f} km/h, {self._live_hazard_dist:.0f}m behind)"
 
             if self.state != PitlaneSpotterState.UNSAFE_HAZARD:
-                self.state = PitlaneSpotterState.UNSAFE_HAZARD
-                self._last_state_change_time = now
-                self._last_alert_time = now
-                self._hazard_cleared = False
+                # Anti-spam cooldown
+                if (now - self._last_alert_time) >= self.hazard_cooldown_sec or self._last_alert_time == 0.0:
+                    self.state = PitlaneSpotterState.UNSAFE_HAZARD
+                    self._last_state_change_time = now
+                    self._last_alert_time = now
+                    self._hazard_cleared = False
 
-                # Immediate interruptive hazard announcement
-                msg = EngineerMessage(
-                    phrase_key="car",
-                    priority=self.priority,
-                    interrupt=True,
-                    role_id=self.role_id,
-                )
-                self.emit_sound("car", interrupt=True)
-                return msg
+                    # Immediate interruptive hazard announcement
+                    msg = EngineerMessage(
+                        phrase_key="car",
+                        priority=self.priority,
+                        interrupt=True,
+                        role_id=self.role_id,
+                    )
+                    self.emit_sound("car", interrupt=True)
+                    return msg
+                else:
+                    self.state = PitlaneSpotterState.UNSAFE_HAZARD
+                    return None
 
             return None
 
@@ -350,14 +374,20 @@ class PitlaneSpotterRole(BaseRole):
         now: float,
     ) -> Optional[EngineerMessage]:
         """Handles traffic during pitlane driving under pit speed limiter."""
-        # 1. Detection of slow / stopped vehicle AHEAD in pitlane
+        # 1. Detection of slow / stopped vehicle AHEAD in active pitlane
         if self.enable_pit_traffic_ahead:
             slow_ahead = []
             for opp in pit_opponents:
+                # Exclude cars already stationary in their box stalls (pit_state=3)
+                pit_state = int(get_vehicle_attr(opp, "pit_state", 0))
+                in_stall = bool(get_vehicle_attr(opp, "in_garage_stall", False))
+                if in_stall or pit_state == 3:
+                    continue
+
                 dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
                 euc_dist = context.compute_euclidean_distance(player_veh, opp)
                 # dist_behind < 0 means ahead
-                if (-self.pit_slow_ahead_distance_m <= dist_behind < -2.0) or (0.0 < euc_dist <= self.pit_slow_ahead_distance_m and dist_behind < 0):
+                if (-self.pit_slow_ahead_distance_m <= dist_behind < -3.0) or (0.0 < euc_dist <= self.pit_slow_ahead_distance_m and dist_behind < 0):
                     opp_speed = context.extract_vehicle_speed_mps(opp)
                     if opp_speed < self.pit_slow_speed_threshold_mps:
                         dist_ahead = abs(dist_behind) if dist_behind < 0 else euc_dist
@@ -389,6 +419,11 @@ class PitlaneSpotterRole(BaseRole):
         if self.enable_pit_overlap:
             alongside_cars = []
             for opp in pit_opponents:
+                opp_speed = context.extract_vehicle_speed_mps(opp)
+                # Exclude stationary parked cars in stalls when player drives past
+                if opp_speed < 1.5 and player_speed > 4.0:
+                    continue
+
                 dist_behind = context.compute_distance_behind(player_veh, opp, track_length)
                 euc_dist = context.compute_euclidean_distance(player_veh, opp)
                 if abs(dist_behind) <= 5.0 or euc_dist <= 5.5:
@@ -414,11 +449,6 @@ class PitlaneSpotterRole(BaseRole):
                 return None
 
         # If traffic is clear and unobstructed
-        if self.state in (PitlaneSpotterState.PIT_TRAFFIC_AHEAD, PitlaneSpotterState.PIT_OVERLAP):
-            self.state = PitlaneSpotterState.IDLE
-            self._live_pit_info = "Pitlane clear"
-            return None
-
         self.state = PitlaneSpotterState.IDLE
         self._live_pit_info = "Pitlane clear"
         return None
@@ -446,6 +476,7 @@ class PitlaneSpotterRole(BaseRole):
             "enable_unsafe_release": self.enable_unsafe_release,
             "enable_pit_traffic_ahead": self.enable_pit_traffic_ahead,
             "enable_pit_overlap": self.enable_pit_overlap,
+            "hazard_cooldown_sec": self.hazard_cooldown_sec,
         })
         return cfg
 
@@ -465,6 +496,8 @@ class PitlaneSpotterRole(BaseRole):
             self.enable_pit_traffic_ahead = bool(config["enable_pit_traffic_ahead"])
         if "enable_pit_overlap" in config:
             self.enable_pit_overlap = bool(config["enable_pit_overlap"])
+        if "hazard_cooldown_sec" in config:
+            self.hazard_cooldown_sec = float(config["hazard_cooldown_sec"])
 
     def get_state_summary(self) -> Dict[str, Any]:
         summary = super().get_state_summary()

@@ -237,7 +237,7 @@ class HapticFeedbackWidget(QWidget):
 
         self.lbl_sp_desc = QLabel("", self.detail_box)
         self.lbl_sp_desc.setWordWrap(True)
-        self.lbl_sp_desc.setStyleSheet("color: #94a3b8; font-size: 12px; margin-bottom: 8px;")
+        self.lbl_sp_desc.setStyleSheet("color: #94a3b8; font-size: 12px;")
         self.d_layout.addWidget(self.lbl_sp_desc)
 
         # Scroll area for dynamic parameter widgets
@@ -331,7 +331,8 @@ class HapticFeedbackWidget(QWidget):
         gain_row.addWidget(sp_gain_slider, 2)
 
         lbl_val = QLabel(f"{int(sp.master_gain * 100)}%", self.param_scroll_content)
-        lbl_val.setStyleSheet("color: #38bdf8; font-weight: bold; width: 40px;")
+        lbl_val.setFixedWidth(50)
+        lbl_val.setStyleSheet("color: #38bdf8; font-weight: bold;")
         gain_row.addWidget(lbl_val)
 
         def on_sp_gain_changed(v: int):
@@ -345,7 +346,7 @@ class HapticFeedbackWidget(QWidget):
         # Separator
         sep = QFrame(self.param_scroll_content)
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #334155; margin: 4px 0;")
+        sep.setStyleSheet("color: #334155;")
         self.param_layout.addWidget(sep)
 
         # 2. Dynamic declared parameters

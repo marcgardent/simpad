@@ -39,6 +39,9 @@ class AudioAnnouncer:
     _queue_thread: Optional[threading.Thread] = None
     _queue_running: bool = False
     _is_playing: bool = False
+    _last_played_key: Optional[str] = None
+    _last_played_time: float = 0.0
+    _last_interrupt_time: float = 0.0
 
     @classmethod
     def set_muted(cls, muted: bool) -> None:
@@ -74,6 +77,10 @@ class AudioAnnouncer:
             text_prompt = item.get("text")
 
             cls._is_playing = True
+            with cls._lock:
+                cls._last_played_key = phrase_key
+                cls._last_played_time = time.time()
+
             try:
                 if not cls._is_muted and phrase_key:
                     wav_path = cls._resolve_wav_file(phrase_key, text=text_prompt)
@@ -206,8 +213,19 @@ class AudioAnnouncer:
     def play_phrase(cls, phrase_key: str, interrupt: bool = False, text: Optional[str] = None) -> None:
         """Plays a WAV audio phrase via FIFO queue."""
         cls._ensure_worker_started()
+        now = time.time()
 
         if interrupt:
+            with cls._lock:
+                # Anti-thrashing: If the exact same phrase is already playing and started recently (< 0.6s),
+                # do not kill and restart it, let it finish naturally!
+                if cls._is_playing and cls._last_played_key == phrase_key and (now - cls._last_played_time) < 0.6:
+                    return
+                # Also throttle rapid duplicate interrupt commands (< 0.15s)
+                if (now - cls._last_interrupt_time) < 0.15 and cls._is_playing and cls._last_played_key == phrase_key:
+                    return
+                cls._last_interrupt_time = now
+
             cls.stop_current()
             cls.clear_queue()
         else:

@@ -18,21 +18,8 @@
       "master_enabled": true,
       "muted": false,
       "subplugin_configs": {
-        "fight_spotter": {
-          "enabled": false,
-          "priority": 120,
-          "car_length_m": 4.2,
-          "car_width_m": 1.9,
-          "gap_needed_for_clear_m": 1.5,
-          "clear_message_delay_sec": 0.35,
-          "repeat_hold_freq_sec": 3.0,
-          "min_speed_kmh": 20.0,
-          "max_closing_speed_kmh": 90.0,
-          "use_oval_logic": false,
-          "enable_three_wide": true
-        },
         "pitlane_spotter": {
-          "enabled": true,
+          "enabled": false,
           "priority": 110,
           "enable_unsafe_release": true,
           "unsafe_release_distance_m": 28.0,
@@ -40,22 +27,12 @@
           "enable_pit_traffic_ahead": true,
           "pit_slow_ahead_distance_m": 35.0,
           "enable_pit_overlap": true,
+          "hazard_cooldown_sec": 4.0,
           "pit_slow_speed_threshold_kmh": 20.0
         },
-        "pace_notes": {
-          "enabled": true,
-          "priority": 100,
-          "enable_brake": true,
-          "enable_turn_in": true,
-          "enable_turn": true,
-          "enable_gear": true,
-          "anticipation_time_sec": 0.8,
-          "min_lead_distance_m": 15.0,
-          "max_lead_distance_m": 75.0
-        },
         "traffic_spotter": {
-          "enabled": true,
-          "priority": 90,
+          "enabled": false,
+          "priority": 100,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "speed_delta_min_kmh": 20.0,
@@ -67,9 +44,20 @@
           "abort_ttc_sec": 6.0,
           "phrase_mode": "alongside"
         },
+        "pace_notes": {
+          "enabled": false,
+          "priority": 100,
+          "enable_brake": true,
+          "enable_turn_in": true,
+          "enable_turn": true,
+          "enable_gear": true,
+          "anticipation_time_sec": 0.8,
+          "min_lead_distance_m": 15.0,
+          "max_lead_distance_m": 75.0
+        },
         "traffic_jam": {
-          "enabled": true,
-          "priority": 80,
+          "enabled": false,
+          "priority": 100,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "slow_speed_threshold_kmh": 40.0,
@@ -78,21 +66,35 @@
         },
         "lap_validity": {
           "enabled": true,
-          "priority": 70,
+          "priority": 100,
           "busy_duration_sec": 1.8,
+          "investigation_debounce_sec": 2.0,
           "announce_investigation": true,
           "announce_cleared": true,
           "announce_penalty": true,
           "use_actionable_prompt": true
+        },
+        "fight_spotter": {
+          "enabled": false,
+          "priority": 90,
+          "car_length_m": 3.7,
+          "car_width_m": 1.9,
+          "gap_needed_for_clear_m": 1.5,
+          "clear_message_delay_sec": 0.35,
+          "repeat_hold_freq_sec": 3.0,
+          "min_speed_kmh": 20.0,
+          "max_closing_speed_kmh": 90.0,
+          "use_oval_logic": false,
+          "enable_three_wide": true
         }
       },
       "subplugin_order": [
-        "fight_spotter",
         "pitlane_spotter",
-        "pace_notes",
         "traffic_spotter",
+        "pace_notes",
         "traffic_jam",
-        "lap_validity"
+        "lap_validity",
+        "fight_spotter"
       ]
     },
     "simpad.builtin.paddock_agent": {

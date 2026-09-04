@@ -15,13 +15,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 
-from PySide6.QtCore import Qt, QSize, Signal, QObject, QThread
+from PySide6.QtCore import Qt, QSize, Signal, QObject, QThread, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QScrollArea, QFrame, QProgressBar,
     QDoubleSpinBox, QSpinBox, QListWidget, QListWidgetItem,
     QDialog, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
 )
+
+class RadioMessageBridge(QObject):
+    """Thread-safe bridge to deliver radio log messages to the GUI."""
+    radio_message = Signal(object)
+
 
 from simpad_qt.plugins.contracts import (
     SimPadPlugin, PluginMetadata, PluginContext,
@@ -316,7 +321,6 @@ class RoleDetailWidget(QWidget):
         if not role:
             self.lbl_title.setText("Select a Role from the list")
             self.lbl_description.setText("")
-            self.lbl_prio_badge.setText("Prio: --")
             self.lbl_status_badge.setText("OFF")
             self.chk_role_enabled.setChecked(False)
             self._clear_params()
@@ -394,7 +398,8 @@ class RoleDetailWidget(QWidget):
             label_txt = p.label or p.name
             lbl = QLabel(label_txt, self.params_group)
             lbl.setToolTip(p.description)
-            lbl.setStyleSheet("color: #c9d1d9; font-size: 12px; min-width: 180px;")
+            lbl.setMinimumWidth(180)
+            lbl.setStyleSheet("color: #c9d1d9; font-size: 12px;")
             row.addWidget(lbl)
 
             val = role.get_param_value(p.name)
@@ -511,6 +516,12 @@ class RaceEngineerWidget(QWidget):
         self.plugin = plugin
         self._baker_thread: Optional[SoundBakerWorker] = None
         self._init_ui()
+
+        # UI timer on the GUI thread for safe periodic refresh
+        self._ui_timer = QTimer(self)
+        self._ui_timer.setInterval(100)  # 10 Hz refresh
+        self._ui_timer.timeout.connect(self.update_live_views)
+        self._ui_timer.start()
 
     def _init_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -919,6 +930,7 @@ class RaceEngineerPlugin(
             auto_load_builtin_roles=True,
             auto_load_config=False,
         )
+        self._radio_bridge = RadioMessageBridge()
         self._active_tab_widget: Optional[RaceEngineerWidget] = None
         self._latest_sensors: Optional[VehicleSensors] = None
         self._latest_scoring: Optional[Any] = None
@@ -990,6 +1002,10 @@ class RaceEngineerPlugin(
 
     def create_tab_widget(self, parent: Optional[QWidget] = None) -> QWidget:
         self._active_tab_widget = RaceEngineerWidget(self, parent)
+        self._radio_bridge.radio_message.connect(
+            self._active_tab_widget.add_radio_log,
+            Qt.ConnectionType.QueuedConnection,
+        )
         return self._active_tab_widget
 
     # =========================================================================
@@ -999,8 +1015,6 @@ class RaceEngineerPlugin(
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         """Called on normalized VehicleSensors high-frequency frame."""
         self._latest_sensors = sensors
-        if self._active_tab_widget and self._active_tab_widget.isVisible():
-            self._active_tab_widget.update_live_views()
 
     def on_delta_frame(self, delta_packet: LapDeltaPacket) -> None:
         """Called on authoritative LapDeltaPacket frame."""
@@ -1029,5 +1043,4 @@ class RaceEngineerPlugin(
         )
 
         for msg in emitted_messages:
-            if self._active_tab_widget:
-                self._active_tab_widget.add_radio_log(msg)
+            self._radio_bridge.radio_message.emit(msg)

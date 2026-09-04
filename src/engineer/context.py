@@ -60,8 +60,11 @@ ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
     "mLocalVel": ["local_vel", "mLocalVel", "localVel"],
     "ori": ["ori", "mOri"],
     "mOri": ["ori", "mOri"],
-    "track_cut_state": ["track_cut_state", "track_limits_steps", "mTrackCutState", "mIncidentState", "incident_state", "cut_state", "investigation_state"],
-    "track_limits_steps": ["track_limits_steps", "track_cut_state"],
+    "track_cut_state": ["track_cut_state", "mTrackCutState", "mIncidentState", "incident_state", "cut_state", "investigation_state", "offtrack_state"],
+    "track_limits_steps": ["track_limits_steps", "mTrackLimitsSteps", "steps"],
+    "num_penalties": ["num_penalties", "mNumPenalties", "numPenalties", "penalties"],
+    "track_limits_steps_per_point": ["track_limits_steps_per_point", "mTrackLimitsStepsPerPoint", "steps_per_point"],
+    "track_limits_steps_per_penalty": ["track_limits_steps_per_penalty", "mTrackLimitsStepsPerPenalty", "steps_per_penalty"],
 }
 
 
@@ -353,6 +356,10 @@ class EngineerContext:
             for v in vehicles:
                 if get_vehicle_attr(v, "control") == 0:
                     return v
+
+        # CompactScoring / single vehicle scoring object
+        if hasattr(self.scoring, "count_lap_flag") or hasattr(self.scoring, "cur_sector1") or hasattr(self.scoring, "total_laps"):
+            return self.scoring
 
         return None
 

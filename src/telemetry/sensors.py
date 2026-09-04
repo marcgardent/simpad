@@ -90,7 +90,7 @@ class VehicleSensors:
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
-    track_cut_state: Optional[Union[str, int]] = "green"
+    track_cut_state: Optional[Union[str, int]] = None
     has_delta_reference: bool = False
     is_pit_lap: bool = False
     last_lap_time: float = 0.0
