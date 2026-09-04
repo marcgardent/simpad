@@ -2,11 +2,9 @@
 Rev Indicator Widget — Left/Right triangle indicators for underrev and overrev warnings, aligned with compact Gear.
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QPolygonF
-from .base_widget import BaseQtHudWidget
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 class QtRevIndicatorWidget(BaseQtHudWidget):
@@ -21,11 +19,10 @@ class QtRevIndicatorWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        underrev = extra_data.get("underrev", sensors.underrev_intensity > 0.1)
-        overrev = extra_data.get("overrev", sensors.overrev_intensity > 0.1)
+        underrev = context.sensors.underrev_intensity > 0.1
+        overrev = context.sensors.overrev_intensity > 0.1
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0

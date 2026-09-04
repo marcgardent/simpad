@@ -81,18 +81,18 @@ class TestHitAndCleanLap(unittest.TestCase):
         self.assertTrue(self.store.is_clean_lap)
 
     def test_lap_status_widget_paint_both_states(self):
+        from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
         widget = QtLapStatusWidget()
-        sensors = VehicleSensors()
 
         img = QImage(800, 600, QImage.Format.Format_ARGB32)
         img.fill(0)
         painter = QPainter(img)
 
         # Valid & Clean
-        widget.paint(painter, 800, 600, sensors, {"lap_flag": 2, "hit_count_current_lap": 0})
+        widget.paint(painter, 800, 600, CockpitWidgetContext(sensors=VehicleSensors(lap_flag=2), hit_count=0))
 
         # Invalid & Dirty
-        widget.paint(painter, 800, 600, sensors, {"lap_flag": 0, "hit_count_current_lap": 3})
+        widget.paint(painter, 800, 600, CockpitWidgetContext(sensors=VehicleSensors(lap_flag=0), hit_count=3))
 
         painter.end()
 

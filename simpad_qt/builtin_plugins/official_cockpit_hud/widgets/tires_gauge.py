@@ -10,11 +10,10 @@ Physical Color Coding:
 - Neutral Grip: Dark stealth tire tread (#131822)
 """
 
-from typing import Dict, Any, Tuple
+from typing import Tuple
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QPolygonF
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 def get_qt_tire_colors(lock_val: float, slip_val: float) -> Tuple[QColor, QColor, str, float]:
@@ -81,9 +80,9 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
+        sensors = context.sensors
         alpha = 0.65
         # 1. Longitudinal Lock (Over-Braking)
         self.disp_fl_lock = lerp(self.disp_fl_lock, sensors.front_left_lock, alpha)

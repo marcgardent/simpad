@@ -3,11 +3,9 @@ Throttle Gauge Widget — Right vertical throttle pedal intensity bar in compact
 Displays pure driver acceleration percentage in Green (#22c55e / QColor(34, 197, 94)).
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 class QtThrottleGaugeWidget(BaseQtHudWidget):
@@ -24,10 +22,9 @@ class QtThrottleGaugeWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        raw_throttle = float(extra_data.get("throttle", sensors.unfiltered_throttle * 100.0))
+        raw_throttle = context.sensors.unfiltered_throttle * 100.0
 
         # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_throttle = lerp(self.display_throttle, raw_throttle, 0.65)

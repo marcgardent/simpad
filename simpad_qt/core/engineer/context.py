@@ -19,6 +19,23 @@ from isimotor_rawudp_client import (
 
 from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
+_SCORING_STORE_SYNC = {
+    FullScoringSession: lambda st, sc, ts: st.update_full_scoring(sc, ts),
+    CompactScoring: lambda st, sc, ts: st.update_compact_scoring(sc, ts),
+}
+
+_PLAYER_VEHICLE_EXTRACTORS = {
+    FullScoringSession: lambda sc: sc.player_vehicle,
+}
+
+_GARAGE_CHECKERS = {
+    CompactScoring: lambda sc: bool(sc.in_garage_stall),
+    FullScoringSession: lambda sc: (
+        True if (sc.game_phase == 0 or not sc.in_realtime)
+        else (bool(sc.player_vehicle.in_garage_stall) if sc.player_vehicle is not None else False)
+    ),
+}
+
 
 @dataclass
 class EngineerContext:
@@ -44,10 +61,9 @@ class EngineerContext:
         if self.telemetry is not None:
             st.update_telemetry(self.telemetry, self.timestamp)
         if self.scoring is not None:
-            if isinstance(self.scoring, FullScoringSession):
-                st.update_full_scoring(self.scoring, self.timestamp)
-            elif isinstance(self.scoring, CompactScoring):
-                st.update_compact_scoring(self.scoring, self.timestamp)
+            sync_fn = _SCORING_STORE_SYNC.get(type(self.scoring))
+            if sync_fn:
+                sync_fn(st, self.scoring, self.timestamp)
         return st
 
     @property
@@ -322,9 +338,8 @@ class EngineerContext:
 
     def get_player_vehicle(self) -> Optional[VehicleScoring]:
         """Extracts player vehicle from scoring session."""
-        if isinstance(self.scoring, FullScoringSession):
-            return self.scoring.player_vehicle
-        return None
+        extractor = _PLAYER_VEHICLE_EXTRACTORS.get(type(self.scoring))
+        return extractor(self.scoring) if extractor else None
 
     def is_player_in_pits(self) -> bool:
         """Indicates whether player vehicle is currently in pitlane (between entry and exit)."""
@@ -335,16 +350,9 @@ class EngineerContext:
 
     def is_player_in_garage(self) -> bool:
         """Indicates whether player is in garage stall or menus."""
-        # 1. Check scoring session
-        if isinstance(self.scoring, CompactScoring):
-            return self.scoring.in_garage_stall
-        if isinstance(self.scoring, FullScoringSession):
-            if self.scoring.game_phase == 0 or not self.scoring.in_realtime:
-                return True
-            player = self.scoring.player_vehicle
-            if player is not None:
-                return player.in_garage_stall
-
+        checker = _GARAGE_CHECKERS.get(type(self.scoring))
+        if checker is not None:
+            return checker(self.scoring)
         return self.state_store.in_garage
 
     @classmethod
@@ -376,7 +384,7 @@ class EngineerContext:
         Returns list of active opponent vehicles IN PITLANE (excluding garage).
         Enables distinct handling of pitlane traffic.
         """
-        if not isinstance(self.scoring, FullScoringSession):
+        if type(self.scoring) is not FullScoringSession:
             return []
 
         pit_opponents: List[VehicleScoring] = []
@@ -402,7 +410,7 @@ class EngineerContext:
         Excludes player, vehicles in garage (unless include_garage=True),
         and cars in pits (unless include_pits=True).
         """
-        if not isinstance(self.scoring, FullScoringSession):
+        if type(self.scoring) is not FullScoringSession:
             return []
 
         opponents: List[VehicleScoring] = []

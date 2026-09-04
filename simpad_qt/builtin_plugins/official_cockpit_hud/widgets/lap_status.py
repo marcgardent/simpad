@@ -6,14 +6,13 @@ Exclusively uses native Qt SVG rendering (QSvgRenderer) from assets/icons/*.svg.
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Optional, Union
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter
 from PySide6.QtSvg import QSvgRenderer
 
-from .base_widget import BaseQtHudWidget
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 # Default location inside the Official Cockpit HUD plugin folder
 _PLUGIN_ICONS_DIR = Path(__file__).resolve().parent.parent / "icons"
@@ -59,8 +58,7 @@ class QtLapStatusWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
@@ -76,8 +74,8 @@ class QtLapStatusWidget(BaseQtHudWidget):
         start_x = center_x - total_w / 2.0
 
         # ── Badge 1: Lap Validity (timing_in_progress vs time_deleted) ──
-        lap_flag = extra_data.get("lap_flag", sensors.lap_flag)
-        is_lap_valid = (lap_flag == 2)
+        is_lap_valid = (context.sensors.lap_flag == 2)
+        hit_count = context.hit_count
 
         svg_validity = self._svg_lap_valid if is_lap_valid else self._svg_lap_invalid
         if svg_validity is None or not svg_validity.isValid():
@@ -91,7 +89,6 @@ class QtLapStatusWidget(BaseQtHudWidget):
             self._paint_fallback_dot(painter, rect_validity, is_lap_valid)
 
         # ── Badge 2: Clean / Dirty Lap (Clean = timing_in_progress && 0 hits) ──
-        hit_count = int(extra_data.get("hit_count_current_lap", 0))
         is_clean = (is_lap_valid and hit_count == 0)
 
         svg_clean_dirty = self._svg_clean_lap if is_clean else self._svg_dirty_lap

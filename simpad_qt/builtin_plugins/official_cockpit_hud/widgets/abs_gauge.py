@@ -3,11 +3,9 @@ ABS Gauge Widget — Far-left vertical ABS intervention intensity bar in compact
 Displays ABS regulation / wheel lockup percentage in Purple (#a855f7 / QColor(168, 85, 247)).
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 class QtAbsGaugeWidget(BaseQtHudWidget):
@@ -24,13 +22,10 @@ class QtAbsGaugeWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        if "abs" in extra_data:
-            raw_abs = float(extra_data["abs"])
-        else:
-            raw_abs = sensors.ecu_abs_active * 100.0
+        sensors = context.sensors
+        raw_abs = sensors.ecu_abs_active * 100.0
 
         # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_abs = lerp(self.display_abs, raw_abs, 0.65)

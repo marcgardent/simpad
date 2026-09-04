@@ -12,6 +12,7 @@ import math
 import logging
 from enum import Enum
 from typing import Optional, Dict, Any, List, Tuple
+from isimotor_rawudp_client import VehicleScoring
 from ..base import BaseRole, EngineerMessage, RoleStatus
 from ..context import EngineerContext
 from ..registry import RoleRegistry
@@ -270,8 +271,8 @@ class PitlaneSpotterRole(BaseRole):
     def _handle_unsafe_release_monitoring(
         self,
         context: EngineerContext,
-        player_veh: Any,
-        pit_opponents: List[Any],
+        player_veh: VehicleScoring,
+        pit_opponents: List[VehicleScoring],
         track_length: float,
         now: float,
     ) -> Optional[EngineerMessage]:
@@ -383,9 +384,9 @@ class PitlaneSpotterRole(BaseRole):
     def _handle_pitlane_driving_traffic(
         self,
         context: EngineerContext,
-        player_veh: Dict[str, Any],
+        player_veh: VehicleScoring,
         player_speed: float,
-        pit_opponents: List[Dict[str, Any]],
+        pit_opponents: List[VehicleScoring],
         track_length: float,
         now: float,
     ) -> Optional[EngineerMessage]:

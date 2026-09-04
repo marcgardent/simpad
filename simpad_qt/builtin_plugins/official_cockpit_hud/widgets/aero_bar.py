@@ -4,11 +4,9 @@ Dynamically bound to vehicle speed aerodynamic load (0% to 100%).
 Color lerps from Red (0%) -> Violet (33%) -> Blue (66%) -> Green (100%).
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 def get_aero_qcolor_ramp(a: float) -> QColor:
@@ -45,13 +43,9 @@ class QtAeroBarWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        if "aero" in extra_data:
-            raw_aero = float(extra_data["aero"])
-        else:
-            raw_aero = sensors.aero_load * 100.0
+        raw_aero = context.sensors.aero_load * 100.0
 
         # LERP Smoothing (0.65 immediate response)
         self.display_aero = lerp(self.display_aero, raw_aero, 0.65)

@@ -7,8 +7,10 @@ and safe overtake confirmation (Clear).
 
 import time
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, Any, List, Tuple
+from isimotor_rawudp_client import VehicleScoring
 from ..base import BaseRole, EngineerMessage, RoleStatus
 from ..context import EngineerContext
 from ..registry import RoleRegistry
@@ -16,6 +18,28 @@ from ..params import RoleParam, FloatRangeParam, BoolParam
 from ...telemetry.reference_profile import ReferenceLapProfile
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OpponentTrafficMetric:
+    """Proximity and rate-of-closure metric for an opponent vehicle."""
+    vehicle: VehicleScoring
+    id: int
+    driver_name: str
+    vehicle_name: str
+    dist_behind: float
+    speed_delta_mps: float
+    speed_delta_kmh: float
+    ttc: float
+    opp_speed: float
+    domain_anomaly: bool = True
+
+
+@dataclass
+class TargetMemory:
+    """Debounce memory for a tracked opponent vehicle."""
+    last_stage: int
+    last_time: float
 
 
 class TrafficSpotterState(str, Enum):
@@ -105,7 +129,7 @@ class TrafficSpotterRole(BaseRole):
         self._last_aborted_time: float = 0.0
 
         # Per-vehicle debounce and memory (reinforced N seconds)
-        self._target_history: Dict[int, Dict[str, Any]] = {}
+        self._target_history: Dict[int, TargetMemory] = {}
         self._last_spotted_target_id: Optional[int] = None
         self._last_spotted_stage: Optional[int] = None
         self._last_spotted_time: float = 0.0
@@ -126,20 +150,17 @@ class TrafficSpotterRole(BaseRole):
 
     def _record_target_stage(self, vehicle_id: int, stage: int, now: float) -> None:
         """Records target announcement stage reached by vehicle to avoid repeats."""
-        self._target_history[vehicle_id] = {
-            "last_stage": stage,
-            "last_time": now,
-        }
+        self._target_history[vehicle_id] = TargetMemory(last_stage=stage, last_time=now)
         self._last_spotted_target_id = vehicle_id
         self._last_spotted_stage = stage
         self._last_spotted_time = now
 
-    def _get_target_memory(self, vehicle_id: int, now: float) -> Optional[Dict[str, Any]]:
+    def _get_target_memory(self, vehicle_id: int, now: float) -> Optional[TargetMemory]:
         """Retrieves vehicle memory if not expired (target_memory_sec)."""
         entry = self._target_history.get(vehicle_id)
         if not entry:
             return None
-        if (now - entry["last_time"]) > self.target_memory_sec:
+        if (now - entry.last_time) > self.target_memory_sec:
             self._target_history.pop(vehicle_id, None)
             return None
         return entry
@@ -148,7 +169,7 @@ class TrafficSpotterRole(BaseRole):
         """Cleans expired history entries (> target_memory_sec)."""
         expired = [
             vid for vid, entry in self._target_history.items()
-            if (now - entry["last_time"]) > self.target_memory_sec
+            if (now - entry.last_time) > self.target_memory_sec
         ]
         for vid in expired:
             del self._target_history[vid]
@@ -359,13 +380,13 @@ class TrafficSpotterRole(BaseRole):
     def _calculate_opponent_metrics(
         self,
         context: EngineerContext,
-        player_veh: Dict[str, Any],
+        player_veh: VehicleScoring,
         player_speed: float,
-        opponents: List[Dict[str, Any]],
+        opponents: List[VehicleScoring],
         track_length: float,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[OpponentTrafficMetric]:
         """Calculates TTC, relative distance, and speed delta for each opponent."""
-        metrics = []
+        metrics: List[OpponentTrafficMetric] = []
         ref_prof = self.get_reference_profile(context)
         has_valid_ref = bool(ref_prof and ref_prof.num_points >= 2)
 
@@ -396,21 +417,21 @@ class TrafficSpotterRole(BaseRole):
                     "[TrafficSpotter] Domain filter enabled but no reference profile — bypassing filter"
                 )
 
-            metrics.append({
-                "vehicle": opp,
-                "id": opp_id,
-                "driver_name": opp.driver_name or "Opponent",
-                "vehicle_name": opp.vehicle_name,
-                "dist_behind": dist_behind,
-                "speed_delta_mps": speed_delta,
-                "speed_delta_kmh": speed_delta_kmh,
-                "ttc": ttc,
-                "opp_speed": opp_speed,
-                "domain_anomaly": domain_anomaly,
-            })
+            metrics.append(OpponentTrafficMetric(
+                vehicle=opp,
+                id=opp_id,
+                driver_name=opp.driver_name or "Opponent",
+                vehicle_name=opp.vehicle_name,
+                dist_behind=dist_behind,
+                speed_delta_mps=speed_delta,
+                speed_delta_kmh=speed_delta_kmh,
+                ttc=ttc,
+                opp_speed=opp_speed,
+                domain_anomaly=domain_anomaly,
+            ))
         return metrics
 
-    def _run_state_machine(self, metrics: List[Dict[str, Any]], now: Optional[float] = None) -> Optional[EngineerMessage]:
+    def _run_state_machine(self, metrics: List[OpponentTrafficMetric], now: Optional[float] = None) -> Optional[EngineerMessage]:
         """Runs FSM transitions according to calculated metrics."""
         if now is None:
             now = time.time()
@@ -427,29 +448,29 @@ class TrafficSpotterRole(BaseRole):
             # with reference lap filter
             threats = [
                 m for m in metrics
-                if 0.0 < m["dist_behind"] <= self.max_scan_distance_m
-                and m["speed_delta_mps"] >= self.speed_delta_min_mps
-                and m["ttc"] <= self.ttc_trigger_sec
-                and m.get("domain_anomaly", True)
+                if 0.0 < m.dist_behind <= self.max_scan_distance_m
+                and m.speed_delta_mps >= self.speed_delta_min_mps
+                and m.ttc <= self.ttc_trigger_sec
+                and m.domain_anomaly
             ]
 
             if threats:
-                threats.sort(key=lambda m: m["ttc"])
+                threats.sort(key=lambda m: m.ttc)
                 target = threats[0]
-                target_id = target["id"]
+                target_id = target.id
 
                 self.target_vehicle_id = target_id
-                self.target_driver_name = target["driver_name"]
-                self.target_vehicle_name = target["vehicle_name"]
+                self.target_driver_name = target.driver_name
+                self.target_vehicle_name = target.vehicle_name
                 self._last_state_change_time = now
 
-                self._live_ttc = target["ttc"]
-                self._live_distance = target["dist_behind"]
-                self._live_speed_delta_kmh = target["speed_delta_kmh"]
+                self._live_ttc = target.ttc
+                self._live_distance = target.dist_behind
+                self._live_speed_delta_kmh = target.speed_delta_kmh
 
                 # Check history to see if vehicle was already announced within target_memory_sec window
                 hist = self._get_target_memory(target_id, now)
-                last_stage = hist.get("last_stage") if hist else None
+                last_stage = hist.last_stage if hist else None
 
                 if last_stage is None:
                     # First detection for this target -> Standard entry into APPROACHING ("incoming")
@@ -470,11 +491,11 @@ class TrafficSpotterRole(BaseRole):
                 else:
                     # Vehicle already in memory within last N seconds
                     # Determine if vehicle progressed to a closer stage
-                    if target["ttc"] <= 1.0:
+                    if target.ttc <= 1.0:
                         current_stage = 1
-                    elif target["ttc"] <= 2.0:
+                    elif target.ttc <= 2.0:
                         current_stage = 2
-                    elif target["ttc"] <= 3.0:
+                    elif target.ttc <= 3.0:
                         current_stage = 3
                     else:
                         current_stage = 5
@@ -510,7 +531,7 @@ class TrafficSpotterRole(BaseRole):
         # =========================================================================
         # SEARCH FOR CURRENT TARGET IN METRICS
         # =========================================================================
-        target_metric = next((m for m in metrics if m["id"] == self.target_vehicle_id), None)
+        target_metric = next((m for m in metrics if m.id == self.target_vehicle_id), None)
 
         if not target_metric:
             # Target disappeared (abandon, pits, disconnect)
@@ -519,12 +540,12 @@ class TrafficSpotterRole(BaseRole):
             self._reset_active_tracking()
             return None
 
-        dist_behind = target_metric["dist_behind"]
-        ttc = target_metric["ttc"]
-        speed_delta_mps = target_metric["speed_delta_mps"]
+        dist_behind = target_metric.dist_behind
+        ttc = target_metric.ttc
+        speed_delta_mps = target_metric.speed_delta_mps
         self._live_ttc = ttc
         self._live_distance = dist_behind
-        self._live_speed_delta_kmh = target_metric["speed_delta_kmh"]
+        self._live_speed_delta_kmh = target_metric.speed_delta_kmh
 
         # =========================================================================
         # 2. APPROACHING / COUNTDOWN STATE
@@ -551,7 +572,7 @@ class TrafficSpotterRole(BaseRole):
 
                 target_id = self.target_vehicle_id
                 hist = self._get_target_memory(target_id, now) if target_id is not None else None
-                last_stage = hist.get("last_stage") if hist else None
+                last_stage = hist.last_stage if hist else None
 
                 # STAGE_OVERLAP = 0
                 if last_stage is None or 0 < last_stage:
@@ -579,7 +600,7 @@ class TrafficSpotterRole(BaseRole):
 
                     target_id = self.target_vehicle_id
                     hist = self._get_target_memory(target_id, now) if target_id is not None else None
-                    last_stage = hist.get("last_stage") if hist else None
+                    last_stage = hist.last_stage if hist else None
 
                     if last_stage is None or sec < last_stage:
                         if target_id is not None:
@@ -616,9 +637,9 @@ class TrafficSpotterRole(BaseRole):
                 # Check if another car arrives behind immediately
                 other_threats = [
                     m for m in metrics
-                    if m["id"] != self.target_vehicle_id
-                    and 0.0 < m["dist_behind"] <= 80.0
-                    and m["ttc"] <= 4.0
+                    if m.id != self.target_vehicle_id
+                    and 0.0 < m.dist_behind <= 80.0
+                    and m.ttc <= 4.0
                 ]
 
                 if other_threats:
@@ -626,16 +647,16 @@ class TrafficSpotterRole(BaseRole):
                         self._record_target_stage(passed_target_id, -1, now)
 
                     # Direct chain onto next car without calling Clear
-                    other_threats.sort(key=lambda m: m["ttc"])
+                    other_threats.sort(key=lambda m: m.ttc)
                     next_target = other_threats[0]
-                    next_id = next_target["id"]
+                    next_id = next_target.id
 
                     self.target_vehicle_id = next_id
-                    self.target_driver_name = next_target["driver_name"]
-                    self.target_vehicle_name = next_target["vehicle_name"]
+                    self.target_driver_name = next_target.driver_name
+                    self.target_vehicle_name = next_target.vehicle_name
 
                     hist_next = self._get_target_memory(next_id, now)
-                    self.last_announced_sec = hist_next.get("last_stage") if hist_next else 4
+                    self.last_announced_sec = hist_next.last_stage if hist_next else 4
                     self.state = TrafficSpotterState.APPROACHING
                     self._last_state_change_time = now
                     return None
@@ -645,7 +666,7 @@ class TrafficSpotterRole(BaseRole):
                 self._last_state_change_time = now
 
                 hist = self._get_target_memory(passed_target_id, now) if passed_target_id is not None else None
-                last_stage = hist.get("last_stage") if hist else None
+                last_stage = hist.last_stage if hist else None
 
                 if passed_target_id is not None:
                     self._record_target_stage(passed_target_id, -1, now)

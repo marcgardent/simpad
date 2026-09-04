@@ -357,41 +357,13 @@ class HapticFeedbackWidget(QWidget):
             lbl.setWordWrap(True)
             row.addWidget(lbl, 2)
 
-            if isinstance(p, BoolParam):
-                chk = QCheckBox(self.param_scroll_content)
-                chk.setChecked(bool(curr_val))
-                chk.toggled.connect(lambda val, pname=p.name: self._set_param_and_save(sp, pname, val))
-                row.addWidget(chk, 1)
-
-            elif isinstance(p, ChoiceParam):
-                combo = QComboBox(self.param_scroll_content)
-                for c in p.choices:
-                    combo.addItem(c)
-                idx = combo.findText(str(curr_val))
-                if idx != -1:
-                    combo.setCurrentIndex(idx)
-                combo.currentTextChanged.connect(lambda val, pname=p.name: self._set_param_and_save(sp, pname, val))
-                row.addWidget(combo, 1)
-
-            elif isinstance(p, FloatRangeParam):
-                spin = QDoubleSpinBox(self.param_scroll_content)
-                spin.setRange(p.min_val, p.max_val)
-                spin.setSingleStep(p.step)
-                spin.setValue(float(curr_val))
-                if p.unit:
-                    spin.setSuffix(f" {p.unit}")
-                spin.valueChanged.connect(lambda val, pname=p.name: self._set_param_and_save(sp, pname, val))
-                row.addWidget(spin, 1)
-
-            elif isinstance(p, IntRangeParam):
-                spin = QSpinBox(self.param_scroll_content)
-                spin.setRange(p.min_val, p.max_val)
-                spin.setSingleStep(p.step)
-                spin.setValue(int(curr_val))
-                if p.unit:
-                    spin.setSuffix(f" {p.unit}")
-                spin.valueChanged.connect(lambda val, pname=p.name: self._set_param_and_save(sp, pname, val))
-                row.addWidget(spin, 1)
+            widget = p.create_widget(
+                parent=self.param_scroll_content,
+                current_value=curr_val,
+                on_change=lambda val, pname=p.name: self._set_param_and_save(sp, pname, val),
+            )
+            if widget:
+                row.addWidget(widget, 1)
 
             self.param_layout.addLayout(row)
 

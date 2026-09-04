@@ -3,11 +3,9 @@ Brake Gauge Widget — Left vertical brake pedal intensity bar in compact Qt can
 Displays pure driver braking percentage in Red (#ef4444 / QColor(239, 68, 68)).
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 class QtBrakeGaugeWidget(BaseQtHudWidget):
@@ -24,10 +22,9 @@ class QtBrakeGaugeWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        raw_brake = float(extra_data.get("brake", sensors.unfiltered_brake * 100.0))
+        raw_brake = context.sensors.unfiltered_brake * 100.0
 
         # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_brake = lerp(self.display_brake, raw_brake, 0.65)

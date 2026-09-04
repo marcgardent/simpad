@@ -148,6 +148,7 @@ class TestQtHudOverlay(unittest.TestCase):
         img = QImage(800, 600, QImage.Format.Format_ARGB32)
         painter = QPainter(img)
 
+        from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
         # 1. Live delta mode
         sensors_live = VehicleSensors(
             delta_time=-0.150,
@@ -155,7 +156,7 @@ class TestQtHudOverlay(unittest.TestCase):
             lap_flag=2,
             is_lap_freeze_active=False,
         )
-        widget.paint(painter, 800.0, 600.0, sensors_live, {})
+        widget.paint(painter, 800.0, 600.0, CockpitWidgetContext(sensors=sensors_live))
 
         # 2. Frozen lap time mode (Finish line crossing: 01:32.450 Purple)
         sensors_frozen = VehicleSensors(
@@ -165,11 +166,7 @@ class TestQtHudOverlay(unittest.TestCase):
             is_lap_freeze_active=True,
             lap_flag=2,
         )
-        widget.paint(painter, 800.0, 600.0, sensors_frozen, {
-            "lastLapTime": "01:32.450",
-            "lastLapStatus": "purple",
-            "isLapFreezeActive": True,
-        })
+        widget.paint(painter, 800.0, 600.0, CockpitWidgetContext(sensors=sensors_frozen))
         painter.end()
 
 

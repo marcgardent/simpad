@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ENGINEER_CONFIG_PATH = Path("engineer_config.json")
 
+_PACKET_WAKE_REASONS = {
+    TelemInfo: TelemetryWakeReason.PHYSICS_TICK,
+    FullScoringSession: TelemetryWakeReason.GRID_UPDATE,
+    CompactScoring: TelemetryWakeReason.SCORING_UPDATE,
+}
+
+_SCORING_STORE_UPDATERS = {
+    FullScoringSession: lambda store, s, now: store.update_full_scoring(s, now),
+    CompactScoring: lambda store, s, now: store.update_compact_scoring(s, now),
+}
+
 
 class RaceEngineer:
     """
@@ -297,28 +308,17 @@ class RaceEngineer:
         if telemetry is not None:
             active_store.update_telemetry(telemetry, now)
         if scoring is not None:
-            if isinstance(scoring, FullScoringSession):
-                active_store.update_full_scoring(scoring, now)
-            elif isinstance(scoring, CompactScoring):
-                active_store.update_compact_scoring(scoring, now)
+            updater = _SCORING_STORE_UPDATERS.get(type(scoring))
+            if updater:
+                updater(active_store, scoring, now)
 
         if wake_reason is None:
             if trigger_packet is not None:
-                if isinstance(trigger_packet, TelemInfo):
-                    wake_reason = TelemetryWakeReason.PHYSICS_TICK
-                elif isinstance(trigger_packet, FullScoringSession):
-                    wake_reason = TelemetryWakeReason.GRID_UPDATE
-                elif isinstance(trigger_packet, CompactScoring):
-                    wake_reason = TelemetryWakeReason.SCORING_UPDATE
-                else:
-                    wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
+                wake_reason = _PACKET_WAKE_REASONS.get(type(trigger_packet), TelemetryWakeReason.MANUAL_EVALUATION)
             elif telemetry is not None:
                 wake_reason = TelemetryWakeReason.PHYSICS_TICK
             elif scoring is not None:
-                if isinstance(scoring, FullScoringSession):
-                    wake_reason = TelemetryWakeReason.GRID_UPDATE
-                else:
-                    wake_reason = TelemetryWakeReason.SCORING_UPDATE
+                wake_reason = _PACKET_WAKE_REASONS.get(type(scoring), TelemetryWakeReason.SCORING_UPDATE)
             else:
                 wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
 

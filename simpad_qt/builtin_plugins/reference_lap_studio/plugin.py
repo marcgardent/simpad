@@ -866,7 +866,7 @@ class ReferenceLapStudioTabWidget(QWidget):
                 if l_item:
                     l_item.setText(prof.get_annotation_display_label(ann) if prof else ann.id)
                 d_btn = self.table_marks.cellWidget(row, 2)
-                if isinstance(d_btn, QPushButton):
+                if d_btn is not None:
                     d_btn.setText(f"{ann.distance:.1f} m")
                 a_item = self.table_marks.item(row, 3)
                 if a_item:
@@ -910,16 +910,18 @@ class ReferenceLapStudioTabWidget(QWidget):
 
     def _on_file_selected(self, idx: int) -> None:
         file_path = self.combo_files.currentData()
-        if file_path and isinstance(file_path, Path) and file_path.exists():
-            loaded = ReferenceLapProfile.load_from_file(file_path)
-            if loaded:
-                self.ref_manager.delta_engine._all_time_best_profile = loaded
-                self.ref_manager.delta_engine._all_time_best_lap_time = loaded.lap_time
-                self.ref_manager.delta_engine._apply_active_profile()
-                self.refresh_ui()
-        else:
-            self.ref_manager.delta_engine._apply_active_profile()
-            self.refresh_ui()
+        if file_path:
+            p = Path(file_path)
+            if p.exists():
+                loaded = ReferenceLapProfile.load_from_file(p)
+                if loaded:
+                    self.ref_manager.delta_engine._all_time_best_profile = loaded
+                    self.ref_manager.delta_engine._all_time_best_lap_time = loaded.lap_time
+                    self.ref_manager.delta_engine._apply_active_profile()
+                    self.refresh_ui()
+                    return
+        self.ref_manager.delta_engine._apply_active_profile()
+        self.refresh_ui()
 
     def _on_mode_selected(self, idx: int) -> None:
         mode = self.combo_mode.currentData()

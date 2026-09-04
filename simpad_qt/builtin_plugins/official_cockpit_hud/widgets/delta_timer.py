@@ -2,11 +2,9 @@
 Delta Timer Widget — Display expected lap delta time positioned below gear in compact canvas.
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen
-from .base_widget import BaseQtHudWidget
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 class QtDeltaTimerWidget(BaseQtHudWidget):
@@ -29,17 +27,18 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        is_freeze = extra_data.get("isLapFreezeActive", sensors.is_lap_freeze_active)
-        lap_flag = extra_data.get("lap_flag", sensors.lap_flag)
+        sensors = context.sensors
+        is_freeze = sensors.is_lap_freeze_active
+        lap_flag = sensors.lap_flag
+        lap_time_str = sensors.last_lap_time_str
+        lap_status = sensors.last_lap_status
+        expected_str = sensors.delta_time_str
 
         if is_freeze:
             # Line crossing mode: Completed Lap Time (MM:ss.mmm)
-            lap_time_str = str(extra_data.get("lastLapTime", sensors.last_lap_time_str))
             disp_str = lap_time_str if lap_time_str not in ("", "--") else "--:--.---"
-            lap_status = str(extra_data.get("lastLapStatus", sensors.last_lap_status))
 
             if lap_flag == 0 or lap_status == "invalid":
                 # Invalid lap -> Grey
@@ -57,7 +56,6 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
                 text_color = QColor(255, 255, 255, 255)
         else:
             # On-track mode: Live Delta
-            expected_str = str(extra_data.get("expectedTime", sensors.delta_time_str))
             disp_str = expected_str
 
             if lap_flag == 0:

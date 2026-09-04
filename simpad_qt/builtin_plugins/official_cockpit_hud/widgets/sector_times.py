@@ -2,11 +2,9 @@
 Sector Times Widget — 3-sector time boxes (S1, S2, S3) positioned below Delta timer in compact canvas.
 """
 
-from typing import Dict, Any, List
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
-from .base_widget import BaseQtHudWidget
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 class QtSectorTimesWidget(BaseQtHudWidget):
@@ -23,10 +21,10 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        sectors: List[Dict[str, Any]] = extra_data.get("sectors", sensors.sectors_list)
+        sensors = context.sensors
+        sectors = sensors.sectors_list
 
         curr_sec = sensors.current_sector
         if curr_sec != self._last_rendered_sector:

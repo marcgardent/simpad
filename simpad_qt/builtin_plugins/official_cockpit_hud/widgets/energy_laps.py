@@ -2,11 +2,9 @@
 Energy & Laps Widget — Remaining energy and laps display positioned under gear in compact canvas.
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen
-from .base_widget import BaseQtHudWidget
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 class QtEnergyLapsWidget(BaseQtHudWidget):
@@ -22,11 +20,10 @@ class QtEnergyLapsWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        energy = float(extra_data.get("energyLaps", sensors.fuel_level))
-        remaining_laps = int(extra_data.get("remainingLaps", sensors.remaining_laps))
+        energy = float(context.sensors.fuel_level)
+        remaining_laps = int(context.sensors.remaining_laps)
 
         val_str = f"{energy:.1f} / {remaining_laps}" if (energy > 0 or remaining_laps > 0) else "-- / --"
         sub_str = "ENERGY / LAPS"

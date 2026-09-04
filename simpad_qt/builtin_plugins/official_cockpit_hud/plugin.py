@@ -17,7 +17,7 @@ Orchestrates the 12 modular HUD widgets:
 from __future__ import annotations
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QPainter, QFontDatabase
@@ -30,6 +30,7 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.reference_lap import LapDeltaPacket
 from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
+    CockpitWidgetContext,
     QtGearSpeedWidget,
     QtRevIndicatorWidget,
     QtAbsGaugeWidget,
@@ -132,11 +133,10 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
     def on_load(self, context: PluginContext) -> None:
         super().on_load(context)
         self.config = context.get_typed_config(OfficialCockpitHudConfig)
-        if isinstance(self.config.slot, str):
-            try:
-                self.config.slot = HudSlot(self.config.slot)
-            except ValueError:
-                self.config.slot = HudSlot.COCKPIT_CENTER
+        try:
+            self.config.slot = HudSlot(self.config.slot)
+        except ValueError:
+            self.config.slot = HudSlot.COCKPIT_CENTER
 
     def save_config(self) -> None:
         if self.context:
@@ -214,82 +214,55 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         canvas_w = width
         canvas_h = height * 2.0
 
-        # Calculate speed in configured unit
-        raw_speed = sensors.vehicle_speed * 3.6
-        if self.config.speed_unit == "mph":
-            raw_speed *= 0.621371
-
-        throttle_pct = sensors.unfiltered_throttle * 100.0
-        brake_pct = sensors.unfiltered_brake * 100.0
-
-        extra_data: Dict[str, Any] = {
-            "speed": raw_speed,
-            "gear": "R" if sensors.gear == -1 else ("N" if sensors.gear == 0 else str(sensors.gear)),
-            "expectedTime": sensors.last_lap_time_str if sensors.is_lap_freeze_active else sensors.delta_time_str,
-            "delta": sensors.delta_time_str,
-            "estimatedLapTime": sensors.estimated_lap_time_str,
-            "lastLapTime": sensors.last_lap_time_str,
-            "lastLapStatus": sensors.last_lap_status,
-            "isLapFreezeActive": sensors.is_lap_freeze_active,
-            "sectors": sensors.sectors_list,
-            "energyLaps": sensors.fuel_level,
-            "remainingLaps": sensors.remaining_laps,
-            "aero": sensors.aero_load * 100.0,
-            "brake": brake_pct,
-            "throttle": throttle_pct,
-            "abs": sensors.ecu_abs_active * 100.0,
-            "tc": max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0,
-            "overbrake": sensors.lock_intensity > 0.05,
-            "wheelspin": sensors.spin_intensity > 0.05,
-            "underrev": sensors.underrev_intensity > 0.1,
-            "overrev": sensors.overrev_intensity > 0.1,
-            "lap_flag": sensors.lap_flag,
-            "is_pit_lap": sensors.is_pit_lap,
-            "hit_count_current_lap": TelemetryStateStore.get_instance().hit_count_current_lap,
-            "is_clean_lap": TelemetryStateStore.get_instance().is_clean_lap,
-        }
+        store = TelemetryStateStore.get_instance()
+        context = CockpitWidgetContext(
+            sensors=sensors,
+            speed_unit=self.config.speed_unit,
+            hit_count=store.hit_count_current_lap,
+            is_clean_lap=store.is_clean_lap,
+        )
 
         # 1. Electronic Assists (ABS / TC)
         if self.config.show_assists:
-            self.widget_abs.paint(painter, canvas_w, canvas_h, sensors, extra_data)
-            self.widget_tc.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_abs.paint(painter, canvas_w, canvas_h, context)
+            self.widget_tc.paint(painter, canvas_w, canvas_h, context)
 
         # 2. Driver Pedal Inputs (Brake / Throttle)
         if self.config.show_pedals:
-            self.widget_brake.paint(painter, canvas_w, canvas_h, sensors, extra_data)
-            self.widget_throttle.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_brake.paint(painter, canvas_w, canvas_h, context)
+            self.widget_throttle.paint(painter, canvas_w, canvas_h, context)
 
         # 3. 4-Tires Tri-Axial Dynamics
         if self.config.show_tires:
-            self.widget_tires.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_tires.paint(painter, canvas_w, canvas_h, context)
 
         # 4. Speedometer & Engaged Gear
         if self.config.show_gear_speed:
-            self.widget_gear_speed.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_gear_speed.paint(painter, canvas_w, canvas_h, context)
 
         # 5. Rev Warning Triangles
         if self.config.show_rev_indicator:
-            self.widget_rev.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_rev.paint(painter, canvas_w, canvas_h, context)
 
         # 6. Aerodynamic Downforce Bar
         if self.config.show_aero:
-            self.widget_aero.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_aero.paint(painter, canvas_w, canvas_h, context)
 
         # 6b. Lap Status & Clean Lap Indicators (Separate Layer)
         if self.config.show_lap_status:
-            self.widget_lap_status.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_lap_status.paint(painter, canvas_w, canvas_h, context)
 
         # 7. Live Lap Delta & Finished Lap Time
         if self.config.show_delta:
-            self.widget_delta.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_delta.paint(painter, canvas_w, canvas_h, context)
 
         # 8. Remaining Energy & Laps
         if self.config.show_energy:
-            self.widget_energy.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_energy.paint(painter, canvas_w, canvas_h, context)
 
         # 9. S1, S2, S3 Sector Times
         if self.config.show_sectors:
-            self.widget_sectors.paint(painter, canvas_w, canvas_h, sensors, extra_data)
+            self.widget_sectors.paint(painter, canvas_w, canvas_h, context)
 
 
 # Re-export for backward compatibility

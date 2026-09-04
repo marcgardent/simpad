@@ -15,10 +15,11 @@ from .aero_bar import QtAeroBarWidget
 from .energy_laps import QtEnergyLapsWidget
 from .tires_gauge import QtTiresGaugeWidget
 from .lap_status import QtLapStatusWidget
-from .base_widget import BaseQtHudWidget, lerp
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 __all__ = [
     "BaseQtHudWidget",
+    "CockpitWidgetContext",
     "lerp",
     "QtGearSpeedWidget",
     "QtRevIndicatorWidget",

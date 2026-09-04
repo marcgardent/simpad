@@ -3,11 +3,9 @@ TC Gauge Widget — Far-right vertical Traction Control intervention intensity b
 Displays TC power cuts / wheelspin percentage in Cyan (#00dcff / QColor(0, 220, 255)).
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 class QtTcGaugeWidget(BaseQtHudWidget):
@@ -24,13 +22,10 @@ class QtTcGaugeWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
-        if "tc" in extra_data:
-            raw_tc = float(extra_data["tc"])
-        else:
-            raw_tc = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
+        sensors = context.sensors
+        raw_tc = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
 
         # LERP smoothing (0.65 for instant 120 Hz response)
         self.display_tc = lerp(self.display_tc, raw_tc, 0.65)

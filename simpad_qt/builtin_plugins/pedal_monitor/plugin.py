@@ -174,11 +174,10 @@ class PedalTelemetryPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHu
     def on_load(self, context: PluginContext) -> None:
         super().on_load(context)
         self.config = context.get_typed_config(PedalMonitorConfig)
-        if isinstance(self.config.slot, str):
-            try:
-                self.config.slot = HudSlot(self.config.slot)
-            except ValueError:
-                self.config.slot = HudSlot.BOTTOM_LEFT
+        try:
+            self.config.slot = HudSlot(self.config.slot)
+        except ValueError:
+            self.config.slot = HudSlot.BOTTOM_LEFT
 
     def save_config(self) -> None:
         if self.context:

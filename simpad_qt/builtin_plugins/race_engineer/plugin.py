@@ -404,32 +404,14 @@ class RoleDetailWidget(QWidget):
 
             val = role.get_param_value(p.name)
 
-            if isinstance(p, BoolParam):
-                chk = QCheckBox(self.params_group)
-                chk.setChecked(bool(val))
-                chk.toggled.connect(lambda checked, name=p.name: self._on_param_changed(name, checked))
-                self._param_widgets[p.name] = chk
-                row.addWidget(chk)
-
-            elif isinstance(p, FloatRangeParam):
-                spin = QDoubleSpinBox(self.params_group)
-                spin.setRange(p.min_val, p.max_val)
-                spin.setSingleStep(p.step)
-                spin.setSuffix(f" {p.unit}" if p.unit else "")
-                spin.setValue(float(val if val is not None else p.default))
-                spin.valueChanged.connect(lambda v, name=p.name: self._on_param_changed(name, v))
-                self._param_widgets[p.name] = spin
-                row.addWidget(spin)
-
-            elif isinstance(p, IntRangeParam):
-                spin_int = QSpinBox(self.params_group)
-                spin_int.setRange(p.min_val, p.max_val)
-                spin_int.setSingleStep(p.step)
-                spin_int.setSuffix(f" {p.unit}" if p.unit else "")
-                spin_int.setValue(int(val if val is not None else p.default))
-                spin_int.valueChanged.connect(lambda v, name=p.name: self._on_param_changed(name, v))
-                self._param_widgets[p.name] = spin_int
-                row.addWidget(spin_int)
+            widget = p.create_widget(
+                parent=self.params_group,
+                current_value=val,
+                on_change=lambda v, name=p.name: self._on_param_changed(name, v),
+            )
+            if widget:
+                self._param_widgets[p.name] = widget
+                row.addWidget(widget)
 
             row.addStretch()
             self.params_layout.addLayout(row)

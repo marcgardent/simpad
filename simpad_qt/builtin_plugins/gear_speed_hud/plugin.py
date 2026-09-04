@@ -190,11 +190,10 @@ class GearSpeedHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudW
         super().on_load(context)
         # Restore configuration into strongly-typed dataclass
         self.config = context.get_typed_config(GearSpeedConfig)
-        if isinstance(self.config.slot, str):
-            try:
-                self.config.slot = HudSlot(self.config.slot)
-            except ValueError:
-                self.config.slot = HudSlot.COCKPIT_CENTER
+        try:
+            self.config.slot = HudSlot(self.config.slot)
+        except ValueError:
+            self.config.slot = HudSlot.COCKPIT_CENTER
 
     def save_config(self) -> None:
         if self.context:

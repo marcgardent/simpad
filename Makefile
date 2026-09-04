@@ -91,3 +91,7 @@ test:
 
 run:
 	@PYTHONPATH=. $(PYTHON) main_qt.py
+
+
+track-evil:
+	@PYTHONPATH=. $(PYTHON) scripts/lint_oop_evil.py ./simpad_qt

@@ -4,11 +4,9 @@ Gear Speed Widget — Uses digits-only in WHITE for speed, positioned at the top
 2. Gear display directly below the speed.
 """
 
-from typing import Dict, Any
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
-from .base_widget import BaseQtHudWidget, lerp
-from simpad_qt.core.telemetry import VehicleSensors
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
 
 
 class QtGearSpeedWidget(BaseQtHudWidget):
@@ -25,18 +23,15 @@ class QtGearSpeedWidget(BaseQtHudWidget):
         painter: QPainter,
         canvas_w: float,
         canvas_h: float,
-        sensors: VehicleSensors,
-        extra_data: Dict[str, Any],
+        context: CockpitWidgetContext,
     ) -> None:
         # 1. Gear indicator
-        if "gear" in extra_data:
-            gear_str = str(extra_data["gear"])
-        else:
-            g = sensors.gear
-            gear_str = "R" if g == -1 else ("N" if g == 0 else str(g))
+        g = context.sensors.gear
+        gear_str = "R" if g == -1 else ("N" if g == 0 else str(g))
 
-        # 2. Speed in km/h with responsive LERP smoothing (0.70)
-        raw_speed = extra_data.get("speed", sensors.vehicle_speed * 3.6)
+        # 2. Speed with responsive LERP smoothing (0.70)
+        scale = 0.621371 if context.speed_unit == "mph" else 1.0
+        raw_speed = context.sensors.vehicle_speed * 3.6 * scale
         self.display_speed = lerp(self.display_speed, raw_speed, 0.70)
         speed_int = max(0, int(round(self.display_speed)))
         speed_str = str(speed_int)
