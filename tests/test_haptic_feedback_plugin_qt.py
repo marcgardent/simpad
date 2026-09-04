@@ -15,7 +15,7 @@ from simpad_qt.builtin_plugins.haptic_feedback.plugin import (
     HapticFeedbackWidget,
     SubpluginListItemWidget,
 )
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")

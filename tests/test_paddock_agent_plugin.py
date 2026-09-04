@@ -16,7 +16,7 @@ from simpad_qt.builtin_plugins.paddock_agent.plugin import (
     PaddockAgentWidget,
     SeriesSetupCardWidget,
 )
-from src.schedule.manager import RaceEvent, RaceSetupConfig
+from simpad_qt.builtin_plugins.paddock_agent.schedule.manager import RaceEvent, RaceSetupConfig
 
 
 @pytest.fixture(scope="session")

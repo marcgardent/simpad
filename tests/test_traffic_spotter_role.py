@@ -3,10 +3,10 @@ Tests unitaires complets pour TrafficSpotterRole (Machine à états TTC, Countdo
 """
 
 import pytest
-from src.engineer.context import EngineerContext
-from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from src.engineer.base import RoleStatus
-from src.telemetry.lmu_parser import TelemetryData
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpad_qt.core.engineer.base import RoleStatus
+from simpad_qt.core.telemetry.lmu_parser import TelemetryData
 
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3

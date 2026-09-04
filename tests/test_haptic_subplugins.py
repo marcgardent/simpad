@@ -3,16 +3,16 @@ Unit tests for SimPad Haptics Subplugins and Marc Profile Decomposition.
 """
 
 import pytest
-from src.telemetry.sensors import VehicleSensors
-from src.haptics.models import HapticMotorOutput
-from src.haptics.subplugins.marc_abs import MarcAbsSubplugin
-from src.haptics.subplugins.marc_tc import MarcTcSubplugin
-from src.haptics.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
-from src.haptics.subplugins.curbs import CurbsHapticSubplugin
-from src.haptics.subplugins.slip import SlipHapticSubplugin
-from src.haptics.subplugins.grip import TireGripHapticSubplugin
-from src.haptics.manager import HapticSubpluginManager
-from src.haptics.math_engine import WaveformShape
+from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpad_qt.core.haptics.models import HapticMotorOutput
+from simpad_qt.core.haptics.subplugins.marc_abs import MarcAbsSubplugin
+from simpad_qt.core.haptics.subplugins.marc_tc import MarcTcSubplugin
+from simpad_qt.core.haptics.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
+from simpad_qt.core.haptics.subplugins.curbs import CurbsHapticSubplugin
+from simpad_qt.core.haptics.subplugins.slip import SlipHapticSubplugin
+from simpad_qt.core.haptics.subplugins.grip import TireGripHapticSubplugin
+from simpad_qt.core.haptics.manager import HapticSubpluginManager
+from simpad_qt.core.haptics.math_engine import WaveformShape
 
 
 def test_haptic_motor_output_xinput_mapping():

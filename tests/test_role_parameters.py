@@ -5,12 +5,12 @@ and dynamic configuration in Race Engineer roles.
 
 import unittest
 from unittest.mock import MagicMock
-from src.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
-from src.engineer.base import BaseRole, RoleStatus, EngineerMessage
-from src.engineer.context import EngineerContext
-from src.engineer.roles.pace_notes import PaceNotesRole
-from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from src.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
+from simpad_qt.core.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
+from simpad_qt.core.engineer.base import BaseRole, RoleStatus, EngineerMessage
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.roles.pace_notes import PaceNotesRole
+from simpad_qt.core.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 
 

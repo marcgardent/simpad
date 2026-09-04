@@ -1,8 +1,7 @@
 import unittest
 from isimotor_rawudp_client import TelemInfo, TelemWheel, TelemVect3
-from src.telemetry.lmu_parser import LMUParser
-from src.physics.effects import PhysicsToHaptic
-from src.core.config import DEFAULT_CONFIG
+from simpad_qt.core.telemetry.lmu_parser import LMUParser
+from simpad_qt.core.physics.effects import PhysicsToHaptic
 
 
 def make_wheel(lpv=0.0, lgv=0.0, lat_pv=0.0, lat_gv=0.0, susp_deflection=0.0):
@@ -33,7 +32,7 @@ class TestLMUMiddleware(unittest.TestCase):
         self.assertAlmostEqual(parsed.lateral_patch_vel[2], 0.7, places=4)
 
     def test_physics_processor(self):
-        processor = PhysicsToHaptic(DEFAULT_CONFIG)
+        processor = PhysicsToHaptic()
 
         # Simulation sous le seuil -> vibrations = 0.0
         telem = TelemInfo(wheels=tuple(make_wheel(0.0, 0.0) for _ in range(4)))

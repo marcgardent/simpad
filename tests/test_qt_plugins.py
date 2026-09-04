@@ -34,7 +34,7 @@ from simpad_qt.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpi
 from simpad_qt.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
 from simpad_qt.builtin_plugins.pedal_monitor.plugin import PedalMonitorConfig
 from simpad_qt.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")
@@ -550,7 +550,7 @@ def test_telemetry_bus_full_scoring_garage_integration(qapp, tmp_path):
 
 def test_window_focus_studio_parent_vs_lmu_and_hud():
     """Verify that focusing the SimPad Studio parent console marks LMU as background, not in-game."""
-    from src.utils.window_utils import get_window_manager
+    from simpad_qt.core.utils.window_utils import get_window_manager
 
     wm = get_window_manager()
     orig_get_pids = wm.get_lmu_pids
@@ -829,7 +829,7 @@ class EventHookSpyPlugin(SimPadPlugin):
 def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     """Test that PluginManager dispatches typed polymorphic event hooks to plugins reading from TelemetryStateStore."""
     from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl, SystemEvent
-    from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+    from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")

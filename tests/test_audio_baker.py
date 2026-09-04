@@ -2,8 +2,8 @@ import os
 import tempfile
 from pathlib import Path
 import pytest
-from src.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH
-from src.utils.audio import AudioAnnouncer
+from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH
+from simpad_qt.core.utils.audio import AudioAnnouncer
 
 
 def test_default_phrases_presence():

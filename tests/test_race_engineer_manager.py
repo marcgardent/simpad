@@ -3,9 +3,9 @@ Tests unitaires pour RaceEngineer Manager (Priorités, Tri, Activation, IHM, Sau
 """
 
 import pytest
-from src.engineer.manager import RaceEngineer
-from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.context import EngineerContext
+from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.core.engineer.context import EngineerContext
 
 
 class MockRoleA(BaseRole):
@@ -173,10 +173,10 @@ def test_race_engineer_file_persistence(tmp_path):
 def test_individual_roles_disabled_behavior():
     """Vérifie que les rôles désactivés ne déclenchent aucun son ni alerte."""
     from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3, CompactScoring
-    from src.engineer.roles.lap_validity import LapValidityRole
-    from src.engineer.roles.traffic_spotter import TrafficSpotterRole
-    from src.engineer.roles.traffic_jam import TrafficJamRole
-    from src.engineer.roles.pace_notes import PaceNotesRole
+    from simpad_qt.core.engineer.roles.lap_validity import LapValidityRole
+    from simpad_qt.core.engineer.roles.traffic_spotter import TrafficSpotterRole
+    from simpad_qt.core.engineer.roles.traffic_jam import TrafficJamRole
+    from simpad_qt.core.engineer.roles.pace_notes import PaceNotesRole
 
     played = []
     def mock_audio(phrase_key, interrupt=False):

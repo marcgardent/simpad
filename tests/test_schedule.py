@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.schedule import (
+from simpad_qt.builtin_plugins.paddock_agent.schedule import (
     RaceSetupConfig,
     RaceTierConfig,
     RaceEvent,
@@ -18,7 +18,7 @@ from src.schedule import (
     clean_series_key,
     make_setup_key,
 )
-from src.utils.audio import AudioAnnouncer
+from simpad_qt.core.utils.audio import AudioAnnouncer
 
 
 class TestRaceSetupConfig:

@@ -3,8 +3,8 @@ import shutil
 import unittest
 import tempfile
 from pathlib import Path
-import src.telemetry.delta_engine as delta_engine_module
-from src.telemetry.delta_engine import DeltaEngine, _clean_name
+import simpad_qt.core.telemetry.delta_engine as delta_engine_module
+from simpad_qt.core.telemetry.delta_engine import DeltaEngine, _clean_name
 
 
 class TestDeltaEngine(unittest.TestCase):
@@ -237,7 +237,7 @@ class TestDeltaEngine(unittest.TestCase):
 
     def test_multi_reference_modes(self):
         """Verify hierarchy and switching between All-Time Best, Session Best, Stint Best, and Last Lap."""
-        from src.telemetry.delta_engine import DeltaReferenceMode
+        from simpad_qt.core.telemetry.delta_engine import DeltaReferenceMode
         track_len = 1000.0
 
         # Helper to simulate completing a lap with given lap_time
@@ -296,8 +296,8 @@ class TestDeltaEngine(unittest.TestCase):
 
     def test_mid_sector_reference_mode_switch(self):
         """Verify that changing reference mode in the middle of Sector 2 dynamically recalculates sector deltas."""
-        from src.telemetry.delta_engine import DeltaReferenceMode
-        from src.telemetry.reference_profile import ReferenceLapProfile
+        from simpad_qt.core.telemetry.delta_engine import DeltaReferenceMode
+        from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
 
         # Setup 2 distinct reference profiles for a 1000m track
         # Profile A (All-Time Best): 50.0s lap (S1=16.65s at 333m, S2=33.3s at 666m)
@@ -453,7 +453,7 @@ class TestDeltaEngine(unittest.TestCase):
 
     def test_session_ref_no_lap_initially(self):
         """Verify that when in SESSION_BEST mode with no session lap completed, has_reference is False."""
-        from src.telemetry.delta_engine import DeltaReferenceMode
+        from simpad_qt.core.telemetry.delta_engine import DeltaReferenceMode
         # Simulate having an All-Time Best on disk
         self.engine._all_time_best_lap_time = 45.0
         self.engine._all_time_best_profile = "fake"  # Mock
@@ -483,7 +483,7 @@ class TestDeltaEngine(unittest.TestCase):
 
     def test_scoring_elapsed_time_crawl_and_stop(self):
         """Verify that update_scoring and update_physics use real clock elapsed time (mCurrentET - mLapStartET)."""
-        from src.telemetry.reference_profile import ReferenceLapProfile
+        from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
         
         prof = ReferenceLapProfile(
             track_name="TestTrack",
@@ -551,7 +551,7 @@ class TestDeltaEngine(unittest.TestCase):
 
     def test_format_lap_time(self):
         """Verify format_lap_time formats in MM:ss.mmm."""
-        from src.telemetry.delta_engine import format_lap_time
+        from simpad_qt.core.telemetry.delta_engine import format_lap_time
         self.assertEqual(format_lap_time(92.45), "01:32.450")
         self.assertEqual(format_lap_time(125.008), "02:05.008")
         self.assertEqual(format_lap_time(58.123), "00:58.123")
@@ -598,7 +598,7 @@ class TestDeltaEngine(unittest.TestCase):
     def test_mixed_udp_stream_continuous_delta_and_locked_sectors(self):
         """Verify that delta remains smooth and prior sector deltas remain locked without flickering
         when alternating between TelemInfo (120Hz) and CompactScoring (10Hz)."""
-        from src.telemetry.reference_profile import ReferenceLapProfile
+        from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
 
         track_length = 3000.0
         # Reference: 90 seconds lap, S1 at 1000m (30s), S2 at 2000m (60s), S3 finish at 3000m (90s)

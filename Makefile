@@ -32,7 +32,7 @@ init: install-deps download-model bake-audio test
 	@echo "  • Tests unitaires       : Validés"
 	@echo ""
 	@echo "  Pour lancer l'application :"
-	@echo "    $(PYTHON) main.py"
+	@echo "    $(PYTHON) main_qt.py"
 	@echo "================================================================"
 
 install-deps:
@@ -90,4 +90,4 @@ test:
 	@PYTHONPATH=. $(PYTHON) -m pytest tests/
 
 run:
-	@PYTHONPATH=. $(PYTHON) main.py
+	@PYTHONPATH=. $(PYTHON) main_qt.py

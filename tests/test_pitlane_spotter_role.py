@@ -3,9 +3,9 @@ Tests unitaires pour PitlaneSpotterRole (Machine à états Unsafe Release & Pitl
 """
 
 import pytest
-from src.engineer.context import EngineerContext
-from src.engineer.roles.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
-from src.engineer.manager import RaceEngineer
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.roles.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
+from simpad_qt.core.engineer.manager import RaceEngineer
 
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3

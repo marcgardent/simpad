@@ -6,9 +6,9 @@ la détection 3-Wide vs file indienne, et la machine à états temporelle anti-c
 
 import math
 import pytest
-from src.engineer.context import EngineerContext
-from src.engineer.base import RoleStatus
-from src.engineer.roles.fight_spotter import (
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.base import RoleStatus
+from simpad_qt.core.engineer.roles.fight_spotter import (
     FightSpotterRole,
     SpotterSide,
     SpotterMessageType,

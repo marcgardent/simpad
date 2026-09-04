@@ -5,9 +5,9 @@ Tests unitaires pour LapValidityRole (100% stateless : Timing in progress / Time
 import time
 import pytest
 from isimotor_rawudp_client import CompactScoring, FullScoringSession, VehicleScoring, TelemInfo
-from src.engineer.context import EngineerContext
-from src.engineer.roles.lap_validity import LapValidityRole
-from src.telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.roles.lap_validity import LapValidityRole
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 
 
 @pytest.fixture(autouse=True)

@@ -18,7 +18,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from src.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH, DEFAULT_SOUND_DIR
+from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH, DEFAULT_SOUND_DIR
 
 
 def main():

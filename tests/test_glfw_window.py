@@ -3,8 +3,8 @@ Tests for GLFW window management, screen resolution queries, and overlay window 
 """
 
 import unittest
-from src.utils.glfw_manager import GLFWWindowManager, _GLFW_AVAILABLE
-from src.utils.window_utils import get_screen_dimensions
+from simpad_qt.core.utils.glfw_manager import GLFWWindowManager, _GLFW_AVAILABLE
+from simpad_qt.core.utils.window_utils import get_screen_dimensions
 
 
 class TestGLFWWindow(unittest.TestCase):
@@ -38,7 +38,7 @@ class TestGLFWWindow(unittest.TestCase):
 
     def test_foreground_window_detection(self):
         """Verifies foreground window title and process name detection functions execute without error."""
-        from src.utils.window_utils import get_foreground_window_title, get_foreground_process_name, is_lmu_foreground
+        from simpad_qt.core.utils.window_utils import get_foreground_window_title, get_foreground_process_name, is_lmu_foreground
 
         title = get_foreground_window_title()
         self.assertIsInstance(title, str)

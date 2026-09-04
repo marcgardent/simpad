@@ -33,7 +33,7 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.telemetry_bus import TelemetryBus
 from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")

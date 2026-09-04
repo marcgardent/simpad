@@ -5,9 +5,9 @@ Unit tests for PaceNotesRole (Race Engineer pace notes and track markers announc
 import unittest
 from unittest.mock import MagicMock
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
-from src.engineer.context import EngineerContext
-from src.engineer.roles.pace_notes import PaceNotesRole
-from src.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
+from simpad_qt.core.engineer.context import EngineerContext
+from simpad_qt.core.engineer.roles.pace_notes import PaceNotesRole
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
 
 
 class TestPaceNotesRole(unittest.TestCase):

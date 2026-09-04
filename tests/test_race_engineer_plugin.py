@@ -21,11 +21,11 @@ from simpad_qt.builtin_plugins.race_engineer import RaceEngineerPlugin
 from simpad_qt.builtin_plugins.race_engineer.plugin import (
     RaceEngineerPluginConfig, RaceEngineerWidget, RoleListItemWidget, RoleDetailWidget, SoundLibraryDialog
 )
-from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from src.engineer.params import BoolParam
-from src.engineer.manager import RaceEngineer
-from src.telemetry.sensors import VehicleSensors
-from src.utils.audio import AudioAnnouncer
+from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.core.engineer.params import BoolParam
+from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpad_qt.core.utils.audio import AudioAnnouncer
 from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, VehicleScoring
 
 

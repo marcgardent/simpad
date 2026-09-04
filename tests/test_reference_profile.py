@@ -7,7 +7,7 @@ import unittest
 import json
 from pathlib import Path
 
-from src.telemetry.reference_profile import (
+from simpad_qt.core.telemetry.reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
     AnnotationType,

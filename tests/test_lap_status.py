@@ -9,9 +9,9 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPainter, QImage
 from PySide6.QtCore import QRectF
 
-from src.telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 from simpad_qt.builtin_plugins.official_cockpit_hud.widgets.lap_status import QtLapStatusWidget
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 from isimotor_rawudp_client import TelemInfo, CompactScoring
 
 

@@ -3,9 +3,7 @@ Unit tests for Qt HUD Overlay, modular Qt HUD widgets, and screen geometry calcu
 """
 
 import unittest
-from src.utils.window_utils import get_hud_rect, get_screen_dimensions
-from src.gui.dashboards.manager import DashboardManager
-from src.gui.overlay.lmu_hud_window import LmuHudQtWindow
+from simpad_qt.core.utils.window_utils import get_hud_rect, get_screen_dimensions
 from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     QtAbsGaugeWidget,
     QtBrakeGaugeWidget,
@@ -20,7 +18,7 @@ from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     QtSectorTimesWidget,
 )
 from simpad_qt.builtin_plugins.official_cockpit_hud.widgets.tires_gauge import get_qt_tire_colors
-from src.telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 class TestQtHudOverlay(unittest.TestCase):
@@ -56,27 +54,10 @@ class TestQtHudOverlay(unittest.TestCase):
         ]
         self.assertEqual(len(widgets), 11)
 
-    def test_qt_overlay_lifecycle_and_telemetry(self):
-        """Verify Qt overlay registration in DashboardManager and telemetry updates."""
-        mgr = DashboardManager()
-
-        self.assertIn("lmuHudBoard", mgr.dashboard_names)
-        self.assertTrue(mgr.is_dashboard_enabled("lmuHudBoard"))
-        self.assertIsNotNone(mgr._qt_overlay)
-        self.assertIsInstance(mgr._qt_overlay, LmuHudQtWindow)
-
-        sensors = VehicleSensors(
-            vehicle_speed=55.0,  # ~198 km/h
-            gear=3,
-            front_left_lock=0.8,
-            rear_left_spin=0.6,
-        )
-
-        mgr.update_telemetry(sensors)
 
     def test_format_time_sec(self):
         """Verify format_time_sec formats times as [MM:]ss.mmm."""
-        from src.telemetry.lmu_parser import format_time_sec
+        from simpad_qt.core.telemetry.lmu_parser import format_time_sec
         self.assertEqual(format_time_sec(32.41), "32.410")
         self.assertEqual(format_time_sec(92.41), "1:32.410")
         self.assertEqual(format_time_sec(125.008), "2:05.008")
@@ -152,7 +133,7 @@ class TestQtHudOverlay(unittest.TestCase):
 
     def test_format_lap_time_mm_ss_mmm(self):
         """Verify format_lap_time formats lap time strictly as MM:ss.mmm."""
-        from src.telemetry.delta_engine import format_lap_time
+        from simpad_qt.core.telemetry.delta_engine import format_lap_time
         self.assertEqual(format_lap_time(92.45), "01:32.450")
         self.assertEqual(format_lap_time(125.008), "02:05.008")
         self.assertEqual(format_lap_time(58.123), "00:58.123")

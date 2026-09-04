@@ -8,9 +8,9 @@ import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
-from src.engineer.manager import RaceEngineer
-from src.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from src.telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.core.engineer.roles.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
 
 
 def _make_profile(track_length=5000.0, base_speed_kmh=200.0):

@@ -238,8 +238,8 @@ def main():
     parser.add_argument(
         "paths",
         nargs="*",
-        default=["src", "simpad_qt", "scripts", "main.py", "main_qt.py"],
-        help="Paths to scan (default: src, simpad_qt, scripts, main.py, main_qt.py)"
+        default=["simpad_qt", "scripts", "main_qt.py"],
+        help="Paths to scan (default: simpad_qt, scripts, main_qt.py)"
     )
     parser.add_argument(
         "-s", "--summary-only",
