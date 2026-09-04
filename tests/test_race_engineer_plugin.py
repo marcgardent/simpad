@@ -123,7 +123,8 @@ def test_subplugin_sound_requirements_aggregation_and_missing_check(qapp, tmp_pa
 
     all_sounds = plugin.engineer.get_all_sound_requirements(only_enabled=False)
     assert len(all_sounds) >= 30
-    assert "clean_lap" in all_sounds
+    assert "timing_in_progress" in all_sounds
+    assert "time_deleted" in all_sounds
     assert "give_time_back" in all_sounds
     assert "car_left" in all_sounds
     assert "incoming" in all_sounds
@@ -138,10 +139,10 @@ def test_subplugin_sound_requirements_aggregation_and_missing_check(qapp, tmp_pa
 
     # If we create one file in the directory
     empty_sound_dir.mkdir(parents=True, exist_ok=True)
-    (empty_sound_dir / "clean_lap.wav").write_text("dummy audio")
+    (empty_sound_dir / "timing_in_progress.wav").write_text("dummy audio")
     missing_after = plugin.engineer.get_missing_sounds(sound_dir=empty_sound_dir)
     assert len(missing_after) == len(all_sounds) - 1
-    assert "clean_lap" not in missing_after
+    assert "timing_in_progress" not in missing_after
 
 
 def test_race_engineer_packet_dispatch_and_radio_feed(qapp, tmp_path):

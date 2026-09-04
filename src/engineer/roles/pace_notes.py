@@ -229,7 +229,19 @@ class PaceNotesRole(BaseRole):
         dist = speed_mps * self.anticipation_time_sec
         return max(self.min_lead_distance_m, min(self.max_lead_distance_m, dist))
 
+    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Physics tick evaluation (100-120Hz TelemInfo). Real-time lap distance and speed for pace note trigger."""
+        return self._evaluate_pace_notes(state, context)
+
+    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Scoring update evaluation (CompactScoring 10Hz). Lap transition and track length sync."""
+        return self._evaluate_pace_notes(state, context)
+
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Polymorphic entry point for direct/manual evaluations."""
+        return self._evaluate_pace_notes(context.state_store, context)
+
+    def _evaluate_pace_notes(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
         """
         Evaluates player position relative to track markers on each tick.
         """

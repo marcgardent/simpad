@@ -7,9 +7,9 @@ Migrates the official SimPad modular overlay:
 - 4-Tire tri-axial slip/lock/spin physical model gauges.
 - Dual pedal bars (Throttle green, Brake red).
 - Electronic assists (ABS purple, TC cyan) with level readouts.
-- Live lap delta timer & finish line lap freeze (purple/green/yellow/dirty).
+- Live lap delta timer & finish line lap freeze (purple/green/yellow/invalid).
 - S1, S2, S3 Sector times with live sector delta indicators.
-- Aerodynamic downforce bar (4-stage color ramp) & clean lap indicator dot.
+- Aerodynamic downforce bar (4-stage color ramp) & lap validity indicator dot.
 - Remaining energy & laps counter.
 """
 
@@ -34,6 +34,7 @@ from simpad_qt.plugins.contracts import (
 )
 from simpad_qt.core.reference_lap import LapDeltaPacket
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 from src.gui.overlay.widgets import (
     QtGearSpeedWidget,
     QtRevIndicatorWidget,
@@ -258,8 +259,8 @@ class OfficialCockpitHudTabWidget(QWidget):
         self.chk_sectors.toggled.connect(lambda v: self._update_flag("show_sectors", v))
         m_layout.addWidget(self.chk_sectors, 2, 0)
 
-        # Aero Downforce & Cleanlap
-        self.chk_aero = QCheckBox("Aerodynamic Load Bar & Clean Lap Indicator", mod_group)
+        # Aero Downforce & Lap Validity
+        self.chk_aero = QCheckBox("Aerodynamic Load Bar & Lap Validity Indicator", mod_group)
         self.chk_aero.setChecked(self.plugin.config.show_aero)
         self.chk_aero.toggled.connect(lambda v: self._update_flag("show_aero", v))
         m_layout.addWidget(self.chk_aero, 2, 1)
@@ -434,6 +435,18 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         return self._active_tab_widget
 
     # =========================================================================
+    # Polymorphic Telemetry State Event Hooks
+    # =========================================================================
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+        pass
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on scoring update (10Hz) from central state store."""
+        pass
+
+    # =========================================================================
     # ITelemetrySubscriber & IDeltaSubscriber
     # =========================================================================
 
@@ -534,7 +547,7 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
         if self.config.show_rev_indicator:
             self.widget_rev.paint(painter, canvas_w, canvas_h, sensors, extra_data)
 
-        # 6. Aerodynamic Downforce Bar & Clean Lap Dot
+        # 6. Aerodynamic Downforce Bar & Lap Validity Dot
         if self.config.show_aero:
             self.widget_aero.paint(painter, canvas_w, canvas_h, sensors, extra_data)
 

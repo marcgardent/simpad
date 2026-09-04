@@ -308,7 +308,23 @@ class TrafficSpotterRole(BaseRole):
         """Role is busy as long as it is actively tracking a car (non-IDLE)."""
         return self.state != TrafficSpotterState.IDLE
 
+    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Physics tick evaluation (100-120Hz TelemInfo). Real-time distance and closing speed evaluation."""
+        return self._evaluate_traffic(state, context)
+
+    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Grid update evaluation (FullScoringSession). Standings, positions and rear threats."""
+        return self._evaluate_traffic(state, context)
+
+    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Scoring update evaluation (CompactScoring 10Hz). Spline tracking and session status."""
+        return self._evaluate_traffic(state, context)
+
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Polymorphic entry point for direct/manual evaluations."""
+        return self._evaluate_traffic(context.state_store, context)
+
+    def _evaluate_traffic(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             if self.state != TrafficSpotterState.IDLE:
                 self.reset()

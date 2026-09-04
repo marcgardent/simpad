@@ -24,6 +24,7 @@ from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 
 
 @dataclass
@@ -307,6 +308,27 @@ class TelemetryDiagnosticsPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscribe
     def create_tab_widget(self, parent: Optional[QWidget] = None) -> QWidget:
         self._active_widget = StreamDiagnosticsWidget(self, parent)
         return self._active_widget
+
+    # Polymorphic Telemetry State Event Hooks
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz)."""
+        pass
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on scoring update (10Hz)."""
+        pass
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on grid update (2-5Hz)."""
+        pass
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on weather update (~1Hz)."""
+        pass
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called directly on session / system event."""
+        pass
 
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         """Fallback subscriber for normalized frames."""

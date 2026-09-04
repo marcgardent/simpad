@@ -13,6 +13,7 @@ from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.context import EngineerContext
 from src.engineer.factory import RoleFactory
 from src.telemetry.lmu_parser import TelemetryData
+from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 from src.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
@@ -275,11 +276,14 @@ class RaceEngineer:
 
     def update(
         self,
-        telemetry: Optional[TelemetryData] = None,
-        scoring: Optional[Dict[str, Any]] = None,
+        telemetry: Optional[Union[TelemetryData, Any]] = None,
+        scoring: Optional[Union[Dict[str, Any], Any]] = None,
+        store: Optional[TelemetryStateStore] = None,
+        wake_reason: Optional[TelemetryWakeReason] = None,
+        trigger_packet: Optional[Any] = None,
     ) -> List[EngineerMessage]:
         """
-        Main evaluation cycle: passes context to each role in priority order.
+        Main evaluation cycle: passes unified context to each role in priority order.
         """
         if not self.enabled:
             return []
@@ -287,12 +291,39 @@ class RaceEngineer:
         now = time.time()
         self._last_processed_time = now
 
+        active_store = store or TelemetryStateStore.get_instance()
+        if telemetry is not None:
+            active_store.update_telemetry(telemetry, now)
+        if scoring is not None:
+            if hasattr(scoring, "vehicles") or (isinstance(scoring, dict) and ("mVehicles" in scoring or "vehicles" in scoring)):
+                active_store.update_full_scoring(scoring, now)
+            else:
+                active_store.update_compact_scoring(scoring, now)
+
+        if wake_reason is None:
+            if trigger_packet is not None:
+                if hasattr(trigger_packet, "wheels"):
+                    wake_reason = TelemetryWakeReason.PHYSICS_TICK
+                elif hasattr(trigger_packet, "vehicles"):
+                    wake_reason = TelemetryWakeReason.GRID_UPDATE
+                else:
+                    wake_reason = TelemetryWakeReason.SCORING_UPDATE
+            elif telemetry is not None:
+                wake_reason = TelemetryWakeReason.PHYSICS_TICK
+            elif scoring is not None:
+                wake_reason = TelemetryWakeReason.SCORING_UPDATE
+            else:
+                wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
+
         context = EngineerContext(
             telemetry=telemetry,
             scoring=scoring,
             timestamp=now,
             audio_engine=self.audio_engine,
             reference_profile=self._get_active_reference_profile(),
+            store=active_store,
+            wake_reason=wake_reason,
+            trigger_packet=trigger_packet,
         )
 
         emitted_messages: List[EngineerMessage] = []

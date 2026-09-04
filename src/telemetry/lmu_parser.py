@@ -23,6 +23,7 @@ from isimotor_rawudp_client import (
 
 from src.telemetry.sensors import VehicleSensors
 from src.telemetry.delta_engine import DeltaEngine, format_lap_time
+from src.telemetry.state_store import TelemetryStateStore
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,10 @@ class TelemetryData:
     last_lap_status: str = "default"
     is_lap_freeze_active: bool = False
     grip_fractions: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    is_on_track: bool = True
+    wheels_on_track: int = 4
+    surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    terrain_names: Tuple[str, str, str, str] = ("", "", "", "")
     raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
     raw_telemetry: Optional[TelemInfo] = None
 
@@ -203,6 +208,10 @@ class LMUParser:
     _last_travels: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_grips: tuple = (1.0, 1.0, 1.0, 1.0)
     _last_susp_vels: tuple = (0.0, 0.0, 0.0, 0.0)
+    _last_is_on_track: bool = True
+    _last_wheels_on_track: int = 4
+    _last_surface_types: tuple = (0, 0, 0, 0)
+    _last_terrain_names: tuple = ("", "", "", "")
 
     _last_current_sector: int = 1
     _last_sector1_delta: float = 0.0
@@ -358,6 +367,10 @@ class LMUParser:
             cls._last_travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             cls._last_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
             cls._last_susp_vels = (0.0, 0.0, 0.0, 0.0)
+            cls._last_surface_types = tuple(int(getattr(w, "surface_type", 0)) for w in wheels[:4])
+            cls._last_terrain_names = tuple(str(getattr(w, "terrain_name", "")).strip() for w in wheels[:4])
+            cls._last_wheels_on_track = sum(1 for s in cls._last_surface_types if s not in (2, 3, 4))
+            cls._last_is_on_track = (cls._last_wheels_on_track > 0)
 
         cls._last_unfiltered_throttle = float(telem.unfiltered_throttle)
         cls._last_unfiltered_brake = float(telem.unfiltered_brake)
@@ -445,12 +458,26 @@ class LMUParser:
                 steps_per_point=cls._last_steps_per_point,
                 steps_per_penalty=cls._last_steps_per_penalty,
                 num_penalties=cls._last_num_penalties,
-                is_lap_dirty=(cls._last_lap_flag in (0, 1)),
+                is_lap_invalid=(cls._last_lap_flag in (0, 1)),
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
                 raw_data_summary=f"lap_num={getattr(telem, 'lap_number', 0)} gear={telem.gear} flap_legal={getattr(telem, 'rear_flap_legal_status', 0)} in_rt={cls._last_in_realtime}",
             )
+            TrackLimitsLogger.get_instance().log_surface_event(
+                source="TelemInfo(120Hz)",
+                is_on_track=cls._last_is_on_track,
+                wheels_on_track=cls._last_wheels_on_track,
+                surface_types=cls._last_surface_types,
+                terrain_names=cls._last_terrain_names,
+                speed_kmh=speed * 3.6,
+                throttle_pct=cls._last_unfiltered_throttle * 100.0,
+                brake_pct=cls._last_unfiltered_brake * 100.0,
+                lap_num=int(getattr(telem, "lap_number", 0)),
+                sector=cls._last_current_sector,
+                lap_flag=cls._last_lap_flag,
+            )
+            TelemetryStateStore.get_instance().update_telemetry(telem)
         except Exception:
             pass
         return snap
@@ -471,10 +498,11 @@ class LMUParser:
         cls._last_lap_flag = int(scoring.count_lap_flag)
         if cls._last_lap_flag == 1:
             cls._last_track_cut_state = "yellow"
-        elif cls._last_lap_flag == 0:
-            cls._last_track_cut_state = "invalid"
         else:
-            cls._last_track_cut_state = "green"
+            if cls._last_lap_flag == 0:
+                cls._last_track_cut_state = "invalid"
+            else:
+                cls._last_track_cut_state = "green"
 
         # Sector 1
         if scoring.cur_sector1 > 0.0:
@@ -520,7 +548,7 @@ class LMUParser:
                 s1_delta=cls._last_sector1_delta,
                 s2_delta=cls._last_sector2_delta,
                 s3_delta=cls._last_sector3_delta,
-                lap_dist=float(getattr(scoring, "lap_dist", 0.0)),
+                lap_dist=cls._delta_engine.last_scoring_dist,
                 speed_kmh=float(cls._last_telem_info.speed_mps * 3.6) if cls._last_telem_info else 0.0,
             )
             from src.telemetry.track_limits_logger import TrackLimitsLogger
@@ -533,10 +561,11 @@ class LMUParser:
                 steps_per_point=cls._last_steps_per_point,
                 steps_per_penalty=cls._last_steps_per_penalty,
                 num_penalties=cls._last_num_penalties,
-                is_lap_dirty=(cls._last_lap_flag in (0, 1)),
+                is_lap_invalid=(cls._last_lap_flag in (0, 1)),
                 speed_kmh=float(cls._last_telem_info.speed_mps * 3.6) if cls._last_telem_info else 0.0,
                 raw_data_summary=f"count_lap_flag={scoring.count_lap_flag} in_rt={scoring.in_realtime} in_garage={scoring.in_garage_stall} sector={scoring.sector} total_laps={scoring.total_laps}",
             )
+            TelemetryStateStore.get_instance().update_compact_scoring(scoring)
         except Exception:
             pass
 
@@ -579,10 +608,11 @@ class LMUParser:
 
             if cls._last_lap_flag == 1:
                 cls._last_track_cut_state = "yellow"
-            elif cls._last_lap_flag == 0:
-                cls._last_track_cut_state = "invalid"
             else:
-                cls._last_track_cut_state = "green"
+                if cls._last_lap_flag == 0:
+                    cls._last_track_cut_state = "invalid"
+                else:
+                    cls._last_track_cut_state = "green"
 
             try:
                 from src.telemetry.track_limits_logger import TrackLimitsLogger
@@ -595,7 +625,7 @@ class LMUParser:
                     steps_per_point=cls._last_steps_per_point,
                     steps_per_penalty=cls._last_steps_per_penalty,
                     num_penalties=cls._last_num_penalties,
-                    is_lap_dirty=(cls._last_lap_flag in (0, 1)),
+                    is_lap_invalid=(cls._last_lap_flag in (0, 1)),
                     speed_kmh=current_speed * 3.6,
                     raw_data_summary=f"count_lap_flag={player_veh.count_lap_flag} flag={getattr(player_veh, 'flag', 0)} under_yellow={getattr(player_veh, 'under_yellow', False)} pens={num_pens} tl_steps={tl_steps} in_pits={getattr(player_veh, 'in_pits', False)}",
                 )
@@ -635,6 +665,11 @@ class LMUParser:
 
         if 0 < session.max_laps < 1000:
             cls._last_total_laps = int(session.max_laps)
+
+        try:
+            TelemetryStateStore.get_instance().update_full_scoring(session)
+        except Exception:
+            pass
 
         return cls._build_telemetry_snapshot()
 
@@ -744,6 +779,10 @@ class LMUParser:
             last_lap_status=cls._delta_engine.last_completed_lap_status,
             is_lap_freeze_active=cls._delta_engine.is_lap_freeze_active,
             grip_fractions=cls._last_grips,
+            is_on_track=cls._last_is_on_track,
+            wheels_on_track=cls._last_wheels_on_track,
+            surface_types=cls._last_surface_types,
+            terrain_names=cls._last_terrain_names,
             raw_scoring=cls.get_latest_scoring(),
             raw_telemetry=cls._last_telem_info,
         )

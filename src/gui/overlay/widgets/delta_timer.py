@@ -18,7 +18,7 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         * Purple (Session / All-Time Best)
         * Green (Personal Best)
         * Yellow (No improvement / Slower)
-        * Grey (Invalid / Dirty Lap)
+        * Grey (Invalid Lap)
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -42,7 +42,7 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             lap_status = str(extra_data.get("lastLapStatus", getattr(sensors, "last_lap_status", "default")))
 
             if lap_flag == 0 or lap_status == "invalid":
-                # Dirty / Invalid lap -> Grey
+                # Invalid lap -> Grey
                 text_color = QColor(156, 163, 175, 255)
             elif lap_status == "purple":
                 # Overall session best -> Purple
@@ -61,7 +61,7 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             disp_str = expected_str
 
             if lap_flag == 0:
-                # Dirty / Invalid lap -> Grey
+                # Invalid lap -> Grey
                 text_color = QColor(156, 163, 175, 255)
             elif expected_str.startswith("-"):
                 # Ahead -> Green

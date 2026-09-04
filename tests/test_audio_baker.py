@@ -7,7 +7,7 @@ from src.utils.audio import AudioAnnouncer
 
 
 def test_default_phrases_presence():
-    expected_keys = ["clean_lap", "dirty_lap", "lap", "car", "one", "two", "three", "four", "five", "car_clear"]
+    expected_keys = ["timing_in_progress", "time_deleted", "lap", "car", "one", "two", "three", "four", "five", "car_clear"]
     for key in expected_keys:
         assert key in DEFAULT_PHRASES
 
@@ -54,6 +54,6 @@ def test_bake_real_synthesis():
 
 def test_audio_announcer_resolves_files():
     # Assets sound directory should contain baked wav files
-    assert AudioAnnouncer._resolve_wav_file("clean_lap") is not None
+    assert AudioAnnouncer._resolve_wav_file("timing_in_progress") is not None
     assert AudioAnnouncer._resolve_wav_file("car") is not None
     assert AudioAnnouncer._resolve_wav_file("car_clear") is not None

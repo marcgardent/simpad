@@ -60,11 +60,11 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertFalse(self.engine.has_reference)
 
     def test_valid_lap_recording_and_delta_calc(self):
-        """Simulate a valid clean lap and verify reference recording and delta calculation."""
+        """Simulate a valid lap and verify reference recording and delta calculation."""
         track_len = 1000.0
         lap_time = 50.0  # 50 seconds for 1000 meters -> 20 m/s
 
-        # 1. Drive Lap 1 (Clean lap)
+        # 1. Drive Lap 1 (Valid lap)
         scoring_js = {
             "mTrackName": "TestTrack",
             "mLapDist": track_len,
@@ -373,7 +373,7 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._calculate_delta(999.0, 48.0)
         self.assertLess(self.engine.live_delta, 0.0)
 
-        # Cross finish line (first clean lap 48.0s -> faster than 50.0s ref -> purple/green)
+        # Cross finish line (first valid lap 48.0s -> faster than 50.0s ref -> purple/green)
         self.engine._handle_lap_transition(
             laps_comp=1,
             last_lap_time=48.0,
@@ -430,8 +430,8 @@ class TestDeltaEngine(unittest.TestCase):
         # Delta remains unchanged at 0.0
         self.assertEqual(self.engine.live_delta, 0.0)
 
-    def test_dirty_lap_not_recorded(self):
-        """Verify dirty laps (lap_flag == 0) are strictly rejected from becoming reference laps."""
+    def test_invalid_lap_not_recorded(self):
+        """Verify invalid laps (lap_flag == 0) are strictly rejected from becoming reference laps."""
         self.engine._track_name = "TestTrack"
         self.engine._track_length = 1000.0
         self.engine._last_laps_completed = 1
@@ -439,7 +439,7 @@ class TestDeltaEngine(unittest.TestCase):
         # Fake samples
         self.engine._current_lap_samples = [(i * 100.0, i * 4.0, 25.0, 1.0, 0.0, 0.0) for i in range(11)]
 
-        # Finalize lap with lap_flag = 0 (Dirty / Cut track)
+        # Finalize lap with lap_flag = 0 (Invalid / Cut track)
         self.engine._finalize_completed_lap(
             lap_time=40.0,
             lap_flag=0,
@@ -594,6 +594,131 @@ class TestDeltaEngine(unittest.TestCase):
         # Case 4: Driver runs 88.0s but cut track (lap_flag = 0) -> Invalid / Grey
         self.engine._handle_lap_transition(laps_comp=5, last_lap_time=88.0, lap_flag=0, in_garage=False, in_pits=False)
         self.assertEqual(self.engine.last_completed_lap_status, "invalid")
+
+    def test_mixed_udp_stream_continuous_delta_and_locked_sectors(self):
+        """Verify that delta remains smooth and prior sector deltas remain locked without flickering
+        when alternating between TelemInfo (120Hz) and CompactScoring (10Hz)."""
+        from src.telemetry.reference_profile import ReferenceLapProfile
+
+        track_length = 3000.0
+        # Reference: 90 seconds lap, S1 at 1000m (30s), S2 at 2000m (60s), S3 finish at 3000m (90s)
+        prof = ReferenceLapProfile(
+            track_name="TestTrack",
+            vehicle_name="TestCar",
+            lap_time=90.0,
+            track_length=track_length,
+            sector_1_dist=1000.0,
+            sector_2_dist=2000.0,
+            sector_1_time=30.0,
+            sector_2_time=60.0,
+            spatial_step=1.0,
+            num_points=3001,
+            t_grid=[(d / track_length) * 90.0 for d in range(3001)],
+        )
+        self.engine._track_name = "TestTrack"
+        self.engine._vehicle_name = "TestCar"
+        self.engine._all_time_best_profile = prof
+        self.engine._all_time_best_lap_time = 90.0
+        self.engine._apply_active_profile()
+        self.assertTrue(self.engine.has_reference)
+
+        lap_start_et = 100.0
+
+        # --- SECTOR 1 ---
+        # Driver is running at 33.33 m/s, perfectly on reference pace (lap_start_et = 100.0)
+        # Update via physics at 500m (t = 115.0s, elapsed in lap = 15.0s)
+        self.engine._last_scoring_dist = 500.0
+        self.engine.update_physics(
+            veh_speed_ms=33.33,
+            elapsed_time=115.0,
+            lap_start_et=lap_start_et,
+            current_sector=1,
+        )
+        self.assertAlmostEqual(self.engine.live_delta, 0.0, delta=0.05)
+        self.assertEqual(self.engine.current_sector, 1)
+
+        # CompactScoring arrives at 10Hz (has NO player_vehicle)
+        compact_scoring = {
+            "mTrackName": "TestTrack",
+            "mLapDist": 3000.0,
+            "mCurrentET": 115.1,
+            "mSector": 1,
+            "mCountLapFlag": 2,
+            "mLastLapTime": -1.0,
+            "mTotalLaps": 1,
+        }
+        self.engine.update_scoring(compact_scoring)
+        # Live delta must NOT reset to 0.0 or blink!
+        self.assertAlmostEqual(self.engine.live_delta, 0.0, delta=0.05)
+        self.assertEqual(self.engine.current_sector, 1)
+
+        # Cross into Sector 2 at 1000m (t = 130.5s -> S1 took 30.5s, reference was 30.0s -> S1 split delta = +0.5s)
+        self.engine._last_scoring_dist = 1000.0
+        self.engine.update_physics(
+            veh_speed_ms=33.33,
+            elapsed_time=130.5,
+            lap_start_et=lap_start_et,
+            current_sector=2,
+        )
+        self.assertEqual(self.engine.current_sector, 2)
+        self.assertTrue(self.engine._s1_captured)
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+
+        # --- SECTOR 2 ---
+        # Now drive in Sector 2 at 1500m (t = 145.5s, delta = +0.5s)
+        self.engine._last_scoring_dist = 1500.0
+        self.engine.update_physics(
+            veh_speed_ms=33.33,
+            elapsed_time=145.5,
+            lap_start_et=lap_start_et,
+            current_sector=2,
+        )
+        self.assertAlmostEqual(self.engine.live_delta, 0.5, delta=0.05)
+        # S1 delta MUST REMAIN EXACTLY LOCKED at 0.5s while in Sector 2 (no flickering!)
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+
+        # CompactScoring arrives in Sector 2
+        compact_scoring["mCurrentET"] = 145.6
+        compact_scoring["mSector"] = 2
+        self.engine.update_scoring(compact_scoring)
+        # S1 delta must NOT flicker or reset
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.live_delta, 0.5, delta=0.05)
+
+        # Cross into Sector 3 at 2000m (t = 161.0s -> S2 split time was 30.5s -> total time = 61.0s, ref = 60.0s -> S2 delta = +0.5s)
+        self.engine._last_scoring_dist = 2000.0
+        self.engine.update_physics(
+            veh_speed_ms=33.33,
+            elapsed_time=161.0,
+            lap_start_et=lap_start_et,
+            current_sector=3,
+        )
+        self.assertEqual(self.engine.current_sector, 3)
+        self.assertTrue(self.engine._s2_captured)
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.sector2_delta, 0.5, delta=0.05)
+
+        # --- SECTOR 3 ---
+        # Drive in Sector 3 at 2500m (t = 176.0s)
+        self.engine._last_scoring_dist = 2500.0
+        self.engine.update_physics(
+            veh_speed_ms=33.33,
+            elapsed_time=176.0,
+            lap_start_et=lap_start_et,
+            current_sector=3,
+        )
+        # In Sector 3: both S1 and S2 deltas MUST STAY LOCKED (no flickering!)
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.sector2_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.live_delta, 1.0, delta=0.05)
+
+        # CompactScoring in Sector 3
+        compact_scoring["mCurrentET"] = 176.1
+        compact_scoring["mSector"] = 3
+        self.engine.update_scoring(compact_scoring)
+        self.assertAlmostEqual(self.engine.sector1_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.sector2_delta, 0.5, delta=0.05)
+        self.assertAlmostEqual(self.engine.live_delta, 1.0, delta=0.05)
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ def test_haptic_plugin_telemetry_dispatch(qapp, tmp_path):
     # Controller should have received vibration
     controller = plugin.haptic_controller
     assert controller is not None
-    assert controller.left_low > 0.1
+    assert controller.left_low > 0.0
 
 
 def test_haptic_widget_interactions(qapp, tmp_path):

@@ -202,7 +202,7 @@ def test_race_engineer_manager_in_qualifying():
     engineer.update(telemetry=telem_clean, scoring=scoring_qual_clean)
 
     # 2. Deuxième cycle : tour invalidé (lap_flag = 0) + menaces trafic en qualif
-    scoring_qual_dirty = {
+    scoring_qual_invalid = {
         "mSession": 5,
         "mLapDist": 5000.0,
         "mVehicles": [
@@ -225,12 +225,12 @@ def test_race_engineer_manager_in_qualifying():
         ],
     }
 
-    telem_dirty = TelemetryData(in_realtime=True, lap_flag=0)
-    messages = engineer.update(telemetry=telem_dirty, scoring=scoring_qual_dirty)
+    telem_invalid = TelemetryData(in_realtime=True, lap_flag=0)
+    messages = engineer.update(telemetry=telem_invalid, scoring=scoring_qual_invalid)
 
     # Seul le message d'invalidation de tour doit être émis, aucun message de trafic
     phrase_keys = [m.phrase_key for m in messages]
-    assert any(k in phrase_keys for k in ("dirty_lap", "lap_deleted"))
+    assert any(k in phrase_keys for k in ("time_deleted", "lap_deleted"))
     assert "car" not in phrase_keys
     assert "alongside" not in phrase_keys
     assert "three" not in phrase_keys

@@ -70,8 +70,8 @@ class TestAudioAnnouncerFIFOQueue:
         AudioAnnouncer.clear_queue()
         assert AudioAnnouncer.get_queue_size() == 0
 
-        AudioAnnouncer.play_phrase("clean_lap")
-        AudioAnnouncer.play_phrase("dirty_lap")
+        AudioAnnouncer.play_phrase("timing_in_progress")
+        AudioAnnouncer.play_phrase("time_deleted")
         AudioAnnouncer.play_phrase("car")
 
         AudioAnnouncer.clear_queue()
@@ -94,8 +94,8 @@ class TestAudioAnnouncerFIFOQueue:
 
     def test_interrupt_clears_queue(self):
         AudioAnnouncer.clear_queue()
-        AudioAnnouncer.play_phrase("clean_lap")
-        AudioAnnouncer.play_phrase("dirty_lap")
+        AudioAnnouncer.play_phrase("timing_in_progress")
+        AudioAnnouncer.play_phrase("time_deleted")
 
         AudioAnnouncer.play_phrase("alongside", interrupt=True)
         assert AudioAnnouncer.get_queue_size() <= 1

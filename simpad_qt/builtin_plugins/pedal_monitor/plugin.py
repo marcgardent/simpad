@@ -18,6 +18,7 @@ from simpad_qt.plugins.contracts import (
     ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 
 
 @dataclass
@@ -193,6 +194,16 @@ class PedalTelemetryPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHu
     def create_tab_widget(self, parent: Optional[QWidget] = None) -> QWidget:
         self._active_tab_widget = PedalMonitorWidget(self, parent)
         return self._active_tab_widget
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+        self._throttle_pct = state.throttle_pct
+        self._brake_pct = state.brake_pct
+
+        if self._active_tab_widget and self._active_tab_widget.isVisible():
+            self._active_tab_widget.update_live_view(
+                self._throttle_pct, self._brake_pct, self._abs_pct, self._tc_pct
+            )
 
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         self._throttle_pct = sensors.unfiltered_throttle * 100.0

@@ -31,6 +31,8 @@ class TrackLimitsLogger:
         self._last_sector: Optional[int] = None
         self._last_steps_per_pt: Optional[int] = None
         self._last_steps_per_pen: Optional[int] = None
+        self._last_is_on_track: Optional[bool] = None
+        self._last_wheels_on_track: Optional[int] = None
         self._log_file = None
         self.enabled = TrackLimitsLogger.default_enabled if enabled is None else enabled
 
@@ -82,6 +84,13 @@ class TrackLimitsLogger:
                     f.write(header)
                 cls._header_written = True
                 if cls._instance:
+                    cls._instance._last_flag = None
+                    cls._instance._last_steps = None
+                    cls._instance._last_penalties = None
+                    cls._instance._last_lap = None
+                    cls._instance._last_sector = None
+                    cls._instance._last_is_on_track = None
+                    cls._instance._last_wheels_on_track = None
                     cls._instance._log_file = open(log_path, "a", encoding="utf-8", buffering=1)
             except Exception:
                 pass
@@ -96,7 +105,7 @@ class TrackLimitsLogger:
         steps_per_point: int = 0,
         steps_per_penalty: int = 0,
         num_penalties: int = 0,
-        is_lap_dirty: bool = False,
+        is_lap_invalid: bool = False,
         speed_kmh: float = 0.0,
         throttle_pct: float = 0.0,
         brake_pct: float = 0.0,
@@ -193,12 +202,82 @@ class TrackLimitsLogger:
             status_str = f"WARNING (Strike {current_strikes}/{max_strikes})"
         elif lap_flag == 2:
             color_str = "GREEN"
-            status_str = "VALID (Clean)" if not is_lap_dirty else "VALID (DirtyLap)"
+            status_str = "VALID" if not is_lap_dirty else "VALID (Invalidated)"
         else:
             color_str = "UNKNOWN"
             status_str = f"FLAG({lap_flag})"
 
         raw_str = raw_data_summary or f"count_lap_flag={lap_flag} tl_steps={track_limits_steps} pens={num_penalties} sec={sector} lap={lap_num}"
+
+        line = (
+            f"[{time_str}] {tag_str:<32} {source:<20} | "
+            f"{color_str:<8} {status_str:<24} | "
+            f"{raw_str:<60} | "
+            f"{speed_kmh:>5.1f}km/h T:{throttle_pct:>3.0f}% B:{brake_pct:>3.0f}%\n"
+        )
+
+        try:
+            self._log_file.write(line)
+            self._log_file.flush()
+        except Exception:
+            pass
+
+    def log_surface_event(
+        self,
+        source: str = "TelemInfo(120Hz)",
+        is_on_track: bool = True,
+        wheels_on_track: int = 4,
+        surface_types: tuple = (0, 0, 0, 0),
+        terrain_names: tuple = ("", "", "", ""),
+        speed_kmh: float = 0.0,
+        throttle_pct: float = 0.0,
+        brake_pct: float = 0.0,
+        lap_num: int = 0,
+        sector: int = 1,
+        lap_flag: int = 2,
+    ) -> None:
+        """
+        Logs strictly event-driven transitions between ON-TRACK (route) and OFF-TRACK (hors-piste) surfaces.
+        Suppresses all identical frames.
+        """
+        if not self.enabled or self._log_file is None:
+            return
+
+        # Only log when wheels_on_track count changes (e.g. 4 -> 0 -> 1 -> 4)
+        if self._last_wheels_on_track is not None and wheels_on_track == self._last_wheels_on_track:
+            return
+
+        prev_wheels = self._last_wheels_on_track
+        self._last_wheels_on_track = wheels_on_track
+        self._last_is_on_track = is_on_track
+
+        # On initial startup, don't spam if car is already cleanly on track with 4 wheels
+        if prev_wheels is None and wheels_on_track == 4:
+            return
+
+        now = time.time()
+        time_str = time.strftime("%H:%M:%S", time.localtime(now)) + f".{int((now % 1) * 1000):03d}"
+
+        if wheels_on_track == 0:
+            tag_str = f"[OFF_TRACK (0/4 on road)]"
+            color_str = "ORANGE"
+            status_str = "OFF-ROAD (Grass/Gravel)"
+        elif wheels_on_track <= 2:
+            tag_str = f"[TRACK_EDGE ({wheels_on_track}/4 on road)]"
+            color_str = "YELLOW"
+            status_str = "TRACK-EDGE (Kerb/Grass)"
+        elif wheels_on_track == 4:
+            tag_str = f"[TRACK_REJOIN (4/4 on road)]"
+            color_str = "GREEN"
+            status_str = "ON-TRACK (Full Road)"
+        else:
+            tag_str = f"[TRACK_REJOIN ({wheels_on_track}/4 on road)]"
+            color_str = "GREEN"
+            status_str = "ON-TRACK (Road Rejoin)"
+
+        surface_names_map = {0: "dry_road", 1: "wet_road", 2: "grass", 3: "dirt", 4: "gravel", 5: "kerb", 6: "special"}
+        surf_labels = [surface_names_map.get(s, str(s)) for s in surface_types]
+        raw_str = f"surfaces={surf_labels} on_track={wheels_on_track}/4 flag={lap_flag} sec={sector} lap={lap_num}"
 
         line = (
             f"[{time_str}] {tag_str:<32} {source:<20} | "

@@ -324,7 +324,7 @@ class RaceEngineerTab:
         logger.info("[RaceEngineer GUI] Manual configuration saved to file.")
 
     def _cb_test_voice(self, sender, app_data):
-        AudioAnnouncer.play_phrase("clean_lap")
+        AudioAnnouncer.play_phrase("timing_in_progress")
 
     def _cb_reset_roles(self, sender, app_data):
         self.engineer.reset_all()
@@ -332,7 +332,7 @@ class RaceEngineerTab:
     def _cb_test_role_audio(self, sender, app_data, user_data):
         role_id = user_data
         if role_id == "lap_validity":
-            AudioAnnouncer.play_clean_lap()
+            AudioAnnouncer.play_timing_in_progress()
         elif role_id == "traffic_spotter":
             AudioAnnouncer.play_alongside()
         elif role_id == "pitlane_spotter":

@@ -100,6 +100,10 @@ class VehicleSensors:
 
     # On-track state and engaged gear
     in_realtime: bool = True
+    is_on_track: bool = True
+    wheels_on_track: int = 4
+    surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    terrain_names: Tuple[str, str, str, str] = ("", "", "", "")
     gear: int = 0
 
     # 7. LMU Electronic & Cockpit Data (isiMotor-RawUDP v0.2.0)
@@ -187,6 +191,10 @@ class VehicleSensors:
         ecu_wiper_state: int = 0,
         ecu_lift_and_coast: float = 0.0,
         vehicle_speed: Optional[float] = None,
+        is_on_track: bool = True,
+        wheels_on_track: int = 4,
+        surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0),
+        terrain_names: Tuple[str, str, str, str] = ("", "", "", ""),
     ) -> "VehicleSensors":
 
         ut_f = max(0.0, min(1.0, float(unfiltered_throttle)))
@@ -205,6 +213,10 @@ class VehicleSensors:
         if not in_realtime:
             return cls(
                 in_realtime=False,
+                is_on_track=is_on_track,
+                wheels_on_track=wheels_on_track,
+                surface_types=surface_types,
+                terrain_names=terrain_names,
                 vehicle_speed=final_speed,
                 engine_rpm=max(0.0, float(engine_rpm)),
                 engine_max_rpm=max(1000.0, float(engine_max_rpm)),
@@ -361,6 +373,10 @@ class VehicleSensors:
             last_lap_status=last_lap_status,
             is_lap_freeze_active=is_lap_freeze_active,
             in_realtime=True,
+            is_on_track=is_on_track,
+            wheels_on_track=wheels_on_track,
+            surface_types=surface_types,
+            terrain_names=terrain_names,
             gear=gear,
             ecu_abs_active_raw=ecu_abs_active_raw,
             ecu_tc_active_raw=ecu_tc_active_raw,
@@ -424,6 +440,10 @@ class VehicleSensors:
             travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             raw_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
             raw_bpres = tuple(float(getattr(w, "brake_pressure", 0.0)) for w in wheels[:4])
+            surface_types = tuple(int(getattr(w, "surface_type", 0)) for w in wheels[:4])
+            terrain_names = tuple(str(getattr(w, "terrain_name", "")).strip() for w in wheels[:4])
+            wheels_on_track = sum(1 for s in surface_types if s not in (2, 3, 4))
+            is_on_track = (wheels_on_track > 0)
         else:
             lpv = (0.0, 0.0, 0.0, 0.0)
             lgv = (0.0, 0.0, 0.0, 0.0)
@@ -432,6 +452,10 @@ class VehicleSensors:
             travels = (0.0, 0.0, 0.0, 0.0)
             raw_grips = (1.0, 1.0, 1.0, 1.0)
             raw_bpres = (0.0, 0.0, 0.0, 0.0)
+            surface_types = (0, 0, 0, 0)
+            terrain_names = ("", "", "", "")
+            wheels_on_track = 4
+            is_on_track = True
 
         if explicit_aero_load is None:
             f_df = abs(float(getattr(telem, "front_downforce", 0.0)))
@@ -568,6 +592,10 @@ class VehicleSensors:
             ecu_rear_arb_max=ecu_rear_arb_max,
             ecu_wiper_state=ecu_wiper_state,
             ecu_lift_and_coast=ecu_lift_and_coast,
+            is_on_track=is_on_track,
+            wheels_on_track=wheels_on_track,
+            surface_types=surface_types,
+            terrain_names=terrain_names,
         )
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────

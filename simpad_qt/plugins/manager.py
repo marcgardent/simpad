@@ -26,9 +26,10 @@ from simpad_qt.plugins.contracts import (
     IHudWidgetProvider,
 )
 from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryRawPacket
+from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryRawPacket, TelemetryChannel
 from simpad_qt.core.reference_lap import LapDeltaPacket
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 
 class PluginManager(QObject):
@@ -280,16 +281,80 @@ class PluginManager(QObject):
                 self._handle_plugin_error(pid, "on_delta_frame", e)
 
     def dispatch_packet(self, packet: TelemetryRawPacket) -> None:
-        """Dispatch a specific channel raw packet safely to all active IPacketSubscriber plugins."""
+        """
+        Ingests a specific channel raw packet into the central TelemetryStateStore
+        and dispatches polymorphic event hooks as well as legacy IPacketSubscriber callbacks.
+        """
+        store = TelemetryStateStore.get_instance()
+        ch = packet.channel
+        data = packet.data
+        t = packet.timestamp
+
+        # 1. Update timestamped slot in state store
+        hook_name: Optional[str] = None
+        if ch == TelemetryChannel.TELEMETRY:
+            store.update_telemetry(data, t)
+            hook_name = "on_physics_tick"
+        elif ch == TelemetryChannel.COMPACT_SCORING:
+            store.update_compact_scoring(data, t)
+            hook_name = "on_scoring_update"
+        elif ch == TelemetryChannel.FULL_SCORING:
+            store.update_full_scoring(data, t)
+            hook_name = "on_grid_update"
+        elif ch == TelemetryChannel.WEATHER:
+            store.update_weather(data, t)
+            hook_name = "on_weather_update"
+        elif ch == TelemetryChannel.EXTENDED_STATE:
+            store.update_extended_state(data, t)
+        elif ch == TelemetryChannel.SYSTEM_EVENTS:
+            store.update_system_events(data, t)
+            hook_name = "on_session_event"
+
+        # 2. Dispatch polymorphic hook and IPacketSubscriber callback
         for pid, p in list(self._plugins.items()):
-            if p.state != PluginState.ENABLED or not isinstance(p, IPacketSubscriber):
+            if p.state != PluginState.ENABLED:
                 continue
 
-            try:
-                p.on_telemetry_packet(packet)
-                self._error_counts[pid] = 0
-            except Exception as e:
-                self._handle_plugin_error(pid, "on_telemetry_packet", e)
+            # A. Polymorphic event hook (e.g. on_physics_tick, on_scoring_update)
+            if hook_name:
+                hook_method = getattr(p, hook_name, None)
+                if hook_method and callable(hook_method):
+                    try:
+                        hook_method(store)
+                        self._error_counts[pid] = 0
+                    except Exception as e:
+                        self._handle_plugin_error(pid, hook_name, e)
+
+            # B. Legacy IPacketSubscriber
+            if isinstance(p, IPacketSubscriber):
+                try:
+                    p.on_telemetry_packet(packet)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_telemetry_packet", e)
+
+    def dispatch_telemetry_event(
+        self,
+        wake_reason: TelemetryWakeReason,
+        state: Optional[TelemetryStateStore] = None,
+    ) -> None:
+        """
+        Directly dispatch a typed telemetry event to all active plugins.
+        """
+        active_store = state or TelemetryStateStore.get_instance()
+        hook_name = f"on_{wake_reason.value}"
+
+        for pid, p in list(self._plugins.items()):
+            if p.state != PluginState.ENABLED:
+                continue
+
+            hook_method = getattr(p, hook_name, None)
+            if hook_method and callable(hook_method):
+                try:
+                    hook_method(active_store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, hook_name, e)
 
     def _handle_plugin_error(self, plugin_id: str, action: str, error: Exception) -> None:
         """Record error and trip the circuit breaker if threshold is exceeded."""

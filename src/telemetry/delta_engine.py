@@ -393,17 +393,21 @@ class DeltaEngine:
 
     def _handle_sector_transition(self, curr_sec: int, time_into: float = 0.0, player_dist: float = 0.0) -> None:
         """SLAP Helper: Memorizes exact time and distance when crossing S1/S2 splits."""
+        if curr_sec <= 0:
+            return
+        effective_time = time_into if time_into > 0.0 else self._last_scoring_time_into
+        effective_dist = player_dist if player_dist > 0.0 else self._last_scoring_dist
         if curr_sec != self._last_current_sector:
-            if curr_sec == 2 and not self._s1_captured and time_into > 0.0:
-                self._player_s1_time = time_into
-                self._player_s1_dist = player_dist
+            if curr_sec == 2 and not self._s1_captured and effective_time > 0.0:
+                self._player_s1_time = effective_time
+                self._player_s1_dist = effective_dist
                 self._s1_captured = True
-                log_delta_debug(f"[SECTOR_CUT_S1] t_into={time_into:.3f}s, dist={player_dist:.1f}m")
-            elif curr_sec == 3 and not self._s2_captured and time_into > 0.0:
-                self._player_s2_time = time_into
-                self._player_s2_dist = player_dist
+                log_delta_debug(f"[SECTOR_CUT_S1] t_into={effective_time:.3f}s, dist={effective_dist:.1f}m")
+            elif curr_sec == 3 and not self._s2_captured and effective_time > 0.0:
+                self._player_s2_time = effective_time
+                self._player_s2_dist = effective_dist
                 self._s2_captured = True
-                log_delta_debug(f"[SECTOR_CUT_S2] t_into={time_into:.3f}s, dist={player_dist:.1f}m")
+                log_delta_debug(f"[SECTOR_CUT_S2] t_into={effective_time:.3f}s, dist={effective_dist:.1f}m")
             self._last_current_sector = curr_sec
 
     def _collect_lap_sample(
@@ -462,7 +466,8 @@ class DeltaEngine:
                 laps_comp = int(getattr(scoring_js, "total_laps", 0))
                 lap_start_et = 0.0
                 time_into_lap = 0.0
-                player_dist = float(getattr(scoring_js, "lap_dist", 0.0))
+                # CompactScoring.lap_dist represents total track length (e.g. 5781m), NOT car position!
+                player_dist = self._last_scoring_dist
                 raw_sec = int(getattr(scoring_js, "sector", 1))
                 in_garage = bool(getattr(scoring_js, "in_garage_stall", False))
                 in_pits = False
@@ -588,6 +593,7 @@ class DeltaEngine:
         dt: float = 0.0,
         elapsed_time: float = 0.0,
         lap_start_et: float = 0.0,
+        current_sector: int = 0,
     ) -> None:
         """
         Processes high frequency TelemInfoV01 / TelemInfo packet (50-100 Hz).
@@ -603,6 +609,8 @@ class DeltaEngine:
             dt = float(getattr(telem, "delta_time", 0.0))
             elapsed_time = float(getattr(telem, "elapsed_time", 0.0))
             lap_start_et = float(getattr(telem, "lap_start_et", 0.0))
+            if current_sector == 0:
+                current_sector = int(getattr(telem, "current_sector", 0))
 
         self._last_speed_ms = float(veh_speed_ms)
         self._last_throttle = throttle
@@ -610,10 +618,23 @@ class DeltaEngine:
         self._last_steering = steering
         self._last_gear = gear
 
+        # High-frequency continuous distance dead reckoning integration (120Hz)
+        if dt > 0.0 and self._last_speed_ms > 0.0 and self._last_scoring_dist >= 0.0:
+            self._last_scoring_dist += self._last_speed_ms * dt
+            if self._track_length > 0.0 and self._last_scoring_dist >= self._track_length:
+                self._last_scoring_dist -= self._track_length
+
+        effective_start_et = lap_start_et if lap_start_et > 0.0 else self._last_lap_start_et
+        if effective_start_et > 0.0 and elapsed_time >= effective_start_et:
+            phys_time_into = elapsed_time - effective_start_et
+        else:
+            phys_time_into = self._last_scoring_time_into
+
+        if current_sector > 0:
+            self._handle_sector_transition(current_sector, time_into=phys_time_into, player_dist=self._last_scoring_dist)
+
         if self._last_lap_flag == 2 and self._last_scoring_dist >= 0.0:
-            effective_start_et = lap_start_et if lap_start_et > 0.0 else self._last_lap_start_et
-            if effective_start_et > 0.0 and elapsed_time >= effective_start_et:
-                phys_time_into = elapsed_time - effective_start_et
+            if phys_time_into > 0.0:
                 self._calculate_delta(self._last_scoring_dist, phys_time_into)
 
     def _get_ref_time_at_dist(self, dist: float) -> Optional[float]:
@@ -785,10 +806,10 @@ class DeltaEngine:
         in_pits: bool,
     ) -> None:
         """Validates and records completed lap (SLAP: high-level orchestration)."""
-        # 1. Only laps with lap_flag == 2 (clean and timed) can be saved
+        # 1. Only laps with lap_flag == 2 (valid and timed) can be saved
         if lap_flag != 2:
-            logger.info(f"[DeltaEngine] Lap rejected: Not a clean timed lap (lap_flag={lap_flag})")
-            print(f"[DeltaEngine] Lap not saved: Invalid game status / Dirty / Out-lap (lap_flag={lap_flag})", flush=True)
+            logger.info(f"[DeltaEngine] Lap rejected: Not a valid timed lap (lap_flag={lap_flag})")
+            print(f"[DeltaEngine] Lap not saved: Invalid game status / Invalid lap / Out-lap (lap_flag={lap_flag})", flush=True)
             log_delta_debug(f"[LAP_REJECTED] Invalid game status (lap_flag={lap_flag})")
             return
 
@@ -962,8 +983,8 @@ class DeltaEngine:
             print(f"[DeltaEngine] ★ NEW ALL-TIME BEST REFERENCE LAP: {lap_time:.3f}s on '{self._track_name}' ({len(existing_annotations)} annotations)", flush=True)
             self._save_reference_profile()
         else:
-            logger.info(f"[DeltaEngine] Lap clean ({lap_time:.3f}s) -> Stored in Last/Session/Stint references.")
-            print(f"[DeltaEngine] Clean lap ({lap_time:.3f}s) saved in session (All-time best: {self._all_time_best_lap_time:.3f}s)", flush=True)
+            logger.info(f"[DeltaEngine] Valid lap ({lap_time:.3f}s) -> Stored in Last/Session/Stint references.")
+            print(f"[DeltaEngine] Valid lap ({lap_time:.3f}s) saved in session (All-time best: {self._all_time_best_lap_time:.3f}s)", flush=True)
 
         log_delta_debug(
             f"[LAP_FINALIZED] lap_time={lap_time:.3f}s, flag={lap_flag}, samples={len(clean_samples)}, "
@@ -1117,6 +1138,11 @@ class DeltaEngine:
     @property
     def sector3_delta(self) -> float:
         return self._sector3_delta
+
+    @property
+    def current_sector(self) -> int:
+        """Returns current sector index (1, 2, or 3)."""
+        return self._last_current_sector
 
     @property
     def sector_1_dist(self) -> float:

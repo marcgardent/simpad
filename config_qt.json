@@ -68,7 +68,7 @@
           "enabled": true,
           "priority": 100,
           "busy_duration_sec": 1.8,
-          "investigation_debounce_sec": 2.0,
+          "investigation_debounce_sec": 0.0,
           "announce_investigation": true,
           "announce_cleared": true,
           "announce_penalty": true,

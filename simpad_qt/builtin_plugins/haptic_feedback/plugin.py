@@ -27,6 +27,7 @@ from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 from src.haptics.base import HapticController
 from src.haptics.factory import HapticBackendFactory
 from src.haptics.manager import HapticSubpluginManager
@@ -511,6 +512,15 @@ class HapticFeedbackPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber):
     def create_tab_widget(self, parent: Optional[QWidget] = None) -> QWidget:
         self._active_tab_widget = HapticFeedbackWidget(self, parent)
         return self._active_tab_widget
+
+    # Polymorphic Event Hooks
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+        raw_telem = state.telemetry.data
+        if raw_telem is not None:
+            # If normalized VehicleSensors or compatible raw data is available, evaluate haptics
+            if hasattr(raw_telem, "vehicle_speed") or hasattr(raw_telem, "speed_mps"):
+                pass
 
     # ITelemetrySubscriber Protocol
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:

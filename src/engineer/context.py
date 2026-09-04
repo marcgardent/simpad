@@ -22,6 +22,7 @@ except ImportError:
     VehicleScoring = Any  # type: ignore
 
 from src.telemetry.lmu_parser import TelemetryData
+from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 
 ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
@@ -65,6 +66,8 @@ ATTRIBUTE_CANDIDATES_MAP: Dict[str, List[str]] = {
     "num_penalties": ["num_penalties", "mNumPenalties", "numPenalties", "penalties"],
     "track_limits_steps_per_point": ["track_limits_steps_per_point", "mTrackLimitsStepsPerPoint", "steps_per_point"],
     "track_limits_steps_per_penalty": ["track_limits_steps_per_penalty", "mTrackLimitsStepsPerPenalty", "steps_per_penalty"],
+    "is_on_track": ["is_on_track", "on_track", "mOnTrack", "in_realtime"],
+    "wheels_on_track": ["wheels_on_track", "mWheelsOnTrack"],
 }
 
 
@@ -123,6 +126,125 @@ class EngineerContext:
     timestamp: float = field(default_factory=time.time)
     audio_engine: Optional[Any] = None
     reference_profile: Optional[Any] = None
+    store: Optional[TelemetryStateStore] = None
+    wake_reason: TelemetryWakeReason = TelemetryWakeReason.MANUAL_EVALUATION
+    trigger_packet: Optional[Any] = None
+
+    @property
+    def state_store(self) -> TelemetryStateStore:
+        """Returns active TelemetryStateStore instance, ensuring telemetry & scoring sync."""
+        if self.store is not None:
+            return self.store
+        st = TelemetryStateStore.get_instance()
+        if self.telemetry is not None:
+            st.update_telemetry(self.telemetry, self.timestamp)
+        if self.scoring is not None:
+            if hasattr(self.scoring, "vehicles") or (isinstance(self.scoring, dict) and ("mVehicles" in self.scoring or "vehicles" in self.scoring)):
+                st.update_full_scoring(self.scoring, self.timestamp)
+            else:
+                st.update_compact_scoring(self.scoring, self.timestamp)
+        return st
+
+    @property
+    def wheels_on_track(self) -> int:
+        """Authoritative wheels on track from state store."""
+        if self.telemetry is not None:
+            raw = get_vehicle_attr(self.telemetry, "wheels_on_track", None)
+            if raw is not None:
+                try:
+                    return int(raw)
+                except (ValueError, TypeError):
+                    pass
+        return self.state_store.wheels_on_track
+
+    @property
+    def is_on_track(self) -> bool:
+        """Authoritative on-track boolean from state store."""
+        if self.telemetry is not None:
+            raw = get_vehicle_attr(self.telemetry, "is_on_track", None)
+            if raw is not None:
+                return bool(raw)
+        return self.state_store.is_on_track
+
+    @property
+    def lap_flag(self) -> int:
+        """Authoritative count_lap_flag from state store."""
+        return self.state_store.lap_flag
+
+    @property
+    def is_lap_valid(self) -> bool:
+        """Authoritative is_lap_valid from state store."""
+        return self.state_store.is_lap_valid
+
+    @property
+    def is_lap_invalid(self) -> bool:
+        """Authoritative is_lap_invalid from state store."""
+        return self.state_store.is_lap_invalid
+
+    @property
+    def lap_timing_status(self) -> str:
+        """Authoritative lap timing status ('timing_in_progress' or 'time_deleted')."""
+        return self.state_store.lap_timing_status
+
+    @property
+    def lap_status_text(self) -> str:
+        """Authoritative lap status description ('Valid' or 'Invalid')."""
+        return self.state_store.lap_status_text
+
+    @property
+    def last_validity_event(self) -> str:
+        """Last validity transition event ('TIMING_IN_PROGRESS', 'TIME_DELETED', 'IDLE')."""
+        return self.state_store.last_validity_event
+
+    @property
+    def last_validity_event_time(self) -> float:
+        """Timestamp of last validity transition."""
+        return self.state_store.last_validity_event_time
+
+    @property
+    def validity_transition(self) -> Optional[str]:
+        """Pending validity transition from state store."""
+        return self.state_store.validity_transition
+
+    @property
+    def num_penalties(self) -> int:
+        """Authoritative active penalties from state store."""
+        return self.state_store.num_penalties
+
+    @property
+    def track_limits_steps(self) -> int:
+        """Authoritative track limits steps from state store."""
+        return self.state_store.track_limits_steps
+
+    @property
+    def in_realtime(self) -> bool:
+        """Authoritative in_realtime boolean from state store or telemetry."""
+        if self.telemetry is not None:
+            raw = get_vehicle_attr(self.telemetry, "in_realtime", None)
+            if raw is not None:
+                return bool(raw)
+        return self.state_store.in_realtime
+
+    @property
+    def in_garage(self) -> bool:
+        """Authoritative in_garage boolean."""
+        return self.is_player_in_garage()
+
+    @property
+    def speed_kmh(self) -> float:
+        """Authoritative speed in km/h."""
+        return self.state_store.speed_kmh
+
+    @property
+    def throttle_pct(self) -> float:
+        """Authoritative throttle percentage (0-100%)."""
+        return self.state_store.throttle_pct
+
+    @property
+    def brake_pct(self) -> float:
+        """Authoritative brake percentage (0-100%)."""
+        return self.state_store.brake_pct
+
 
     @staticmethod
     def get_attr(veh: Any, key: str, default: Any = None) -> Any:

@@ -21,6 +21,7 @@ from simpad_qt.plugins.contracts import (
     ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 
 
 @dataclass
@@ -217,6 +218,18 @@ class GearSpeedHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudW
     # =========================================================================
     # ITelemetrySubscriber
     # =========================================================================
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+        self._current_speed_kmh = state.speed_kmh
+        self._current_gear = state.gear
+        self._current_rpm = state.rpm
+        self._max_rpm = max(1000.0, state.engine_max_rpm)
+
+        if self._active_tab_widget and self._active_tab_widget.isVisible():
+            self._active_tab_widget.update_live_view(
+                self._current_speed_kmh, self._current_gear, self._current_rpm
+            )
 
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         self._current_speed_kmh = sensors.vehicle_speed * 3.6

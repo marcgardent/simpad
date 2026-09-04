@@ -196,7 +196,23 @@ class PitlaneSpotterRole(BaseRole):
             PitlaneSpotterState.PIT_OVERLAP,
         )
 
+    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Physics tick evaluation (100-120Hz TelemInfo). Player speed, pit state, and stall detection."""
+        return self._evaluate_pitlane(state, context)
+
+    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Grid update evaluation (FullScoringSession). Pitlane opponent speeds and fast lane threats."""
+        return self._evaluate_pitlane(state, context)
+
+    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Scoring update evaluation (CompactScoring 10Hz). Timing and pitlane status."""
+        return self._evaluate_pitlane(state, context)
+
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Polymorphic entry point for direct/manual evaluations."""
+        return self._evaluate_pitlane(context.state_store, context)
+
+    def _evaluate_pitlane(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             if self.state != PitlaneSpotterState.IDLE:
                 self.reset()

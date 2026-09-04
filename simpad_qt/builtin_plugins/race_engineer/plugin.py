@@ -39,6 +39,7 @@ from simpad_qt.core.reference_lap import LapDeltaPacket
 from src.telemetry.sensors import VehicleSensors
 from src.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from src.engineer.manager import RaceEngineer
+from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 from src.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
 from src.utils.audio import AudioAnnouncer
 from src.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
@@ -1020,6 +1021,48 @@ class RaceEngineerPlugin(
         """Called on authoritative LapDeltaPacket frame."""
         pass
 
+    # =========================================================================
+    # Polymorphic Telemetry State Event Hooks
+    # =========================================================================
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.PHYSICS_TICK, state, state.telemetry.data)
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on compact scoring update (10Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.SCORING_UPDATE, state, state.compact_scoring.data)
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on full grid update (2-5Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.GRID_UPDATE, state, state.full_scoring.data)
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on weather update (~1Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.WEATHER_UPDATE, state, state.weather.data)
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called directly on system / session event."""
+        self._dispatch_engineer_event(TelemetryWakeReason.SYSTEM_EVENT, state, state.system.data)
+
+    def _dispatch_engineer_event(
+        self,
+        wake_reason: TelemetryWakeReason,
+        state: TelemetryStateStore,
+        trigger_packet: Optional[Any] = None,
+    ) -> None:
+        if not self.engineer.enabled:
+            return
+
+        emitted_messages = self.engineer.update(
+            store=state,
+            wake_reason=wake_reason,
+            trigger_packet=trigger_packet,
+        )
+
+        for msg in emitted_messages:
+            self._radio_bridge.radio_message.emit(msg)
+
     def on_telemetry_packet(self, packet: TelemetryRawPacket) -> None:
         """
         Dispatches incoming raw UDP channel packets directly into the Race Engineer evaluation cycle.
@@ -1032,14 +1075,28 @@ class RaceEngineerPlugin(
             return
 
         ch = packet.channel
+        wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
         if ch == TelemetryChannel.TELEMETRY:
             self._latest_telemetry = data
-        elif ch in (TelemetryChannel.COMPACT_SCORING, TelemetryChannel.FULL_SCORING):
+            wake_reason = TelemetryWakeReason.PHYSICS_TICK
+        elif ch == TelemetryChannel.OPPONENT_TELEMETRY:
+            wake_reason = TelemetryWakeReason.OPPONENTS_TICK
+        elif ch == TelemetryChannel.COMPACT_SCORING:
             self._latest_scoring = data
+            wake_reason = TelemetryWakeReason.SCORING_UPDATE
+        elif ch == TelemetryChannel.FULL_SCORING:
+            self._latest_scoring = data
+            wake_reason = TelemetryWakeReason.GRID_UPDATE
+        elif ch == TelemetryChannel.WEATHER:
+            wake_reason = TelemetryWakeReason.WEATHER_UPDATE
+        elif ch == TelemetryChannel.SYSTEM_EVENTS:
+            wake_reason = TelemetryWakeReason.SYSTEM_EVENT
 
         emitted_messages = self.engineer.update(
             telemetry=self._latest_telemetry,
             scoring=self._latest_scoring,
+            wake_reason=wake_reason,
+            trigger_packet=data,
         )
 
         for msg in emitted_messages:

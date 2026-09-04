@@ -1,6 +1,6 @@
 """
 SimPad Audio Announcer — Ultra-fast and non-blocking WAV audio player and loader
-for voice announcements and spotter (Clean/Dirty Lap, traffic alerts, countdowns).
+for voice announcements and spotter (lap validity, traffic alerts, countdowns).
 Native WAV support: Linux (pw-play, paplay, aplay), Windows (winsound), macOS (afplay).
 """
 
@@ -250,18 +250,18 @@ class AudioAnnouncer:
             cls._audio_queue.put({"key": key, "text": None})
 
     @classmethod
-    def play_clean_lap(cls) -> None:
-        """Triggers validation sound: Clean Lap (clean_lap.wav)."""
-        logger.info("[AudioAnnouncer] Announcement: CLEAN LAP")
-        print("[AUDIO] Playing announcement: CLEAN LAP", flush=True)
-        cls._play_file("clean_lap")
+    def play_timing_in_progress(cls) -> None:
+        """Triggers lap valid sound: Timing In Progress (timing_in_progress.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: TIMING IN PROGRESS")
+        print("[AUDIO] Playing announcement: TIMING IN PROGRESS", flush=True)
+        cls._play_file("timing_in_progress")
 
     @classmethod
-    def play_dirty_lap(cls) -> None:
-        """Triggers invalidation sound: Dirty Lap (dirty_lap.wav)."""
-        logger.info("[AudioAnnouncer] Announcement: DIRTY LAP")
-        print("[AUDIO] Playing announcement: DIRTY LAP", flush=True)
-        cls._play_file("dirty_lap")
+    def play_time_deleted(cls) -> None:
+        """Triggers lap invalid sound: Time Deleted (time_deleted.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: TIME DELETED")
+        print("[AUDIO] Playing announcement: TIME DELETED", flush=True)
+        cls._play_file("time_deleted")
 
     @classmethod
     def play_give_time_back(cls, interrupt: bool = True) -> None:
@@ -454,17 +454,17 @@ class AudioAnnouncer:
     def update_lap_flag(cls, new_flag: int) -> None:
         """
         Detects lap flag state transitions (retroactive compatibility).
-        - Transitions Orange/Red (0 or 1) -> Green (2) : Triggers 'clean_lap.wav'
-        - Transitions Green (2) -> Orange/Red (0 or 1) : Triggers 'dirty_lap.wav'
+        - Transitions Invalid (0 or 1) -> Valid (2) : Triggers 'timing_in_progress.wav'
+        - Transitions Valid (2) -> Invalid (0 or 1) : Triggers 'time_deleted.wav'
         """
         with cls._lock:
             if cls._last_lap_flag is not None and cls._last_lap_flag != new_flag:
-                # Transition to Clean (2) from Orange/Red (0 or 1)
+                # Transition to Valid (2) from Invalid (0 or 1)
                 if cls._last_lap_flag in (0, 1) and new_flag == 2:
-                    cls.play_clean_lap()
-                # Transition to Dirty / Invalid (0 or 1) from Green (2)
+                    cls.play_timing_in_progress()
+                # Transition to Invalid (0 or 1) from Valid (2)
                 elif cls._last_lap_flag == 2 and new_flag in (0, 1):
-                    cls.play_dirty_lap()
+                    cls.play_time_deleted()
 
             cls._last_lap_flag = new_flag
 

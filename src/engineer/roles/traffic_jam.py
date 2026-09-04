@@ -167,7 +167,19 @@ class TrafficJamRole(BaseRole):
         """Returns True if a slow traffic alert is active."""
         return self._is_active_alert
 
+    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Grid update evaluation (FullScoringSession). Slow or stopped vehicles ahead on racing spline."""
+        return self._evaluate_traffic_jam(state, context)
+
+    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Physics tick evaluation (100-120Hz TelemInfo). Player instantaneous speed and track spline distance."""
+        return self._evaluate_traffic_jam(state, context)
+
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Polymorphic entry point for direct/manual evaluations."""
+        return self._evaluate_traffic_jam(context.state_store, context)
+
+    def _evaluate_traffic_jam(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             self._is_active_alert = False
             self._target_slow_car_info = ""

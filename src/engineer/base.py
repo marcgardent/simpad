@@ -11,6 +11,13 @@ from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.engineer.context import EngineerContext
+    from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+else:
+    try:
+        from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+    except ImportError:
+        TelemetryStateStore = Any
+        TelemetryWakeReason = Any
 
 try:
     from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
@@ -40,7 +47,7 @@ class BaseRole(ABC):
     """
     Abstract base class for all race engineer roles / sub-plugins.
     Each role:
-    - has a single responsibility (Clean/Dirty lap, Traffic spotter, etc.),
+    - has a single responsibility (Lap validity, Traffic spotter, etc.),
     - declares its telemetry subscription needs (ChannelRequirement),
     - declares required sound phrases for operation,
     - has configurable priority and reports IDLE or BUSY state.
@@ -74,13 +81,70 @@ class BaseRole(ABC):
         """Indicates whether role is currently engaged in an active or critical sequence."""
         pass
 
-    @abstractmethod
+    # =========================================================================
+    # Polymorphic Telemetry State Event Hooks (Default pass/None)
+    # Roles override only the specific hooks they need to evaluate.
+    # =========================================================================
+
+    def on_physics_tick(
+        self,
+        state: "TelemetryStateStore",
+        context: "EngineerContext",
+    ) -> Optional[EngineerMessage]:
+        """Hook called on high-frequency physics tick (TelemInfo 100-120Hz)."""
+        return None
+
+    def on_scoring_update(
+        self,
+        state: "TelemetryStateStore",
+        context: "EngineerContext",
+    ) -> Optional[EngineerMessage]:
+        """Hook called on scoring timing update (CompactScoring 10Hz)."""
+        return None
+
+    def on_grid_update(
+        self,
+        state: "TelemetryStateStore",
+        context: "EngineerContext",
+    ) -> Optional[EngineerMessage]:
+        """Hook called on grid / standings update (FullScoringSession 2-5Hz)."""
+        return None
+
+    def on_weather_update(
+        self,
+        state: "TelemetryStateStore",
+        context: "EngineerContext",
+    ) -> Optional[EngineerMessage]:
+        """Hook called on weather condition changes (WeatherControl ~1Hz)."""
+        return None
+
+    def on_session_event(
+        self,
+        state: "TelemetryStateStore",
+        context: "EngineerContext",
+    ) -> Optional[EngineerMessage]:
+        """Hook called on session / system transitions (SystemEvents)."""
+        return None
+
     def update(self, context: "EngineerContext") -> Optional[EngineerMessage]:
         """
-        Evaluates telemetry and scoring data on each tick.
-        Returns a message if speech should trigger, or None.
+        Default polymorphic dispatcher. Routes evaluation to the specific event hook
+        based on context.wake_reason. Roles can override specific hooks rather than
+        writing monolithic update switches.
         """
-        pass
+        wake = getattr(context, "wake_reason", None)
+        store = context.state_store
+        if wake is not None:
+            wake_val = getattr(wake, "value", str(wake))
+            hook_method = getattr(self, f"on_{wake_val}", None)
+            if hook_method and callable(hook_method):
+                return hook_method(store, context)
+
+        # Fallback evaluation for manual/unspecified triggers
+        msg = self.on_physics_tick(store, context)
+        if msg is not None:
+            return msg
+        return self.on_scoring_update(store, context)
 
     def get_channel_requirements(self) -> List[Any]:
         """

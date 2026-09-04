@@ -994,7 +994,19 @@ class FightSpotterRole(BaseRole):
 
         return px, pz, vx, vz, yaw
 
+    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Physics tick evaluation (100-120Hz TelemInfo). Player high-speed cartesian kinematics."""
+        return self._evaluate_fight(state, context)
+
+    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Grid update evaluation (FullScoringSession). Opponents 2D positions, side-by-side overlap, and 3-wide."""
+        return self._evaluate_fight(state, context)
+
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        """Polymorphic entry point for direct/manual evaluations."""
+        return self._evaluate_fight(context.state_store, context)
+
+    def _evaluate_fight(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
         """
         Evaluates telemetry and relative positioning on each tick.
         """

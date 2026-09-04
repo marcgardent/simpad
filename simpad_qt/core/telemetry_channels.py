@@ -108,5 +108,6 @@ class TelemetryRawPacket:
     """Strongly-typed packet wrapper dispatched from UDP server to plugins."""
     channel: TelemetryChannel
     data: Any
-    raw_bytes_len: int
+    raw_bytes_len: int = 0
     timestamp: float = field(default_factory=time.time)
+

@@ -23,6 +23,7 @@ from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement, ChannelMetrics, TelemetryRawPacket
 )
 from simpad_qt.core.reference_lap import LapDeltaPacket
+from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 TConfig = TypeVar("TConfig")
 
@@ -149,10 +150,56 @@ class SimPadPlugin(ABC):
         """Called when the plugin is deactivated."""
         self.state = PluginState.DISABLED
 
+    # =========================================================================
+    # Polymorphic Telemetry State Event Hooks (Default pass)
+    # Plugins override only the specific hooks they need to process.
+    # =========================================================================
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called on high-frequency physics tick (TelemInfo 100-120Hz)."""
+        pass
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called on compact scoring update (CompactScoring 10Hz)."""
+        pass
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called on full session/grid update (FullScoringSession 2-5Hz)."""
+        pass
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called on weather conditions change (WeatherControl ~1Hz)."""
+        pass
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called on session/system state changes (SystemEvents)."""
+        pass
+
 
 # =====================================================================
 # Plugin Capability Protocols
 # =====================================================================
+
+@runtime_checkable
+class ITelemetryStateSubscriber(Protocol):
+    """
+    Capability: The plugin receives unified TelemetryStateStore updates via polymorphic event hooks.
+    """
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        ...
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        ...
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        ...
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        ...
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        ...
 
 @runtime_checkable
 class ITabProvider(Protocol):

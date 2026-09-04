@@ -26,8 +26,8 @@ MODEL_CONFIG_URLS = {
 
 DEFAULT_PHRASES: Dict[str, str] = {
     # Lap & Spotter Announcements
-    "clean_lap": "Clean lap",
-    "dirty_lap": "Dirty lap",
+    "timing_in_progress": "Timing in progress",
+    "time_deleted": "Time deleted",
     "give_time_back": "Cut track, give time back",
     "under_investigation": "Under investigation, lift",
     "incident_cleared": "Incident cleared",

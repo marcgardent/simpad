@@ -795,3 +795,86 @@ def test_plugin_manager_widget_toggle_persists_config(qapp, tmp_path):
     assert cfg_mgr.is_plugin_enabled("test.dummy") is True
 
 
+class EventHookSpyPlugin(SimPadPlugin):
+    """Plugin spy that captures all polymorphic event hook calls."""
+
+    def __init__(self):
+        super().__init__(PluginMetadata(
+            id="test.event_spy",
+            name="Event Spy Plugin",
+            version="1.0.0",
+        ))
+        self.physics_ticks = []
+        self.scoring_updates = []
+        self.grid_updates = []
+        self.weather_updates = []
+        self.session_events = []
+
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        self.physics_ticks.append((state.speed_kmh, state.gear))
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        self.scoring_updates.append((state.lap_flag, state.total_laps))
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        self.grid_updates.append(state.full_scoring.is_fresh())
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        self.weather_updates.append(state.weather.is_fresh())
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        self.session_events.append(state.system_events.is_fresh())
+
+
+def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
+    """Test that PluginManager dispatches typed polymorphic event hooks to plugins reading from TelemetryStateStore."""
+    from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl, SystemEvent
+    from src.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+
+
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
+    spy = EventHookSpyPlugin()
+    pm.register_plugin(spy)
+
+    store = TelemetryStateStore.get_instance()
+    store.reset()
+
+    # 1. Physics Tick / Telemetry packet
+    telem = TelemInfo(local_vel=TelemVect3(0.0, 0.0, 50.0), gear=4)
+    pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.TELEMETRY, data=telem))
+
+    assert len(spy.physics_ticks) == 1
+    assert spy.physics_ticks[0][0] == pytest.approx(180.0, 0.1)
+    assert spy.physics_ticks[0][1] == 4
+    assert store.telemetry.is_fresh()
+
+    # 2. Compact Scoring packet
+    compact = CompactScoring(count_lap_flag=2, total_laps=8)
+    pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.COMPACT_SCORING, data=compact))
+
+    assert len(spy.scoring_updates) == 1
+    assert spy.scoring_updates[0] == (2, 8)
+    assert store.compact_scoring.is_fresh()
+
+    # 3. Full Scoring packet
+    full_session = FullScoringSession(in_realtime=True, vehicles=[])
+    pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.FULL_SCORING, data=full_session))
+
+    assert len(spy.grid_updates) == 1
+    assert spy.grid_updates[0] is True
+
+    # 4. Weather packet
+    weather = WeatherControl(ambient_temp_k=298.15)
+    pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.WEATHER, data=weather))
+
+
+    assert len(spy.weather_updates) == 1
+    assert spy.weather_updates[0] is True
+
+    # 5. Direct dispatch via dispatch_telemetry_event
+    pm.dispatch_telemetry_event(TelemetryWakeReason.PHYSICS_TICK, store)
+    assert len(spy.physics_ticks) == 2
+
+
+

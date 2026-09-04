@@ -39,6 +39,7 @@ from simpad_qt.core.reference_lap import (
     DEFAULT_REF_LAPS_DIR, format_lap_time
 )
 from src.telemetry.sensors import VehicleSensors
+from src.telemetry.state_store import TelemetryStateStore
 from src.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpad.plugin.reference_lap_studio")
@@ -1047,6 +1048,15 @@ class ReferenceLapStudioPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
     def create_tab_widget(self, parent: Optional[QWidget] = None) -> QWidget:
         self._active_tab = ReferenceLapStudioTabWidget(self, parent)
         return self._active_tab
+
+    # Polymorphic Telemetry State Event Hooks
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+        pass
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on scoring update (10Hz) from central state store."""
+        pass
 
     # ITelemetrySubscriber
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
