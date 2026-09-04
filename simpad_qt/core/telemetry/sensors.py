@@ -8,7 +8,13 @@ import math
 from dataclasses import dataclass
 from typing import Tuple, Optional, Any, Union
 
-from isimotor_rawudp_client import TelemInfo, TelemWheel, CompactScoring, FullScoringSession
+from isimotor_rawudp_client import (
+    TelemInfo,
+    TelemWheel,
+    TelemVect3,
+    CompactScoring,
+    FullScoringSession,
+)
 
 
 @dataclass
@@ -424,18 +430,18 @@ class VehicleSensors:
         in_realtime: bool = True,
     ) -> "VehicleSensors":
         """Instantiates a VehicleSensors object directly from a binary TelemInfo packet of isimotor_rawudp_client."""
-        wheels = getattr(telem, "wheels", ())
+        wheels = telem.wheels
         if wheels and len(wheels) >= 4:
             lpv = tuple(float(w.longitudinal_patch_vel) for w in wheels[:4])
             lgv = tuple(float(w.longitudinal_ground_vel) for w in wheels[:4])
             lat_pv = tuple(float(w.lateral_patch_vel) for w in wheels[:4])
             lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
-            raw_deflections = tuple(float(getattr(w, "suspension_deflection", 0.0)) for w in wheels[:4])
+            raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
             travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
-            raw_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
-            raw_bpres = tuple(float(getattr(w, "brake_pressure", 0.0)) for w in wheels[:4])
-            surface_types = tuple(int(getattr(w, "surface_type", 0)) for w in wheels[:4])
-            terrain_names = tuple(str(getattr(w, "terrain_name", "")).strip() for w in wheels[:4])
+            raw_grips = tuple(float(w.grip_fraction) for w in wheels[:4])
+            raw_bpres = tuple(float(w.brake_pressure) for w in wheels[:4])
+            surface_types = tuple(int(w.surface_type) for w in wheels[:4])
+            terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
             wheels_on_track = sum(1 for s in surface_types if s not in (2, 3, 4))
             is_on_track = (wheels_on_track > 0)
         else:
@@ -452,79 +458,80 @@ class VehicleSensors:
             is_on_track = True
 
         if explicit_aero_load is None:
-            f_df = abs(float(getattr(telem, "front_downforce", 0.0)))
-            r_df = abs(float(getattr(telem, "rear_downforce", 0.0)))
+            f_df = abs(float(telem.front_downforce))
+            r_df = abs(float(telem.rear_downforce))
             aero_downforce = min(100.0, (f_df + r_df) / 50.0)
         else:
             aero_downforce = explicit_aero_load
 
         remaining_laps = 0
-        if scoring is not None:
-            if hasattr(scoring, "max_laps") and hasattr(scoring, "total_laps"):
-                if 0 < scoring.max_laps < 1000:
-                    remaining_laps = max(0, scoring.max_laps - scoring.total_laps)
-            elif isinstance(scoring, dict):
-                max_laps = int(scoring.get("mMaxLaps", scoring.get("maxLaps", 0)))
-                total_laps = int(scoring.get("mTotalLaps", scoring.get("totalLaps", 0)))
-                if 0 < max_laps < 1000:
-                    remaining_laps = max(0, max_laps - total_laps)
+        if isinstance(scoring, CompactScoring):
+            if 0 < scoring.max_laps < 1000:
+                remaining_laps = max(0, scoring.max_laps - scoring.total_laps)
+        elif isinstance(scoring, FullScoringSession):
+            player_v = scoring.player_vehicle
+            if player_v and 0 < scoring.max_laps < 1000:
+                remaining_laps = max(0, scoring.max_laps - player_v.total_laps)
+        elif isinstance(scoring, dict):
+            max_laps = int(scoring.get("mMaxLaps", scoring.get("maxLaps", 0)))
+            total_laps = int(scoring.get("mTotalLaps", scoring.get("totalLaps", 0)))
+            if 0 < max_laps < 1000:
+                remaining_laps = max(0, max_laps - total_laps)
 
-        engine_rpm = float(getattr(telem, "engine_rpm", 0.0))
-        engine_max_rpm = float(getattr(telem, "engine_max_rpm", 7500.0))
-        gear = int(getattr(telem, "gear", 0))
-        unfiltered_throttle = float(getattr(telem, "unfiltered_throttle", 0.0))
-        unfiltered_brake = float(getattr(telem, "unfiltered_brake", 0.0))
-        filtered_throttle = float(getattr(telem, "filtered_throttle", unfiltered_throttle))
-        filtered_brake = float(getattr(telem, "filtered_brake", unfiltered_brake))
-        fuel_level = float(getattr(telem, "fuel", 0.0))
+        engine_rpm = float(telem.engine_rpm)
+        engine_max_rpm = float(telem.engine_max_rpm)
+        gear = int(telem.gear)
+        unfiltered_throttle = float(telem.unfiltered_throttle)
+        unfiltered_brake = float(telem.unfiltered_brake)
+        filtered_throttle = float(telem.filtered_throttle)
+        filtered_brake = float(telem.filtered_brake)
+        fuel_level = float(telem.fuel)
 
         # Extract ECU & Cockpit state from isimotor-rawudp v0.2.0
-        ecu = getattr(telem, "ecu", None)
-        if ecu is None and hasattr(telem, "lmu") and getattr(telem, "lmu", None):
-            ecu = getattr(telem.lmu, "ecu", None)
-
-        ecu_abs_raw = None
-        ecu_tc_raw = None
-        ecu_abs_level = 0
-        ecu_abs_max = 0
-        ecu_tc_level = 0
-        ecu_tc_max = 0
-        ecu_tc_cut = 0
-        ecu_tc_cut_max = 0
-        ecu_tc_slip = 0
-        ecu_tc_slip_max = 0
-        ecu_motor_map = 0
-        ecu_motor_map_max = 0
-        ecu_brake_migration = 0
-        ecu_brake_migration_max = 0
-        ecu_front_arb = 0
-        ecu_front_arb_max = 0
-        ecu_rear_arb = 0
-        ecu_rear_arb_max = 0
-        ecu_wiper_state = 0
-        ecu_lift_and_coast = 0.0
+        ecu = telem.lmu.ecu if telem.lmu else None
 
         if ecu is not None:
-            ecu_abs_raw = bool(getattr(ecu, "abs_active", False))
-            ecu_tc_raw = bool(getattr(ecu, "tc_active", False))
-            ecu_abs_level = max(0, int(getattr(ecu, "abs_level", 0)))
-            ecu_abs_max = max(0, int(getattr(ecu, "abs_max", 0)))
-            ecu_tc_level = max(0, int(getattr(ecu, "tc_level", 0)))
-            ecu_tc_max = max(0, int(getattr(ecu, "tc_max", 0)))
-            ecu_tc_cut = max(0, int(getattr(ecu, "tc_cut", 0)))
-            ecu_tc_cut_max = max(0, int(getattr(ecu, "tc_cut_max", 0)))
-            ecu_tc_slip = max(0, int(getattr(ecu, "tc_slip", 0)))
-            ecu_tc_slip_max = max(0, int(getattr(ecu, "tc_slip_max", 0)))
-            ecu_motor_map = max(0, int(getattr(ecu, "motor_map", 0)))
-            ecu_motor_map_max = max(0, int(getattr(ecu, "motor_map_max", 0)))
-            ecu_brake_migration = max(0, int(getattr(ecu, "brake_migration", 0)))
-            ecu_brake_migration_max = max(0, int(getattr(ecu, "brake_migration_max", 0)))
-            ecu_front_arb = max(0, int(getattr(ecu, "front_arb", 0)))
-            ecu_front_arb_max = max(0, int(getattr(ecu, "front_arb_max", 0)))
-            ecu_rear_arb = max(0, int(getattr(ecu, "rear_arb", 0)))
-            ecu_rear_arb_max = max(0, int(getattr(ecu, "rear_arb_max", 0)))
-            ecu_wiper_state = int(getattr(ecu, "wiper_state", 0))
-            ecu_lift_and_coast = float(getattr(ecu, "lift_and_coast", 0.0))
+            ecu_abs_raw = bool(ecu.abs_active)
+            ecu_tc_raw = bool(ecu.tc_active)
+            ecu_abs_level = max(0, int(ecu.abs_level))
+            ecu_abs_max = max(0, int(ecu.abs_max))
+            ecu_tc_level = max(0, int(ecu.tc_level))
+            ecu_tc_max = max(0, int(ecu.tc_max))
+            ecu_tc_cut = max(0, int(ecu.tc_cut))
+            ecu_tc_cut_max = max(0, int(ecu.tc_cut_max))
+            ecu_tc_slip = max(0, int(ecu.tc_slip))
+            ecu_tc_slip_max = max(0, int(ecu.tc_slip_max))
+            ecu_motor_map = max(0, int(ecu.motor_map))
+            ecu_motor_map_max = max(0, int(ecu.motor_map_max))
+            ecu_brake_migration = max(0, int(ecu.brake_migration))
+            ecu_brake_migration_max = max(0, int(ecu.brake_migration_max))
+            ecu_front_arb = max(0, int(ecu.front_arb))
+            ecu_front_arb_max = max(0, int(ecu.front_arb_max))
+            ecu_rear_arb = max(0, int(ecu.rear_arb))
+            ecu_rear_arb_max = max(0, int(ecu.rear_arb_max))
+            ecu_wiper_state = int(ecu.wiper_state)
+            ecu_lift_and_coast = float(ecu.lift_and_coast)
+        else:
+            ecu_abs_raw = None
+            ecu_tc_raw = None
+            ecu_abs_level = 0
+            ecu_abs_max = 0
+            ecu_tc_level = 0
+            ecu_tc_max = 0
+            ecu_tc_cut = 0
+            ecu_tc_cut_max = 0
+            ecu_tc_slip = 0
+            ecu_tc_slip_max = 0
+            ecu_motor_map = 0
+            ecu_motor_map_max = 0
+            ecu_brake_migration = 0
+            ecu_brake_migration_max = 0
+            ecu_front_arb = 0
+            ecu_front_arb_max = 0
+            ecu_rear_arb = 0
+            ecu_rear_arb_max = 0
+            ecu_wiper_state = 0
+            ecu_lift_and_coast = 0.0
 
         return cls.from_wheel_velocities(
             long_patch_vels=lpv,
@@ -541,7 +548,7 @@ class VehicleSensors:
             filtered_throttle=filtered_throttle,
             filtered_brake=filtered_brake,
             fuel_level=fuel_level,
-            vehicle_speed=float(getattr(telem, "speed_mps", 0.0)),
+            vehicle_speed=float(telem.speed_mps),
             remaining_laps=remaining_laps,
             delta_time=delta_time,
             estimated_lap_time=estimated_lap_time,
@@ -606,7 +613,14 @@ class VehicleSensors:
 
     def sector_delta_str(self, sector_num: int) -> str:
         """Formatted Live Delta for an active sector (e.g. '-0.150' or '+0.240')."""
-        val = getattr(self, f"sector{sector_num}_delta", 0.0)
+        if sector_num == 1:
+            val = self.sector1_delta
+        elif sector_num == 2:
+            val = self.sector2_delta
+        elif sector_num == 3:
+            val = self.sector3_delta
+        else:
+            val = 0.0
         if val < 0.0:
             return f"-{abs(val):.3f}"
         elif val > 0.0:
@@ -862,6 +876,23 @@ class VehicleSensors:
             return min(1.0, max(0.0, (ut - ft) / max(0.01, ut)))
         return 0.0
 
-
-
-
+    def to_telem_info(self) -> TelemInfo:
+        """Convert normalized VehicleSensors into an official binary TelemInfo structure."""
+        return TelemInfo(
+            gear=int(self.gear),
+            engine_rpm=float(self.engine_rpm),
+            engine_max_rpm=float(self.engine_max_rpm),
+            unfiltered_throttle=float(self.unfiltered_throttle),
+            unfiltered_brake=float(self.unfiltered_brake),
+            filtered_throttle=float(self.filtered_throttle if self.filtered_throttle is not None else self.unfiltered_throttle),
+            filtered_brake=float(self.filtered_brake if self.filtered_brake is not None else self.unfiltered_brake),
+            fuel=float(self.fuel_level),
+            local_vel=TelemVect3(x=0.0, y=0.0, z=float(self.vehicle_speed)),
+            wheels=tuple(
+                TelemWheel(surface_type=st, terrain_name=tn)
+                for st, tn in zip(self.surface_types, self.terrain_names)
+            ),
+            current_sector=int(self.current_sector),
+            delta_time=float(self.delta_time),
+            lap_number=int(self.remaining_laps),
+        )

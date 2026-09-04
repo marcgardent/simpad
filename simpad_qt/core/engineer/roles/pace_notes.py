@@ -146,7 +146,7 @@ class PaceNotesRole(BaseRole):
             scoring_track = str(context.scoring.track_name).strip()
 
         if self._custom_profile is not None:
-            ref_track = getattr(self._custom_profile, "track_name", "")
+            ref_track = self._custom_profile.track_name
             # If scoring packet explicitly indicates a different track, invalidate stale profile
             if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
                 logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")
@@ -159,19 +159,19 @@ class PaceNotesRole(BaseRole):
             if ctx_prof and ctx_prof.annotations:
                 return ctx_prof
 
-        delta_eng = getattr(LMUParser, "_delta_engine", None)
+        delta_eng = LMUParser._delta_engine
         if delta_eng:
             # 1. Current profile if it contains annotations
             if delta_eng.current_profile and delta_eng.current_profile.annotations:
                 prof = delta_eng.current_profile
-                ref_track = getattr(prof, "track_name", "")
+                ref_track = prof.track_name
                 if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
                     return prof
 
             # 2. Direct fallback to track reference/marks profile on disk (independent of delta mode)
             prof = delta_eng.all_time_best_profile or delta_eng.current_profile
             if prof and prof.annotations:
-                ref_track = getattr(prof, "track_name", "")
+                ref_track = prof.track_name
                 if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
                     return prof
 

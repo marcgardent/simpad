@@ -6,7 +6,7 @@ Uses Python dataclasses for robust schema validation and serialization.
 from __future__ import annotations
 import json
 import logging
-from dataclasses import dataclass, field, asdict, is_dataclass
+from dataclasses import dataclass, field, asdict, is_dataclass, fields
 from pathlib import Path
 from typing import Dict, Any, Type, TypeVar
 
@@ -99,8 +99,11 @@ class ConfigManager:
     def get_plugin_config_as(self, plugin_id: str, dataclass_cls: Type[T]) -> T:
         """Instantiate a strongly-typed dataclass from persisted plugin configuration."""
         raw_plugin_data = self.config.plugins.get(plugin_id, {})
-        fields = getattr(dataclass_cls, "__dataclass_fields__", {})
-        valid_kwargs = {k: v for k, v in raw_plugin_data.items() if k in fields}
+        if is_dataclass(dataclass_cls):
+            field_names = {f.name for f in fields(dataclass_cls)}
+        else:
+            field_names = set()
+        valid_kwargs = {k: v for k, v in raw_plugin_data.items() if k in field_names}
         return dataclass_cls(**valid_kwargs)
 
     def set_plugin_config_from(self, plugin_id: str, dataclass_obj: Any, auto_save: bool = True) -> None:

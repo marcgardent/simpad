@@ -42,6 +42,7 @@ class SimPadCoreStatusBar(QStatusBar):
             "QStatusBar::item { border: none; }"
         )
 
+        self._badge_style_keys: Dict[QLabel, str] = {}
         self._init_widgets()
 
         # Connect signals
@@ -99,8 +100,8 @@ class SimPadCoreStatusBar(QStatusBar):
         if label.text() != text:
             label.setText(text)
         style_key = f"{bg}_{fg}_{border}"
-        if getattr(label, "_current_style_key", None) != style_key:
-            setattr(label, "_current_style_key", style_key)
+        if self._badge_style_keys.get(label) != style_key:
+            self._badge_style_keys[label] = style_key
             label.setStyleSheet(
                 f"background-color: {bg}; color: {fg}; border: 1px solid {border}; "
                 f"border-radius: 4px; padding: 2px 8px; font-weight: 600; font-size: 11px;"

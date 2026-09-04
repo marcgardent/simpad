@@ -200,8 +200,7 @@ class SimPadHudOverlayWindow(QWidget):
                         self._latest_sensors,
                     )
                 except Exception as e:
-                    pid = getattr(provider, "metadata", None)
-                    pid_str = pid.id if pid else str(provider)
+                    pid_str = provider.metadata.id if isinstance(provider, SimPadPlugin) else str(provider)
                     self.plugin_manager._handle_plugin_error(pid_str, "paint_hud", e)
                 finally:
                     painter.restore()

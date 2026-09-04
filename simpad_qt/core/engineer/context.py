@@ -170,12 +170,12 @@ class EngineerContext:
                 return name
 
         if self.reference_profile is not None:
-            ref_name = getattr(self.reference_profile, "track_name", "")
+            ref_name = self.reference_profile.track_name
             if ref_name:
                 return ref_name
         try:
             from ..telemetry.lmu_parser import LMUParser
-            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            delta_eng = LMUParser._delta_engine
             if delta_eng and delta_eng.track_name:
                 return delta_eng.track_name
         except Exception:
@@ -187,7 +187,7 @@ class EngineerContext:
         scoring_track = self.get_track_name()
 
         if self.reference_profile is not None:
-            ref_track = getattr(self.reference_profile, "track_name", "")
+            ref_track = self.reference_profile.track_name
             if scoring_track and ref_track:
                 t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
                 t2 = "".join(c for c in ref_track if c.isalnum()).lower()
@@ -197,12 +197,12 @@ class EngineerContext:
 
         try:
             from ..telemetry.lmu_parser import LMUParser
-            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            delta_eng = LMUParser._delta_engine
             if delta_eng:
                 # Track engineer (traffic, markers) always uses all-time best reference lap
                 prof = delta_eng.all_time_best_profile or delta_eng.current_profile
                 if prof:
-                    ref_track = getattr(prof, "track_name", "")
+                    ref_track = prof.track_name
                     if scoring_track and ref_track:
                         t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
                         t2 = "".join(c for c in ref_track if c.isalnum()).lower()
@@ -220,7 +220,7 @@ class EngineerContext:
     ) -> Optional[float]:
         """Returns reference lap speed at given track position (m/s)."""
         ref_prof = profile or self.get_reference_profile()
-        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+        if not ref_prof or ref_prof.num_points < 2:
             return None
         val = ref_prof.get_value_at_dist(track_dist)
         return float(val.get("speed_ms", 0.0))
@@ -237,7 +237,7 @@ class EngineerContext:
         relative to reference lap at exact track position.
         """
         ref_prof = profile or self.get_reference_profile()
-        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+        if not ref_prof or ref_prof.num_points < 2:
             return True
 
         val = ref_prof.get_value_at_dist(track_dist)
@@ -306,7 +306,7 @@ class EngineerContext:
         At least one vehicle (player OR opponent) must be out of normal domain.
         """
         ref_prof = profile or self.get_reference_profile()
-        if not ref_prof or getattr(ref_prof, "num_points", 0) < 2:
+        if not ref_prof or ref_prof.num_points < 2:
             return True
 
         player_in = self.is_vehicle_in_normal_domain(player_veh, profile=ref_prof, tolerance_kmh=tolerance_kmh)

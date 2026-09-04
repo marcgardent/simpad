@@ -25,6 +25,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
 
+from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -174,6 +175,12 @@ class DeltaEngine:
         self._sector1_delta: float = 0.0
         self._sector2_delta: float = 0.0
         self._sector3_delta: float = 0.0
+        self._last_sector1_time: str = "--"
+        self._last_sector1_status: str = "default"
+        self._last_sector2_time: str = "--"
+        self._last_sector2_status: str = "default"
+        self._last_sector3_time: str = "--"
+        self._last_sector3_status: str = "default"
 
     @property
     def reference_mode(self) -> DeltaReferenceMode:
@@ -440,39 +447,41 @@ class DeltaEngine:
         Handles lap transitions, session resets, and sector transitions.
         """
         now = time.time()
-        if hasattr(scoring_js, "track_name") and not isinstance(scoring_js, dict):
-            track_name = str(getattr(scoring_js, "track_name", "")).strip()
-            track_len = float(getattr(scoring_js, "lap_dist", 0.0))
-            current_et = float(getattr(scoring_js, "current_et", 0.0))
+        if isinstance(scoring_js, FullScoringSession):
+            track_name = scoring_js.track_name.strip()
+            track_len = float(scoring_js.lap_dist)
+            current_et = float(scoring_js.current_et)
 
-            if hasattr(scoring_js, "player_vehicle"):
-                player_veh = getattr(scoring_js, "player_vehicle", None)
-                if not player_veh:
-                    return
-                veh_name = str(getattr(player_veh, "vehicle_name", "")).strip()
-                veh_class = str(getattr(player_veh, "vehicle_class", "")).strip()
-                laps_comp = int(getattr(player_veh, "total_laps", 0))
-                lap_start_et = float(getattr(player_veh, "lap_start_et", 0.0))
-                time_into_lap = float(getattr(player_veh, "time_into_lap", -1.0))
-                player_dist = float(getattr(player_veh, "lap_dist", 0.0))
-                raw_sec = int(getattr(player_veh, "sector", 1))
-                in_garage = bool(getattr(player_veh, "in_garage_stall", False))
-                in_pits = bool(getattr(player_veh, "in_pits", False))
-                lap_flag = int(getattr(player_veh, "count_lap_flag", 2))
-                last_lap_time = float(getattr(player_veh, "last_lap_time", -1.0))
-            else:
-                veh_name = self._vehicle_name
-                veh_class = self._vehicle_class
-                laps_comp = int(getattr(scoring_js, "total_laps", 0))
-                lap_start_et = 0.0
-                time_into_lap = 0.0
-                # CompactScoring.lap_dist represents total track length (e.g. 5781m), NOT car position!
-                player_dist = self._last_scoring_dist
-                raw_sec = int(getattr(scoring_js, "sector", 1))
-                in_garage = bool(getattr(scoring_js, "in_garage_stall", False))
-                in_pits = False
-                lap_flag = int(getattr(scoring_js, "count_lap_flag", 2))
-                last_lap_time = float(getattr(scoring_js, "last_lap_time", -1.0))
+            player_veh = scoring_js.player_vehicle
+            if not player_veh:
+                return
+            veh_name = player_veh.vehicle_name.strip()
+            veh_class = player_veh.vehicle_class.strip()
+            laps_comp = int(player_veh.total_laps)
+            lap_start_et = float(player_veh.lap_start_et)
+            time_into_lap = float(player_veh.time_into_lap)
+            player_dist = float(player_veh.lap_dist)
+            raw_sec = int(player_veh.sector)
+            in_garage = bool(player_veh.in_garage_stall)
+            in_pits = bool(player_veh.in_pits)
+            lap_flag = int(player_veh.count_lap_flag)
+            last_lap_time = float(player_veh.last_lap_time)
+        elif isinstance(scoring_js, CompactScoring):
+            track_name = scoring_js.track_name.strip()
+            track_len = float(scoring_js.lap_dist)
+            current_et = float(scoring_js.current_et)
+            veh_name = self._vehicle_name
+            veh_class = self._vehicle_class
+            laps_comp = int(scoring_js.total_laps)
+            lap_start_et = 0.0
+            time_into_lap = 0.0
+            # CompactScoring.lap_dist represents total track length (e.g. 5781m), NOT car position!
+            player_dist = self._last_scoring_dist
+            raw_sec = int(scoring_js.sector)
+            in_garage = bool(scoring_js.in_garage_stall)
+            in_pits = False
+            lap_flag = int(scoring_js.count_lap_flag)
+            last_lap_time = float(scoring_js.last_lap_time)
         else:
             scoring_info = scoring_js.get("mScoringInfo", scoring_js) if isinstance(scoring_js, dict) else {}
             track_name = str(scoring_info.get("mTrackName", scoring_info.get("trackName", ""))).strip()
@@ -599,18 +608,18 @@ class DeltaEngine:
         Processes high frequency TelemInfoV01 / TelemInfo packet (50-100 Hz).
         Updates live delta at 100 Hz with continuous timer (elapsed_time - lap_start_et).
         """
-        if hasattr(veh_speed_ms, "speed_mps") and not isinstance(veh_speed_ms, (int, float)):
+        if isinstance(veh_speed_ms, TelemInfo):
             telem = veh_speed_ms
-            veh_speed_ms = float(getattr(telem, "speed_mps", 0.0))
-            throttle = float(getattr(telem, "unfiltered_throttle", 0.0))
-            brake = float(getattr(telem, "unfiltered_brake", 0.0))
-            steering = float(getattr(telem, "unfiltered_steering", 0.0))
-            gear = int(getattr(telem, "gear", 0))
-            dt = float(getattr(telem, "delta_time", 0.0))
-            elapsed_time = float(getattr(telem, "elapsed_time", 0.0))
-            lap_start_et = float(getattr(telem, "lap_start_et", 0.0))
+            veh_speed_ms = float(telem.speed_mps)
+            throttle = float(telem.unfiltered_throttle)
+            brake = float(telem.unfiltered_brake)
+            steering = float(telem.unfiltered_steering)
+            gear = int(telem.gear)
+            dt = float(telem.delta_time)
+            elapsed_time = float(telem.elapsed_time)
+            lap_start_et = float(telem.lap_start_et)
             if current_sector == 0:
-                current_sector = int(getattr(telem, "current_sector", 0))
+                current_sector = int(telem.current_sector)
 
         self._last_speed_ms = float(veh_speed_ms)
         self._last_throttle = throttle
@@ -906,7 +915,7 @@ class DeltaEngine:
         # Keep existing annotations ONLY if they belong to THIS track
         existing_annotations: List[TrackAnnotation] = []
         if self._current_profile and self._current_profile.annotations:
-            prof_track = getattr(self._current_profile, "track_name", "")
+            prof_track = self._current_profile.track_name
             if not prof_track or clean_name_identifier(prof_track) == clean_name_identifier(self._track_name):
                 existing_annotations = list(self._current_profile.annotations)
 

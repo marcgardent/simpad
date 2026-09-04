@@ -231,7 +231,7 @@ class SDL3HapticController(HapticController):
 
     def get_gamepad_name(self) -> str:
         if self.is_connected():
-            return getattr(self, '_gamepad_name', 'Detected Gamepad')
+            return self._gamepad_name
         return "No Gamepad"
 
     def get_axis(self, axis: int) -> float:

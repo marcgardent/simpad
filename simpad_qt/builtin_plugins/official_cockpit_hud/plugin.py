@@ -245,16 +245,8 @@ class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber,
             "overrev": sensors.overrev_intensity > 0.1,
             "lap_flag": sensors.lap_flag,
             "is_pit_lap": sensors.is_pit_lap,
-            "hit_count_current_lap": getattr(
-                sensors,
-                "hit_count_current_lap",
-                TelemetryStateStore.get_instance().hit_count_current_lap,
-            ),
-            "is_clean_lap": getattr(
-                sensors,
-                "is_clean_lap",
-                TelemetryStateStore.get_instance().is_clean_lap,
-            ),
+            "hit_count_current_lap": TelemetryStateStore.get_instance().hit_count_current_lap,
+            "is_clean_lap": TelemetryStateStore.get_instance().is_clean_lap,
         }
 
         # 1. Electronic Assists (ABS / TC)

@@ -267,7 +267,7 @@ class RaceEngineer:
 
         try:
             from ..telemetry.lmu_parser import LMUParser
-            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            delta_eng = LMUParser._delta_engine
             if delta_eng:
                 return delta_eng.all_time_best_profile or delta_eng.current_profile
         except Exception:

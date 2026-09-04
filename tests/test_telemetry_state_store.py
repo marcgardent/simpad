@@ -202,6 +202,56 @@ class TestTelemetryStateStore(unittest.TestCase):
             pkt = TelemetryRawPacket(channel=ch, data=channel_data_map.get(ch), raw_bytes_len=64)
             pm.dispatch_packet(pkt)
 
+    def test_update_telemetry_with_vehicle_sensors_and_mock_bus(self):
+        """Verify strong typing contract: VehicleSensors explicitly converts to TelemInfo and TelemetryBus operates cleanly."""
+        from simpad_qt.core.telemetry import VehicleSensors
+        from simpad_qt.core.telemetry_bus import TelemetryBus
+        from simpad_qt.plugins.manager import PluginManager
+        from simpad_qt.core.config import ConfigManager
+
+        sensors = VehicleSensors(
+            vehicle_speed=50.0,
+            unfiltered_throttle=0.8,
+            unfiltered_brake=0.2,
+            gear=4,
+            engine_rpm=6200.0,
+            fuel_level=45.0,
+            surface_types=(0, 0, 0, 0),
+            terrain_names=("ROAD", "ROAD", "ROAD", "ROAD"),
+            wheels_on_track=4,
+            is_on_track=True,
+            remaining_laps=12,
+            current_sector=2,
+            lap_flag=2,
+        )
+
+        # 1. Test explicit strong-type conversion to TelemInfo
+        telem = sensors.to_telem_info()
+        self.assertIsInstance(telem, TelemInfo)
+        self.assertAlmostEqual(telem.speed_kmh, 180.0, places=1)
+        self.assertEqual(len(telem.wheels), 4)
+        self.assertEqual(telem.wheels[0].surface_type, 0)
+        self.assertEqual(telem.gear, 4)
+
+        # 2. Test ingestion of strongly-typed TelemInfo in TelemetryStateStore
+        self.store.update_telemetry(telem)
+        self.assertAlmostEqual(self.store._last_speed_kmh, 180.0, places=1)
+        self.assertEqual(self.store._last_gear, 4)
+        self.assertEqual(self.store._last_wheels_on_track, 4)
+        self.assertTrue(self.store._last_is_on_track)
+
+        # 3. Test ingestion of strongly-typed scoring handlers
+        compact = CompactScoring(sector=2, in_realtime=True, count_lap_flag=2)
+        self.store.update_compact_scoring(compact)
+        self.assertEqual(self.store._last_current_sector, 2)
+        self.store.update_full_scoring(FullScoringSession())
+
+        # 4. Test TelemetryBus mock execution
+        pm = PluginManager(config_manager=ConfigManager())
+        bus = TelemetryBus(pm)
+        for _ in range(30):
+            bus.mock_generator._step()
+
 
 if __name__ == "__main__":
     unittest.main()

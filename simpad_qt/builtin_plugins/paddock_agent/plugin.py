@@ -28,9 +28,14 @@ from simpad_qt.plugins.contracts import (
 from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement
 )
-from .schedule import (
-    LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
-)
+try:
+    from simpad_qt.builtin_plugins.paddock_agent.schedule import (
+        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
+    )
+except ImportError:
+    from .schedule import (
+        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
+    )
 from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpad.plugin.paddock_agent")
@@ -499,7 +504,7 @@ class PaddockAgentWidget(QWidget):
         for ev in events:
             setup = self.schedule_mgr.setups.get(ev.setup_id)
             is_enabled = setup.enabled if setup else False
-            ev_race_type = getattr(ev, "race_type", getattr(setup, "race_type", "Daily Races"))
+            ev_race_type = ev.race_type
             if self._matches_filters(
                 ev.difficulty, ev.car_classes, ev_race_type, ev.setup_type,
                 ev.series_name, ev.track_name, is_enabled

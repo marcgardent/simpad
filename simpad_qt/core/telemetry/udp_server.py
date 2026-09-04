@@ -242,11 +242,11 @@ class UDPServer:
         """Sends a hardware control command (HWControlCommand or str) to the simulator."""
         if not self._client:
             return
-        if hasattr(command, "control_name"):
+        if isinstance(command, HWControlCommand):
             self._client.send_hw_control(
                 control_name=command.control_name,
-                control_value=getattr(command, "control_value", 1.0),
-                duration_ms=getattr(command, "duration_ms", 50),
+                control_value=command.control_value,
+                duration_ms=command.duration_ms,
             )
         elif isinstance(command, str):
             self._client.send_hw_control(
@@ -259,16 +259,16 @@ class UDPServer:
         """Sends a weather override command (WeatherControlCommand or kwargs) to the simulator."""
         if not self._client:
             return
-        if hasattr(command, "ambient_temp"):
+        if isinstance(command, WeatherControlCommand):
             self._client.send_weather_override(
-                ambient_temp=getattr(command, "ambient_temp", 20.0),
-                track_temp=getattr(command, "track_temp", 25.0),
-                dark_cloud=getattr(command, "dark_cloud", 0.0),
-                raining=getattr(command, "raining", 0.0),
-                wind_speed=getattr(command, "wind_speed", 0.0),
-                wind_direction=getattr(command, "wind_direction", 0.0),
-                min_path_wetness=getattr(command, "min_path_wetness", 0.0),
-                max_path_wetness=getattr(command, "max_path_wetness", 0.0),
+                ambient_temp=command.ambient_temp,
+                track_temp=command.track_temp,
+                dark_cloud=command.dark_cloud,
+                raining=command.raining,
+                wind_speed=command.wind_speed,
+                wind_direction=command.wind_direction,
+                min_path_wetness=command.min_path_wetness,
+                max_path_wetness=command.max_path_wetness,
             )
         elif isinstance(command, dict):
             self._client.send_weather_override(**command)

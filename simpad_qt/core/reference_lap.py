@@ -144,15 +144,12 @@ class ReferenceLapManager(QObject):
         self._last_completed_sector: int = 1
 
         # Apply configuration if available
-        if self.config_manager:
-            app_cfg = getattr(self.config_manager.config, "app", None)
+        if self.config_manager and self.config_manager.config:
+            app_cfg = self.config_manager.config.app
             if app_cfg:
-                mode_str = getattr(app_cfg, "delta_reference_mode", "all_time_best")
-                self.set_reference_mode(mode_str)
-                freeze = getattr(app_cfg, "delta_freeze_duration", 3.5)
-                self.delta_engine.freeze_duration = freeze
-                ema = getattr(app_cfg, "delta_ema_samples", 0)
-                self.delta_engine.ema_samples = ema
+                self.set_reference_mode(app_cfg.delta_reference_mode)
+                self.delta_engine.freeze_duration = app_cfg.delta_freeze_duration
+                self.delta_engine.ema_samples = app_cfg.delta_ema_samples
 
     @classmethod
     def get_instance(cls) -> ReferenceLapManager:
@@ -235,28 +232,22 @@ class ReferenceLapManager(QObject):
             except ValueError:
                 mode = DeltaReferenceMode.ALL_TIME_BEST
         self.delta_engine.reference_mode = mode
-        if self.config_manager:
-            app_cfg = getattr(self.config_manager.config, "app", None)
-            if app_cfg and hasattr(app_cfg, "delta_reference_mode"):
-                app_cfg.delta_reference_mode = mode.value
-                self.config_manager.save()
+        if self.config_manager and self.config_manager.config and self.config_manager.config.app:
+            self.config_manager.config.app.delta_reference_mode = mode.value
+            self.config_manager.save()
         self.reference_profile_changed.emit(self.current_profile)
 
     def set_freeze_duration(self, duration: float) -> None:
         self.delta_engine.freeze_duration = max(0.0, float(duration))
-        if self.config_manager:
-            app_cfg = getattr(self.config_manager.config, "app", None)
-            if app_cfg and hasattr(app_cfg, "delta_freeze_duration"):
-                app_cfg.delta_freeze_duration = self.delta_engine.freeze_duration
-                self.config_manager.save()
+        if self.config_manager and self.config_manager.config and self.config_manager.config.app:
+            self.config_manager.config.app.delta_freeze_duration = self.delta_engine.freeze_duration
+            self.config_manager.save()
 
     def set_ema_samples(self, samples: int) -> None:
         self.delta_engine.ema_samples = max(0, int(samples))
-        if self.config_manager:
-            app_cfg = getattr(self.config_manager.config, "app", None)
-            if app_cfg and hasattr(app_cfg, "delta_ema_samples"):
-                app_cfg.delta_ema_samples = self.delta_engine.ema_samples
-                self.config_manager.save()
+        if self.config_manager and self.config_manager.config and self.config_manager.config.app:
+            self.config_manager.config.app.delta_ema_samples = self.delta_engine.ema_samples
+            self.config_manager.save()
 
     def add_annotation(
         self,
@@ -378,22 +369,22 @@ class ReferenceLapManager(QObject):
         # Construct sectors list
         sec_list = [
             {
-                "time": getattr(de, "_last_sector1_time", "--"),
-                "status": getattr(de, "_last_sector1_status", "default"),
+                "time": de._last_sector1_time,
+                "status": de._last_sector1_status,
                 "delta": de.sector1_delta,
                 "delta_str": f"{de.sector1_delta:+.3f}" if de.sector1_delta != 0.0 else "--",
                 "is_current": (de._last_current_sector == 1),
             },
             {
-                "time": getattr(de, "_last_sector2_time", "--"),
-                "status": getattr(de, "_last_sector2_status", "default"),
+                "time": de._last_sector2_time,
+                "status": de._last_sector2_status,
                 "delta": de.sector2_delta,
                 "delta_str": f"{de.sector2_delta:+.3f}" if de.sector2_delta != 0.0 else "--",
                 "is_current": (de._last_current_sector == 2),
             },
             {
-                "time": getattr(de, "_last_sector3_time", "--"),
-                "status": getattr(de, "_last_sector3_status", "default"),
+                "time": de._last_sector3_time,
+                "status": de._last_sector3_status,
                 "delta": de.sector3_delta,
                 "delta_str": f"{de.sector3_delta:+.3f}" if de.sector3_delta != 0.0 else "--",
                 "is_current": (de._last_current_sector == 3),
@@ -414,12 +405,12 @@ class ReferenceLapManager(QObject):
             sector1_delta=de.sector1_delta,
             sector2_delta=de.sector2_delta,
             sector3_delta=de.sector3_delta,
-            sector1_time=getattr(de, "_last_sector1_time", "--"),
-            sector1_status=getattr(de, "_last_sector1_status", "default"),
-            sector2_time=getattr(de, "_last_sector2_time", "--"),
-            sector2_status=getattr(de, "_last_sector2_status", "default"),
-            sector3_time=getattr(de, "_last_sector3_time", "--"),
-            sector3_status=getattr(de, "_last_sector3_status", "default"),
+            sector1_time=de._last_sector1_time,
+            sector1_status=de._last_sector1_status,
+            sector2_time=de._last_sector2_time,
+            sector2_status=de._last_sector2_status,
+            sector3_time=de._last_sector3_time,
+            sector3_status=de._last_sector3_status,
             sectors_list=sec_list,
             last_lap_time=de.last_completed_lap_time,
             last_lap_time_str=de.last_completed_lap_time_str,

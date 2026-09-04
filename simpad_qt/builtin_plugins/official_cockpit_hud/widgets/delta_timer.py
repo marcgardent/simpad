@@ -32,14 +32,14 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         sensors: VehicleSensors,
         extra_data: Dict[str, Any],
     ) -> None:
-        is_freeze = extra_data.get("isLapFreezeActive", getattr(sensors, "is_lap_freeze_active", False))
-        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
+        is_freeze = extra_data.get("isLapFreezeActive", sensors.is_lap_freeze_active)
+        lap_flag = extra_data.get("lap_flag", sensors.lap_flag)
 
         if is_freeze:
             # Line crossing mode: Completed Lap Time (MM:ss.mmm)
-            lap_time_str = str(extra_data.get("lastLapTime", getattr(sensors, "last_lap_time_str", "--:--.---")))
+            lap_time_str = str(extra_data.get("lastLapTime", sensors.last_lap_time_str))
             disp_str = lap_time_str if lap_time_str not in ("", "--") else "--:--.---"
-            lap_status = str(extra_data.get("lastLapStatus", getattr(sensors, "last_lap_status", "default")))
+            lap_status = str(extra_data.get("lastLapStatus", sensors.last_lap_status))
 
             if lap_flag == 0 or lap_status == "invalid":
                 # Invalid lap -> Grey

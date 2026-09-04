@@ -281,9 +281,9 @@ class LMUParser:
         """Computes session best sector 1, individual sector 2, and individual sector 3 times."""
         s1, s2_indiv, s3_indiv = 999999.0, 999999.0, 999999.0
         for v in vehicles:
-            bs1 = float(getattr(v, "best_sector1", -1.0))
-            bs2 = float(getattr(v, "best_sector2", -1.0))
-            blap = float(getattr(v, "best_lap_time", -1.0))
+            bs1 = float(v.best_sector1)
+            bs2 = float(v.best_sector2)
+            blap = float(v.best_lap_time)
 
             if 0.0 < bs1 < s1:
                 s1 = bs1
@@ -293,18 +293,19 @@ class LMUParser:
             if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
                 if (blap - bs2) < s3_indiv:
                     s3_indiv = blap - bs2
-
         return s1, s2_indiv, s3_indiv
 
     @classmethod
-    def _update_player_sector_times_from_model(cls, player_veh: VehicleScoring, session_bests: Tuple[float, float, float]) -> None:
-        """Formats sector times from typed VehicleScoring model."""
+    def _update_player_sector_times_from_model(
+        cls, player_veh: Any, session_bests: Tuple[float, float, float]
+    ) -> None:
+        """Helper to extract individual sector times and color coding from VehicleScoring."""
         session_best_s1, session_best_s2_indiv, session_best_s3_indiv = session_bests
 
+        # Sector 1
         cur_s1 = float(player_veh.cur_sector1)
         last_s1 = float(player_veh.last_sector1)
         best_s1 = float(player_veh.best_sector1)
-
         if cur_s1 > 0.0:
             cls._last_sector1_time = format_time_sec(cur_s1)
             cls._last_sector1_status = cls._calculate_sector_status(cur_s1, best_s1, session_best_s1)
@@ -312,27 +313,32 @@ class LMUParser:
             cls._last_sector1_time = format_time_sec(last_s1)
             cls._last_sector1_status = cls._calculate_sector_status(last_s1, best_s1, session_best_s1)
 
+        # Sector 2
         cur_s2 = float(player_veh.cur_sector2)
         last_s2 = float(player_veh.last_sector2)
         best_s2 = float(player_veh.best_sector2)
-
+        best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
         if cur_s2 > 0.0 and cur_s1 > 0.0:
             indiv_s2 = cur_s2 - cur_s1
-            best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
             if indiv_s2 > 0.0:
                 cls._last_sector2_time = format_time_sec(indiv_s2)
                 cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
         elif last_s2 > 0.0 and last_s1 > 0.0:
             indiv_s2 = last_s2 - last_s1
-            best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
             if indiv_s2 > 0.0:
                 cls._last_sector2_time = format_time_sec(indiv_s2)
                 cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
 
+        # Sector 3 (Lap completion)
         last_lap = float(player_veh.last_lap_time)
         best_lap = float(player_veh.best_lap_time)
-
-        if last_lap > 0.0 and last_s2 > 0.0:
+        if last_lap > 0.0 and cur_s2 > 0.0:
+            indiv_s3 = last_lap - cur_s2
+            best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
+            if indiv_s3 > 0.0:
+                cls._last_sector3_time = format_time_sec(indiv_s3)
+                cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
+        elif last_lap > 0.0 and last_s2 > 0.0:
             indiv_s3 = last_lap - last_s2
             best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
             if indiv_s3 > 0.0:
@@ -342,10 +348,10 @@ class LMUParser:
     @classmethod
     def process_telemetry(cls, telem: TelemInfo) -> Optional[TelemetryData]:
         """Processes a binary TelemInfo packet from isimotor_rawudp_client."""
-        if cls._last_full_scoring and len(getattr(cls._last_full_scoring, "vehicles", [])) > 1:
+        if cls._last_full_scoring and len(cls._last_full_scoring.vehicles) > 1:
             pv = cls._last_full_scoring.player_vehicle
             if pv is not None:
-                slot_id = getattr(telem, "slot_id", 0)
+                slot_id = telem.slot_id
                 if int(slot_id) != int(pv.id):
                     # Strict multi-car filtering: this packet originates from an opponent / AI
                     return None
@@ -365,17 +371,17 @@ class LMUParser:
             cls._last_lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
             raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
             cls._last_travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
-            cls._last_grips = tuple(float(getattr(w, "grip_fraction", 1.0)) for w in wheels[:4])
+            cls._last_grips = tuple(float(w.grip_fraction) for w in wheels[:4])
             cls._last_susp_vels = (0.0, 0.0, 0.0, 0.0)
-            cls._last_surface_types = tuple(int(getattr(w, "surface_type", 0)) for w in wheels[:4])
-            cls._last_terrain_names = tuple(str(getattr(w, "terrain_name", "")).strip() for w in wheels[:4])
+            cls._last_surface_types = tuple(int(w.surface_type) for w in wheels[:4])
+            cls._last_terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
             cls._last_wheels_on_track = sum(1 for s in cls._last_surface_types if s not in (2, 3, 4))
             cls._last_is_on_track = (cls._last_wheels_on_track > 0)
 
         cls._last_unfiltered_throttle = float(telem.unfiltered_throttle)
         cls._last_unfiltered_brake = float(telem.unfiltered_brake)
-        cls._last_filtered_throttle = float(getattr(telem, "filtered_throttle", telem.unfiltered_throttle))
-        cls._last_filtered_brake = float(getattr(telem, "filtered_brake", telem.unfiltered_brake))
+        cls._last_filtered_throttle = float(telem.filtered_throttle)
+        cls._last_filtered_brake = float(telem.filtered_brake)
         cls._last_unfiltered_steering = float(telem.unfiltered_steering)
         cls._last_gear = int(telem.gear)
         cls._last_engine_rpm = float(telem.engine_rpm)
@@ -462,7 +468,7 @@ class LMUParser:
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
-                raw_data_summary=f"lap_num={getattr(telem, 'lap_number', 0)} gear={telem.gear} flap_legal={getattr(telem, 'rear_flap_legal_status', 0)} in_rt={cls._last_in_realtime}",
+                raw_data_summary=f"lap_num={telem.lap_number} gear={telem.gear} flap_legal={telem.rear_flap_legal_status} in_rt={cls._last_in_realtime}",
             )
             TrackLimitsLogger.get_instance().log_surface_event(
                 source="TelemInfo(120Hz)",
@@ -473,7 +479,7 @@ class LMUParser:
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
-                lap_num=int(getattr(telem, "lap_number", 0)),
+                lap_num=int(telem.lap_number),
                 sector=cls._last_current_sector,
                 lap_flag=cls._last_lap_flag,
             )
@@ -626,7 +632,7 @@ class LMUParser:
                     num_penalties=cls._last_num_penalties,
                     is_lap_invalid=(cls._last_lap_flag in (0, 1)),
                     speed_kmh=current_speed * 3.6,
-                    raw_data_summary=f"count_lap_flag={player_veh.count_lap_flag} flag={getattr(player_veh, 'flag', 0)} under_yellow={getattr(player_veh, 'under_yellow', False)} pens={num_pens} tl_steps={tl_steps} in_pits={getattr(player_veh, 'in_pits', False)}",
+                    raw_data_summary=f"count_lap_flag={player_veh.count_lap_flag} flag={player_veh.flag} under_yellow={player_veh.under_yellow} pens={num_pens} tl_steps={tl_steps} in_pits={player_veh.in_pits}",
                 )
             except Exception:
                 pass
@@ -653,7 +659,7 @@ class LMUParser:
                     s1_delta=cls._last_sector1_delta,
                     s2_delta=cls._last_sector2_delta,
                     s3_delta=cls._last_sector3_delta,
-                    lap_dist=float(getattr(player_veh, "lap_dist", 0.0)),
+                    lap_dist=float(player_veh.lap_dist),
                     speed_kmh=current_speed * 3.6,
                 )
             except Exception:
@@ -676,10 +682,10 @@ class LMUParser:
     def process_system_event(cls, event: SystemEvent) -> TelemetryData:
         """Processes a session / cockpit SystemEvent (SIMP Type 3)."""
         prev_rt = cls._last_in_realtime
-        if getattr(event, "in_realtime", None) is True or getattr(event, "event_id", 0) in (1, 3):
+        if event.event_id in (1, 3):
             cls._in_garage_trap = False
             cls._last_in_realtime = True
-        elif getattr(event, "in_realtime", None) is False or getattr(event, "event_id", 0) in (2, 4):
+        elif event.event_id in (2, 4):
             cls._in_garage_trap = True
             cls._last_in_realtime = False
 
@@ -688,7 +694,7 @@ class LMUParser:
                 from .overlay_anomaly_logger import OverlayAnomalyLogger
                 OverlayAnomalyLogger.get_instance().log_event(
                     "SYSTEM_EVENT_REALTIME_TOGGLE",
-                    f"SystemEvent(event_id={getattr(event, 'event_id', 0)}) toggled in_realtime from {prev_rt} to {cls._last_in_realtime}"
+                    f"SystemEvent(event_id={event.event_id}) toggled in_realtime from {prev_rt} to {cls._last_in_realtime}"
                 )
             except Exception:
                 pass

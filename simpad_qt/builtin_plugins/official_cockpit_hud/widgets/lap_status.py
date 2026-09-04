@@ -76,7 +76,7 @@ class QtLapStatusWidget(BaseQtHudWidget):
         start_x = center_x - total_w / 2.0
 
         # ── Badge 1: Lap Validity (timing_in_progress vs time_deleted) ──
-        lap_flag = extra_data.get("lap_flag", getattr(sensors, "lap_flag", 2))
+        lap_flag = extra_data.get("lap_flag", sensors.lap_flag)
         is_lap_valid = (lap_flag == 2)
 
         svg_validity = self._svg_lap_valid if is_lap_valid else self._svg_lap_invalid

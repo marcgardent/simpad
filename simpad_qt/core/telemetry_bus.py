@@ -25,7 +25,15 @@ from simpad_qt.core.telemetry_channels import (
 )
 from simpad_qt.core.reference_lap import ReferenceLapManager, LapDeltaPacket
 from simpad_qt.core.mock_telemetry import MockTelemetryGenerator
-from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession, SystemEvent
+from isimotor_rawudp_client import (
+    TelemInfo,
+    CompactScoring,
+    FullScoringSession,
+    VehicleScoring,
+    WeatherControl,
+    ExtendedState,
+    SystemEvent,
+)
 
 logger = logging.getLogger("simpad.telemetry_bus")
 
@@ -193,7 +201,13 @@ class TelemetryBus(QObject):
 
         self.process_raw_packet(channel, packet_data, raw_bytes_len)
 
-    def process_raw_packet(self, channel: TelemetryChannel, data: Any, raw_bytes_len: int) -> None:
+    def process_raw_packet(
+        self,
+        channel: TelemetryChannel,
+        data: Any,
+        raw_bytes_len: int,
+        override_sensors: Optional[VehicleSensors] = None,
+    ) -> None:
         """Process an incoming raw UDP packet from the game."""
         now = time.time()
         metrics = self.channel_metrics[channel]
@@ -232,7 +246,31 @@ class TelemetryBus(QObject):
             elif isinstance(data, (CompactScoring, FullScoringSession, dict)):
                 delta_pkt = self.reference_lap_mgr.update_scoring(data)
 
-            if isinstance(data, VehicleSensors):
+            if override_sensors is not None:
+                sensors = override_sensors
+                if delta_pkt is not None:
+                    sensors.delta_time = delta_pkt.display_delta
+                    sensors.sector1_delta = delta_pkt.sector1_delta
+                    sensors.sector2_delta = delta_pkt.sector2_delta
+                    sensors.sector3_delta = delta_pkt.sector3_delta
+                    sensors.sector1_time = delta_pkt.sector1_time
+                    sensors.sector1_status = delta_pkt.sector1_status
+                    sensors.sector2_time = delta_pkt.sector2_time
+                    sensors.sector2_status = delta_pkt.sector2_status
+                    sensors.sector3_time = delta_pkt.sector3_time
+                    sensors.sector3_status = delta_pkt.sector3_status
+                    sensors.last_lap_time = delta_pkt.last_lap_time
+                    sensors.last_lap_time_str = delta_pkt.last_lap_time_str
+                    sensors.last_lap_status = delta_pkt.last_lap_status
+                    sensors.is_lap_freeze_active = delta_pkt.is_lap_freeze_active
+                    sensors.has_delta_reference = delta_pkt.has_reference
+                    sensors.estimated_lap_time = delta_pkt.estimated_lap_time
+                    sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
+                    sensors.is_pit_lap = delta_pkt.is_pit_lap
+                    sensors.lap_flag = delta_pkt.lap_flag
+                    sensors.current_sector = delta_pkt.current_sector
+                self.process_frame(sensors, delta_pkt)
+            elif isinstance(data, VehicleSensors):
                 self.process_frame(data, delta_pkt)
             else:
                 snap = LMUParser.process_packet(data)
@@ -281,25 +319,45 @@ class TelemetryBus(QObject):
     def _on_mock_frame(self, sensors: VehicleSensors) -> None:
         """Simulate real UDP packet arrival across multiple channels in mock mode."""
         now = time.time()
+        telem_info = sensors.to_telem_info()
 
         # Telemetry packet (~640 bytes)
-        self.process_raw_packet(TelemetryChannel.TELEMETRY, sensors, 640)
+        self.process_raw_packet(TelemetryChannel.TELEMETRY, telem_info, 640, override_sensors=sensors)
 
         # Compact Scoring packet (every 100ms / 10 Hz, ~180 bytes)
         if int(now * 10) % 2 == 0:
-            self.process_raw_packet(TelemetryChannel.COMPACT_SCORING, sensors, 184)
+            mock_compact = CompactScoring(
+                in_realtime=sensors.in_realtime,
+                count_lap_flag=sensors.lap_flag,
+                sector=sensors.current_sector,
+            )
+            self.process_raw_packet(TelemetryChannel.COMPACT_SCORING, mock_compact, 184)
 
         # Full Scoring packet (every 200ms / 5 Hz, ~2400 bytes)
         if int(now * 5) % 3 == 0:
-            self.process_raw_packet(TelemetryChannel.FULL_SCORING, sensors, 2480)
+            mock_full = FullScoringSession(
+                vehicles=[
+                    VehicleScoring(
+                        is_player=True,
+                        in_garage_stall=False,
+                        count_lap_flag=sensors.lap_flag,
+                        sector=sensors.current_sector,
+                        local_vel=telem_info.local_vel,
+                        lap_dist=telem_info.elapsed_time * sensors.vehicle_speed,
+                    )
+                ]
+            )
+            self.process_raw_packet(TelemetryChannel.FULL_SCORING, mock_full, 2480)
 
         # Weather packet (every 1s / 1 Hz, ~96 bytes)
         if int(now) % 1 == 0 and len(self._channel_timestamps[TelemetryChannel.WEATHER]) == 0:
-            self.process_raw_packet(TelemetryChannel.WEATHER, sensors, 96)
+            mock_weather = WeatherControl(ambient_temp_k=295.15)
+            self.process_raw_packet(TelemetryChannel.WEATHER, mock_weather, 96)
 
         # Extended State packet (every 200ms / 5 Hz, ~120 bytes)
         if int(now * 5) % 2 == 0:
-            self.process_raw_packet(TelemetryChannel.EXTENDED_STATE, sensors, 128)
+            mock_extended = ExtendedState()
+            self.process_raw_packet(TelemetryChannel.EXTENDED_STATE, mock_extended, 128)
 
     def _recalculate_metrics(self) -> None:
         """Update sliding-window Hz and Kb/s throughput for each channel."""

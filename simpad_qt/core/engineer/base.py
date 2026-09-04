@@ -132,13 +132,21 @@ class BaseRole(ABC):
         based on context.wake_reason. Roles can override specific hooks rather than
         writing monolithic update switches.
         """
-        wake = getattr(context, "wake_reason", None)
+        wake = context.wake_reason
         store = context.state_store
         if wake is not None:
-            wake_val = getattr(wake, "value", str(wake))
-            hook_method = getattr(self, f"on_{wake_val}", None)
-            if hook_method and callable(hook_method):
-                return hook_method(store, context)
+            if wake == TelemetryWakeReason.PHYSICS_TICK:
+                return self.on_physics_tick(store, context)
+            elif wake == TelemetryWakeReason.SCORING_UPDATE:
+                return self.on_scoring_update(store, context)
+            elif wake == TelemetryWakeReason.WEATHER_UPDATE:
+                return self.on_weather_update(store, context)
+            elif wake == TelemetryWakeReason.SYSTEM_EVENT:
+                return self.on_session_event(store, context)
+            elif wake == TelemetryWakeReason.LAP_TRANSITION:
+                return self.on_lap_transition(store, context)
+            elif wake == TelemetryWakeReason.TRACK_LIMITS:
+                return self.on_track_limits(store, context)
 
         # Fallback evaluation for manual/unspecified triggers
         msg = self.on_physics_tick(store, context)
@@ -173,8 +181,8 @@ class BaseRole(ABC):
 
     def get_param_value(self, name: str) -> Any:
         """Returns current value of named parameter."""
-        if hasattr(self, name):
-            return getattr(self, name)
+        if name in self.__dict__:
+            return self.__dict__[name]
         for p in self.get_parameters():
             if p.name == name:
                 return p.default

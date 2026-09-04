@@ -166,7 +166,7 @@ class TrafficSpotterRole(BaseRole):
             return context.get_reference_profile()
         try:
             from ...telemetry.lmu_parser import LMUParser
-            delta_eng = getattr(LMUParser, "_delta_engine", None)
+            delta_eng = LMUParser._delta_engine
             if delta_eng:
                 return delta_eng.all_time_best_profile or delta_eng.current_profile
         except Exception:
@@ -367,7 +367,7 @@ class TrafficSpotterRole(BaseRole):
         """Calculates TTC, relative distance, and speed delta for each opponent."""
         metrics = []
         ref_prof = self.get_reference_profile(context)
-        has_valid_ref = bool(ref_prof and getattr(ref_prof, "num_points", 0) >= 2)
+        has_valid_ref = bool(ref_prof and ref_prof.num_points >= 2)
 
         for opp in opponents:
             opp_id = opp.id

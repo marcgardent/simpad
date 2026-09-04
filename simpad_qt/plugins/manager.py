@@ -4,6 +4,7 @@ Uses strongly-typed structures, Python dataclasses, and channel requirements neg
 """
 
 from __future__ import annotations
+import types
 import importlib.util
 import inspect
 import logging
@@ -57,11 +58,17 @@ class PluginManager(QObject):
         self._plugins: Dict[str, SimPadPlugin] = {}
         self._error_counts: Dict[str, int] = {}
         self._plugin_paths: Dict[str, Path] = {}
+        self._load_errors: Dict[Path, str] = {}
 
     @property
     def plugins(self) -> Dict[str, SimPadPlugin]:
         """Return all registered plugin instances indexed by ID."""
         return dict(self._plugins)
+
+    @property
+    def load_errors(self) -> Dict[Path, str]:
+        """Return all recorded errors encountered when loading plugins."""
+        return dict(self._load_errors)
 
     def discover_and_load(self, search_directories: List[Path]) -> None:
         """Scan specified directories for plugin modules and load them."""
@@ -85,26 +92,72 @@ class PluginManager(QObject):
 
     def _load_plugin_from_file(self, file_path: Path) -> Optional[SimPadPlugin]:
         """Dynamically import a Python file and instantiate any SimPadPlugin subclass found."""
-        module_name = f"simpad_dyn_plugin_{file_path.stem}_{hash(str(file_path)) % 10000}"
-        try:
-            spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-            if not spec or not spec.loader:
-                self.logger.warning(f"Cannot create module spec for {file_path}")
-                return None
+        resolved_path = file_path.resolve()
+        module = None
 
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+        try:
+            # 1. Attempt to import via sys.path if module resides in an existing package hierarchy
+            for p in sys.path:
+                try:
+                    base_path = Path(p).resolve()
+                    if resolved_path.is_relative_to(base_path):
+                        rel_parts = resolved_path.relative_to(base_path).with_suffix("").parts
+                        if all(part.isidentifier() for part in rel_parts):
+                            full_mod_name = ".".join(rel_parts)
+                            module = importlib.import_module(full_mod_name)
+                            break
+                except Exception:
+                    continue
+
+            # 2. If not in sys.path or standard import failed, load dynamically with package support
+            if module is None:
+                parent_dir = resolved_path.parent
+                is_package_member = (
+                    resolved_path.name == "plugin.py"
+                    or (parent_dir / "__init__.py").exists()
+                )
+
+                if is_package_member:
+                    pkg_name = f"simpad_dyn_pkg_{parent_dir.name}_{abs(hash(str(parent_dir))) % 10000}"
+                    if pkg_name not in sys.modules:
+                        pkg_mod = types.ModuleType(pkg_name)
+                        pkg_mod.__path__ = [str(parent_dir)]
+                        init_file = parent_dir / "__init__.py"
+                        pkg_mod.__file__ = str(init_file) if init_file.exists() else None
+                        pkg_mod.__package__ = pkg_name
+                        sys.modules[pkg_name] = pkg_mod
+
+                    mod_name = f"{pkg_name}.{resolved_path.stem}"
+                    spec = importlib.util.spec_from_file_location(mod_name, str(resolved_path))
+                    if not spec or not spec.loader:
+                        self.logger.warning(f"Cannot create module spec for {file_path}")
+                        return None
+                    module = importlib.util.module_from_spec(spec)
+                    module.__package__ = pkg_name
+                    sys.modules[mod_name] = module
+                    spec.loader.exec_module(module)
+                else:
+                    mod_name = f"simpad_dyn_plugin_{resolved_path.stem}_{abs(hash(str(resolved_path))) % 10000}"
+                    spec = importlib.util.spec_from_file_location(mod_name, str(resolved_path))
+                    if not spec or not spec.loader:
+                        self.logger.warning(f"Cannot create module spec for {file_path}")
+                        return None
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = module
+                    spec.loader.exec_module(module)
 
             # Find subclasses of SimPadPlugin
             for name, obj in inspect.getmembers(module, inspect.isclass):
                 if issubclass(obj, SimPadPlugin) and obj is not SimPadPlugin:
                     plugin_instance: SimPadPlugin = obj()
                     self.register_plugin(plugin_instance, file_path)
+                    self._load_errors.pop(file_path, None)
                     return plugin_instance
 
         except Exception as e:
-            self.logger.error(f"Failed to load plugin from {file_path}: {e}\n{traceback.format_exc()}")
+            tb = traceback.format_exc()
+            self._load_errors[file_path] = f"{e}\n{tb}"
+            self.logger.error(f"Failed to load plugin from {file_path}: {e}\n{tb}")
             return None
 
         return None
@@ -294,26 +347,26 @@ class PluginManager(QObject):
         t = packet.timestamp
 
         # 1. Update timestamped slot in state store
-        hook_name: Optional[str] = None
+        wake_reason: Optional[TelemetryWakeReason] = None
         if ch == TelemetryChannel.TELEMETRY:
             store.update_telemetry(data, t)
-            hook_name = "on_physics_tick"
+            wake_reason = TelemetryWakeReason.PHYSICS_TICK
         elif ch == TelemetryChannel.OPPONENT_TELEMETRY:
             store.update_opponent_telemetry(data, t)
         elif ch == TelemetryChannel.COMPACT_SCORING:
             store.update_compact_scoring(data, t)
-            hook_name = "on_scoring_update"
+            wake_reason = TelemetryWakeReason.SCORING_UPDATE
         elif ch == TelemetryChannel.FULL_SCORING:
             store.update_full_scoring(data, t)
-            hook_name = "on_grid_update"
+            wake_reason = TelemetryWakeReason.GRID_UPDATE
         elif ch == TelemetryChannel.WEATHER:
             store.update_weather(data, t)
-            hook_name = "on_weather_update"
+            wake_reason = TelemetryWakeReason.WEATHER_UPDATE
         elif ch == TelemetryChannel.EXTENDED_STATE:
             store.update_extended_state(data, t)
         elif ch == TelemetryChannel.SYSTEM_EVENTS:
             store.update_system_events(data, t)
-            hook_name = "on_session_event"
+            wake_reason = TelemetryWakeReason.SYSTEM_EVENT
         elif ch == TelemetryChannel.FORCE_FEEDBACK:
             store.update_force_feedback(data, t)
         elif ch == TelemetryChannel.GRAPHICS:
@@ -329,14 +382,36 @@ class PluginManager(QObject):
                 continue
 
             # A. Polymorphic event hook (e.g. on_physics_tick, on_scoring_update)
-            if hook_name:
-                hook_method = getattr(p, hook_name, None)
-                if hook_method and callable(hook_method):
-                    try:
-                        hook_method(store)
-                        self._error_counts[pid] = 0
-                    except Exception as e:
-                        self._handle_plugin_error(pid, hook_name, e)
+            if wake_reason == TelemetryWakeReason.PHYSICS_TICK:
+                try:
+                    p.on_physics_tick(store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_physics_tick", e)
+            elif wake_reason == TelemetryWakeReason.SCORING_UPDATE:
+                try:
+                    p.on_scoring_update(store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_scoring_update", e)
+            elif wake_reason == TelemetryWakeReason.GRID_UPDATE:
+                try:
+                    p.on_grid_update(store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_grid_update", e)
+            elif wake_reason == TelemetryWakeReason.WEATHER_UPDATE:
+                try:
+                    p.on_weather_update(store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_weather_update", e)
+            elif wake_reason == TelemetryWakeReason.SYSTEM_EVENT:
+                try:
+                    p.on_session_event(store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, "on_session_event", e)
 
             # B. Legacy IPacketSubscriber
             if isinstance(p, IPacketSubscriber):
@@ -355,19 +430,25 @@ class PluginManager(QObject):
         Directly dispatch a typed telemetry event to all active plugins.
         """
         active_store = state or TelemetryStateStore.get_instance()
-        hook_name = f"on_{wake_reason.value}"
 
         for pid, p in list(self._plugins.items()):
             if p.state != PluginState.ENABLED:
                 continue
 
-            hook_method = getattr(p, hook_name, None)
-            if hook_method and callable(hook_method):
-                try:
-                    hook_method(active_store)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, hook_name, e)
+            try:
+                if wake_reason == TelemetryWakeReason.PHYSICS_TICK:
+                    p.on_physics_tick(active_store)
+                elif wake_reason == TelemetryWakeReason.SCORING_UPDATE:
+                    p.on_scoring_update(active_store)
+                elif wake_reason == TelemetryWakeReason.GRID_UPDATE:
+                    p.on_grid_update(active_store)
+                elif wake_reason == TelemetryWakeReason.WEATHER_UPDATE:
+                    p.on_weather_update(active_store)
+                elif wake_reason == TelemetryWakeReason.SYSTEM_EVENT:
+                    p.on_session_event(active_store)
+                self._error_counts[pid] = 0
+            except Exception as e:
+                self._handle_plugin_error(pid, wake_reason.value, e)
 
     def _handle_plugin_error(self, plugin_id: str, action: str, error: Exception) -> None:
         """Record error and trip the circuit breaker if threshold is exceeded."""

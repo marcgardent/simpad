@@ -104,10 +104,10 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
         self.disp_rr_lat = lerp(self.disp_rr_lat, sensors.rear_right_lat_slip, alpha)
 
         # 4. Lateral Scrub Signed (Left -1.0 to Right +1.0)
-        self.disp_fl_lat_s = lerp(self.disp_fl_lat_s, getattr(sensors, "front_left_lat_signed", 0.0), alpha)
-        self.disp_fr_lat_s = lerp(self.disp_fr_lat_s, getattr(sensors, "front_right_lat_signed", 0.0), alpha)
-        self.disp_rl_lat_s = lerp(self.disp_rl_lat_s, getattr(sensors, "rear_left_lat_signed", 0.0), alpha)
-        self.disp_rr_lat_s = lerp(self.disp_rr_lat_s, getattr(sensors, "rear_right_lat_signed", 0.0), alpha)
+        self.disp_fl_lat_s = lerp(self.disp_fl_lat_s, sensors.front_left_lat_signed, alpha)
+        self.disp_fr_lat_s = lerp(self.disp_fr_lat_s, sensors.front_right_lat_signed, alpha)
+        self.disp_rl_lat_s = lerp(self.disp_rl_lat_s, sensors.rear_left_lat_signed, alpha)
+        self.disp_rr_lat_s = lerp(self.disp_rr_lat_s, sensors.rear_right_lat_signed, alpha)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
