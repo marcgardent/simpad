@@ -23,7 +23,7 @@ import json
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Union
 
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
 from .reference_profile import (
@@ -441,7 +441,10 @@ class DeltaEngine:
                         gear,
                     ))
 
-    def update_scoring(self, scoring_js: Any) -> None:
+    def update_scoring(
+        self,
+        scoring_js: Union[FullScoringSession, CompactScoring, Dict[str, Union[str, int, float, bool, None]]],
+    ) -> None:
         """
         Processes a Scoring packet (FullScoringSession, CompactScoring or JSON dict).
         Handles lap transitions, session resets, and sector transitions.
@@ -594,7 +597,7 @@ class DeltaEngine:
 
     def update_physics(
         self,
-        veh_speed_ms: Any,
+        veh_speed_ms: Union[float, TelemInfo],
         throttle: float = 0.0,
         brake: float = 0.0,
         steering: float = 0.0,

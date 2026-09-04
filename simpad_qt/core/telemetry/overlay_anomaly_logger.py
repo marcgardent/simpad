@@ -8,8 +8,10 @@ Outputs to 'hud_overlay_glitch.log' and prints to stdout with [HUD-GLITCH-ALERT]
 import time
 import os
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Union
 from pathlib import Path
+
+LogDetailValue = Union[str, int, float, bool]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _LOG_FILE = _PROJECT_ROOT / "hud_overlay_glitch.log"
@@ -55,7 +57,7 @@ class OverlayAnomalyLogger:
         self.enabled = enabled
         OverlayAnomalyLogger.default_enabled = enabled
 
-    def log_event(self, category: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+    def log_event(self, category: str, message: str, details: Optional[Dict[str, LogDetailValue]] = None) -> None:
         """Logs an abnormal event to log file and console."""
         if not self.enabled:
             return
@@ -143,7 +145,7 @@ class OverlayAnomalyLogger:
         self._prev_gear = gear
         self._prev_in_realtime = in_realtime
 
-    def log_display_mode_change(self, old_mode: str, new_mode: str, reason: str, details: Optional[Dict[str, Any]] = None) -> None:
+    def log_display_mode_change(self, old_mode: str, new_mode: str, reason: str, details: Optional[Dict[str, LogDetailValue]] = None) -> None:
         """Logs any overlay display mode change (ingame / pause / desktop)."""
         self.log_event(
             "OVERLAY_MODE_CHANGE",
@@ -154,7 +156,7 @@ class OverlayAnomalyLogger:
     def check_sector_update(
         self,
         current_sector: int,
-        raw_sector: Any,
+        raw_sector: int,
         source: str,
         s1_time: str = "--",
         s2_time: str = "--",

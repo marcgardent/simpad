@@ -11,12 +11,14 @@ import time
 import math
 import logging
 from enum import Enum
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 from isimotor_rawudp_client import VehicleScoring
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam
+from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
+from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class PitlaneSpotterRole(BaseRole):
         description: str = "",
         priority: int = 95,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         unsafe_release_distance_m: float = 28.0,
         unsafe_release_ttc_sec: float = 2.5,
         pit_slow_ahead_distance_m: float = 35.0,
@@ -161,25 +163,21 @@ class PitlaneSpotterRole(BaseRole):
             ),
         ]
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.TELEMETRY,
-                    preferred_hz=100,
-                    required=True,
-                    reason="Player speed and pit state (in_garage_stall / pit_state)",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.FULL_SCORING,
-                    preferred_hz=10,
-                    required=True,
-                    reason="3D positions and speeds of opponents in pitlane and fast lane",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.TELEMETRY,
+                preferred_hz=100,
+                required=True,
+                reason="Player speed and pit state (in_garage_stall / pit_state)",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.FULL_SCORING,
+                preferred_hz=10,
+                required=True,
+                reason="3D positions and speeds of opponents in pitlane and fast lane",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         return {
@@ -197,15 +195,15 @@ class PitlaneSpotterRole(BaseRole):
             PitlaneSpotterState.PIT_OVERLAP,
         )
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Physics tick evaluation (100-120Hz TelemInfo). Player speed, pit state, and stall detection."""
         return self._evaluate_pitlane(state, context)
 
-    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Grid update evaluation (FullScoringSession). Pitlane opponent speeds and fast lane threats."""
         return self._evaluate_pitlane(state, context)
 
-    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_scoring_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Scoring update evaluation (CompactScoring 10Hz). Timing and pitlane status."""
         return self._evaluate_pitlane(state, context)
 
@@ -213,7 +211,7 @@ class PitlaneSpotterRole(BaseRole):
         """Polymorphic entry point for direct/manual evaluations."""
         return self._evaluate_pitlane(context.state_store, context)
 
-    def _evaluate_pitlane(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_pitlane(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             if self.state != PitlaneSpotterState.IDLE:
                 self.reset()
@@ -483,7 +481,7 @@ class PitlaneSpotterRole(BaseRole):
         self._live_hazard_ttc = float("inf")
         self._live_pit_info = "Track clear"
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, ParamScalarValue]:
         cfg = super().get_config()
         cfg.update({
             "unsafe_release_distance_m": self.unsafe_release_distance_m,
@@ -497,7 +495,7 @@ class PitlaneSpotterRole(BaseRole):
         })
         return cfg
 
-    def set_config(self, config: Dict[str, Any]) -> None:
+    def set_config(self, config: Dict[str, ParamScalarValue]) -> None:
         super().set_config(config)
         if "unsafe_release_distance_m" in config:
             self.unsafe_release_distance_m = float(config["unsafe_release_distance_m"])
@@ -516,7 +514,7 @@ class PitlaneSpotterRole(BaseRole):
         if "hazard_cooldown_sec" in config:
             self.hazard_cooldown_sec = float(config["hazard_cooldown_sec"])
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
         summary.update({
             "fsm_state": self.state.value,

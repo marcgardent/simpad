@@ -14,7 +14,7 @@ from enum import Enum
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Tuple, Union
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,9 @@ class AnnotationType(str, Enum):
     GEAR = "gear"          # Gear marker ('1'..'8' keys) -> Audio: "Gear 1".. "Gear 8"
 
 
+AnnotationDictValue = Union[str, float, int, List[int]]
+
+
 @dataclass
 class TrackAnnotation:
     """Represents an annotation/marker on the track."""
@@ -178,9 +181,9 @@ class TrackAnnotation:
     label: Optional[str] = None  # Optional custom label
     color: Optional[List[int]] = None  # Optional custom RGBA color
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, AnnotationDictValue]:
         """Serializes annotation to JSON dict."""
-        data: Dict[str, Any] = {
+        data: Dict[str, AnnotationDictValue] = {
             "id": self.id,
             "type": self.type.value if isinstance(self.type, AnnotationType) else str(self.type),
             "distance": round(float(self.distance), 2),
@@ -194,7 +197,7 @@ class TrackAnnotation:
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TrackAnnotation":
+    def from_dict(cls, data: Dict[str, AnnotationDictValue]) -> "TrackAnnotation":
         """Deserializes an annotation from a JSON dict."""
         raw_type = data.get("type", AnnotationType.BRAKE.value)
         try:
@@ -440,7 +443,7 @@ class ReferenceLapProfile:
         }
 
     # ── Telemetry Serialization & Persistence (ref_*.json) ────────────────────
-    def telemetry_to_dict(self) -> Dict[str, Any]:
+    def telemetry_to_dict(self) -> Dict[str, Union[str, float, int, List[float], List[int]]]:
         """Serializes reference lap telemetry only."""
         return {
             "track_name": self.track_name,
@@ -476,7 +479,7 @@ class ReferenceLapProfile:
             return False
 
     # ── Annotations Serialization & Persistence (ref_*.marks.json) ────────────
-    def marks_to_dict(self) -> Dict[str, Any]:
+    def marks_to_dict(self) -> Dict[str, Union[str, List[Dict[str, AnnotationDictValue]]]]:
         """Serializes track annotations with metadata."""
         return {
             "track_name": self.track_name,

@@ -8,7 +8,7 @@ import json
 import logging
 from dataclasses import dataclass, field, asdict, is_dataclass, fields
 from pathlib import Path
-from typing import Dict, Any, Type, TypeVar
+from typing import Dict, Type, TypeVar
 
 logger = logging.getLogger("simpad.config")
 
@@ -33,7 +33,7 @@ class SimPadQtConfig:
     """Root configuration data structure."""
     app: AppSettings = field(default_factory=AppSettings)
     plugins_enabled: Dict[str, bool] = field(default_factory=dict)
-    plugins: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    plugins: Dict[str, Dict[str, object]] = field(default_factory=dict)
 
 
 class ConfigManager:
@@ -106,7 +106,7 @@ class ConfigManager:
         valid_kwargs = {k: v for k, v in raw_plugin_data.items() if k in field_names}
         return dataclass_cls(**valid_kwargs)
 
-    def set_plugin_config_from(self, plugin_id: str, dataclass_obj: Any, auto_save: bool = True) -> None:
+    def set_plugin_config_from(self, plugin_id: str, dataclass_obj: object, auto_save: bool = True) -> None:
         """Store a strongly-typed dataclass into plugin configuration and optionally persist."""
         if is_dataclass(dataclass_obj):
             serialized = asdict(dataclass_obj)

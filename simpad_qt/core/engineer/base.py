@@ -7,23 +7,24 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass, field
 import time
-from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
+from typing import Optional, Dict, List, Tuple, TYPE_CHECKING, Callable, Union, Protocol, runtime_checkable
+
+from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
+from .params import RoleParam, ParamScalarValue
 
 if TYPE_CHECKING:
     from .context import EngineerContext
-    from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
-else:
-    try:
-        from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
-    except ImportError:
-        TelemetryStateStore = Any
-        TelemetryWakeReason = Any
 
-try:
-    from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
-except ImportError:
-    ChannelRequirement = Any
-    TelemetryChannel = Any
+
+@runtime_checkable
+class AudioEngineProtocol(Protocol):
+    """Protocol for audio engines playing race engineer phrases."""
+    def play_phrase(self, phrase_key: str, interrupt: bool = False, text_override: Optional[str] = None) -> None:
+        ...
+
+
+AudioEngineType = Union[AudioEngineProtocol, Callable[..., None], type]
 
 
 class RoleStatus(str, Enum):
@@ -60,7 +61,7 @@ class BaseRole(ABC):
         description: str = "",
         priority: int = 50,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
     ):
         self.role_id = role_id
         self.name = name
@@ -88,7 +89,7 @@ class BaseRole(ABC):
 
     def on_physics_tick(
         self,
-        state: "TelemetryStateStore",
+        state: TelemetryStateStore,
         context: "EngineerContext",
     ) -> Optional[EngineerMessage]:
         """Hook called on high-frequency physics tick (TelemInfo 100-120Hz)."""
@@ -96,7 +97,7 @@ class BaseRole(ABC):
 
     def on_scoring_update(
         self,
-        state: "TelemetryStateStore",
+        state: TelemetryStateStore,
         context: "EngineerContext",
     ) -> Optional[EngineerMessage]:
         """Hook called on scoring timing update (CompactScoring 10Hz)."""
@@ -104,7 +105,7 @@ class BaseRole(ABC):
 
     def on_grid_update(
         self,
-        state: "TelemetryStateStore",
+        state: TelemetryStateStore,
         context: "EngineerContext",
     ) -> Optional[EngineerMessage]:
         """Hook called on grid / standings update (FullScoringSession 2-5Hz)."""
@@ -112,7 +113,7 @@ class BaseRole(ABC):
 
     def on_weather_update(
         self,
-        state: "TelemetryStateStore",
+        state: TelemetryStateStore,
         context: "EngineerContext",
     ) -> Optional[EngineerMessage]:
         """Hook called on weather condition changes (WeatherControl ~1Hz)."""
@@ -120,7 +121,7 @@ class BaseRole(ABC):
 
     def on_session_event(
         self,
-        state: "TelemetryStateStore",
+        state: TelemetryStateStore,
         context: "EngineerContext",
     ) -> Optional[EngineerMessage]:
         """Hook called on session / system transitions (SystemEvents)."""
@@ -154,7 +155,7 @@ class BaseRole(ABC):
             return msg
         return self.on_scoring_update(store, context)
 
-    def get_channel_requirements(self) -> List[Any]:
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
         """
         Declares telemetry channels and preferred sample rates required by this role.
         The main RaceEngineer plugin aggregates requirements across all sub-plugins.
@@ -172,14 +173,14 @@ class BaseRole(ABC):
         """Resets internal state of role."""
         pass
 
-    def get_parameters(self) -> List[Any]:
+    def get_parameters(self) -> List[RoleParam]:
         """
         Returns declarative list of parameter descriptors (RoleParam)
         specific to this role (e.g. BoolParam, IntRangeParam, FloatRangeParam).
         """
         return []
 
-    def get_param_value(self, name: str) -> Any:
+    def get_param_value(self, name: str) -> Optional[ParamScalarValue]:
         """Returns current value of named parameter."""
         if name in self.__dict__:
             return self.__dict__[name]
@@ -188,7 +189,7 @@ class BaseRole(ABC):
                 return p.default
         return None
 
-    def set_param_value(self, name: str, value: Any) -> None:
+    def set_param_value(self, name: str, value: ParamScalarValue) -> None:
         """Sets parameter value with validation and type casting."""
         for p in self.get_parameters():
             if p.name == name:
@@ -197,9 +198,9 @@ class BaseRole(ABC):
                 return
         setattr(self, name, value)
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         """Returns serializable state summary for GUI and debugging."""
-        summary = {
+        summary: Dict[str, Union[str, int, float, bool, List[str], None]] = {
             "role_id": self.role_id,
             "name": self.name,
             "status": self.status.value,
@@ -210,17 +211,19 @@ class BaseRole(ABC):
             summary[p.name] = self.get_param_value(p.name)
         return summary
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, ParamScalarValue]:
         """Returns configurable role parameters for persistence."""
-        cfg = {
+        cfg: Dict[str, ParamScalarValue] = {
             "enabled": self.enabled,
             "priority": self.priority,
         }
         for p in self.get_parameters():
-            cfg[p.name] = self.get_param_value(p.name)
+            val = self.get_param_value(p.name)
+            if val is not None:
+                cfg[p.name] = val
         return cfg
 
-    def set_config(self, config: Dict[str, Any]) -> None:
+    def set_config(self, config: Dict[str, ParamScalarValue]) -> None:
         """Applies external configuration dictionary."""
         if "enabled" in config:
             self.enabled = bool(config["enabled"])

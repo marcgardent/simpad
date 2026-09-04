@@ -6,12 +6,14 @@ spinning cars, or traffic jams.
 
 import time
 import logging
-from typing import Optional, Dict, Any, List
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from typing import Optional, Dict, List, Union
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam
+from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
 from ...telemetry.reference_profile import ReferenceLapProfile
+from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ class TrafficJamRole(BaseRole):
         description: str = "",
         priority: int = 75,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         slow_speed_threshold_kmh: float = 50.0,
         warning_distance_m: float = 180.0,
         cooldown_sec: float = 8.0,
@@ -138,25 +140,21 @@ class TrafficJamRole(BaseRole):
             ),
         ]
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.FULL_SCORING,
-                    preferred_hz=10,
-                    required=True,
-                    reason="Positions and speeds of opponents ahead on track trajectory",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.COMPACT_SCORING,
-                    preferred_hz=10,
-                    required=False,
-                    reason="Track spline and forward relative distance calculation",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.FULL_SCORING,
+                preferred_hz=10,
+                required=True,
+                reason="Positions and speeds of opponents ahead on track trajectory",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.COMPACT_SCORING,
+                preferred_hz=10,
+                required=False,
+                reason="Track spline and forward relative distance calculation",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         return {
@@ -167,11 +165,11 @@ class TrafficJamRole(BaseRole):
         """Returns True if a slow traffic alert is active."""
         return self._is_active_alert
 
-    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Grid update evaluation (FullScoringSession). Slow or stopped vehicles ahead on racing spline."""
         return self._evaluate_traffic_jam(state, context)
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Physics tick evaluation (100-120Hz TelemInfo). Player instantaneous speed and track spline distance."""
         return self._evaluate_traffic_jam(state, context)
 
@@ -179,7 +177,7 @@ class TrafficJamRole(BaseRole):
         """Polymorphic entry point for direct/manual evaluations."""
         return self._evaluate_traffic_jam(context.state_store, context)
 
-    def _evaluate_traffic_jam(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_traffic_jam(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             self._is_active_alert = False
             self._target_slow_car_info = ""
@@ -250,7 +248,7 @@ class TrafficJamRole(BaseRole):
         self._is_active_alert = False
         self._target_slow_car_info = ""
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, ParamScalarValue]:
         cfg = super().get_config()
         cfg.update({
             "slow_speed_threshold_kmh": self.slow_speed_threshold_mps * 3.6,
@@ -261,7 +259,7 @@ class TrafficJamRole(BaseRole):
         })
         return cfg
 
-    def set_config(self, config: Dict[str, Any]) -> None:
+    def set_config(self, config: Dict[str, ParamScalarValue]) -> None:
         super().set_config(config)
         if "slow_speed_threshold_kmh" in config:
             self.slow_speed_threshold_mps = float(config["slow_speed_threshold_kmh"]) / 3.6
@@ -274,7 +272,7 @@ class TrafficJamRole(BaseRole):
         if "domain_speed_tolerance_kmh" in config:
             self.domain_speed_tolerance_kmh = float(config["domain_speed_tolerance_kmh"])
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
         summary.update({
             "is_alert_active": self._is_active_alert,

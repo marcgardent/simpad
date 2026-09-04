@@ -10,7 +10,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, List
 
 from PySide6.QtCore import Qt, QSize, Signal, QTimer, QThread
 from PySide6.QtGui import QColor, QFont
@@ -30,11 +30,11 @@ from simpad_qt.core.telemetry_channels import (
 )
 try:
     from simpad_qt.builtin_plugins.paddock_agent.schedule import (
-        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
+        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key, SetupConfigScalar
     )
 except ImportError:
     from .schedule import (
-        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key
+        LMUScheduleManager, RaceSetupConfig, RaceEvent, DEFAULT_RACE_SETUPS, clean_series_key, SetupConfigScalar
     )
 from simpad_qt.core.utils.audio import AudioAnnouncer
 
@@ -43,7 +43,7 @@ logger = logging.getLogger("simpad.plugin.paddock_agent")
 
 @dataclass
 class PaddockAgentConfig:
-    """Strongly-typed configuration schema for LMU Paddock Agent & Filters."""
+    """Strongly-typed configuration schema for Paddock Agent Plugin."""
     master_enabled: bool = True
     voice_enabled: bool = True
     desktop_notif: bool = True
@@ -57,7 +57,7 @@ class PaddockAgentConfig:
     search_query: str = ""
 
     # Per-Series Setups and Notification preferences
-    setup_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    setup_configs: Dict[str, Dict[str, SetupConfigScalar]] = field(default_factory=dict)
 
 
 # =============================================================================

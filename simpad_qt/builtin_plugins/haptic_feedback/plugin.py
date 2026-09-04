@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, List
 
 from PySide6.QtCore import Qt, QSize, Signal, QTimer
 from PySide6.QtGui import QColor, QFont
@@ -31,7 +31,9 @@ from simpad_qt.core.haptics.base import HapticController
 from simpad_qt.core.haptics.factory import HapticBackendFactory
 from simpad_qt.core.haptics.manager import HapticSubpluginManager
 from simpad_qt.core.haptics.subplugins.base import BaseHapticSubplugin
-from simpad_qt.core.engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam
+from simpad_qt.core.engineer.params import (
+    RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
+)
 
 logger = logging.getLogger("simpad.plugin.haptic_feedback")
 
@@ -41,7 +43,7 @@ class HapticFeedbackConfig:
     """Strongly-typed configuration schema for XInput Haptic Feedback Plugin."""
     master_enabled: bool = True
     master_gain: float = 1.0
-    subplugin_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    subplugin_configs: Dict[str, Dict[str, ParamScalarValue]] = field(default_factory=dict)
     subplugin_order: List[str] = field(default_factory=list)
 
 
@@ -369,7 +371,7 @@ class HapticFeedbackWidget(QWidget):
 
         self.param_layout.addStretch()
 
-    def _set_param_and_save(self, sp: BaseHapticSubplugin, name: str, val: Any) -> None:
+    def _set_param_and_save(self, sp: BaseHapticSubplugin, name: str, val: ParamScalarValue) -> None:
         sp.set_param(name, val)
         self.plugin.save_config()
 

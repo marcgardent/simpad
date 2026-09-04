@@ -13,7 +13,7 @@ import time
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List, Tuple
 
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QThread, QTimer
 from PySide6.QtWidgets import (
@@ -28,6 +28,7 @@ class RadioMessageBridge(QObject):
     radio_message = Signal(object)
 
 
+from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
 from simpad_qt.plugins.contracts import (
     SimPadPlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IPacketSubscriber
@@ -39,7 +40,7 @@ from simpad_qt.core.reference_lap import LapDeltaPacket
 from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from simpad_qt.core.engineer.manager import RaceEngineer
-from simpad_qt.core.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
+from simpad_qt.core.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam, ParamScalarValue
 from simpad_qt.core.utils.audio import AudioAnnouncer
 from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
 
@@ -51,7 +52,7 @@ class RaceEngineerPluginConfig:
     """Strongly-typed configuration schema for Race Engineer Plugin and its Sub-plugins."""
     master_enabled: bool = True
     muted: bool = False
-    subplugin_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    subplugin_configs: Dict[str, Dict[str, ParamScalarValue]] = field(default_factory=dict)
     subplugin_order: List[str] = field(default_factory=list)
 
 
@@ -242,7 +243,7 @@ class RoleDetailWidget(QWidget):
         super().__init__(parent)
         self.plugin = plugin
         self.current_role: Optional[BaseRole] = None
-        self._param_widgets: Dict[str, Any] = {}
+        self._param_widgets: Dict[str, QWidget] = {}
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -416,7 +417,7 @@ class RoleDetailWidget(QWidget):
             row.addStretch()
             self.params_layout.addLayout(row)
 
-    def _on_param_changed(self, name: str, val: Any) -> None:
+    def _on_param_changed(self, name: str, val: ParamScalarValue) -> None:
         if self.current_role:
             self.current_role.set_param_value(name, val)
             self.param_changed.emit(self.current_role.role_id, name, val)
@@ -747,7 +748,7 @@ class RaceEngineerWidget(QWidget):
         self.role_detail_widget.update_live_state()
         self._update_needs_summary()
 
-    def _on_role_param_changed(self, role_id: str, param_name: str, val: Any) -> None:
+    def _on_role_param_changed(self, role_id: str, param_name: str, val: ParamScalarValue) -> None:
         self.plugin.save_plugin_config()
 
     def _refresh_list_item_statuses(self) -> None:
@@ -915,8 +916,8 @@ class RaceEngineerPlugin(
         self._radio_bridge = RadioMessageBridge()
         self._active_tab_widget: Optional[RaceEngineerWidget] = None
         self._latest_sensors: Optional[VehicleSensors] = None
-        self._latest_scoring: Optional[Any] = None
-        self._latest_telemetry: Optional[Any] = None
+        self._latest_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
+        self._latest_telemetry: Optional[TelemInfo] = None
 
     # =========================================================================
     # Aggregated Channel Requirements
@@ -1030,7 +1031,7 @@ class RaceEngineerPlugin(
         self,
         wake_reason: TelemetryWakeReason,
         state: TelemetryStateStore,
-        trigger_packet: Optional[Any] = None,
+        trigger_packet: Optional[object] = None,
     ) -> None:
         if not self.engineer.enabled:
             return

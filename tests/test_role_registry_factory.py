@@ -38,8 +38,8 @@ def test_role_registry_registration():
 
     meta = RoleRegistry.get_metadata("custom_dummy")
     assert meta is not None
-    assert meta["name"] == "Custom Dummy"
-    assert meta["default_priority"] == 65
+    assert meta.name == "Custom Dummy"
+    assert meta.default_priority == 65
 
 
 def test_role_factory_instantiation():

@@ -16,11 +16,16 @@ import subprocess
 import urllib.request
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any, Tuple, Set, Callable
+from typing import Dict, List, Optional, Tuple, Set, Callable, Union
 
 from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
+
+SetupConfigScalar = Union[str, int, bool]
+NotificationLogEntry = Dict[str, str]
+TriggeredAlertDict = Dict[str, Union[str, float]]
+JSONScheduleSeries = Dict[str, Union[str, int, float, bool, list, dict]]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 DEFAULT_SCHEDULE_CONFIG_PATH = _PROJECT_ROOT / "schedule_config.json"
@@ -94,11 +99,11 @@ class RaceSetupConfig:
         if not self.sound_key:
             self.sound_key = clean_series_key(self.series_name) if self.series_name else self.setup_id
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, SetupConfigScalar]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RaceSetupConfig":
+    def from_dict(cls, data: Dict[str, SetupConfigScalar]) -> "RaceSetupConfig":
         # Backward compatibility with legacy configuration keys
         mapped_data = dict(data)
         if "race_id" in mapped_data and "setup_id" not in mapped_data:
@@ -299,7 +304,7 @@ class LMUScheduleClient:
     """API client to fetch official Le Mans Ultimate race schedule."""
 
     @staticmethod
-    def fetch_remote_schedule(timeout: int = 8) -> Optional[List[Dict[str, Any]]]:
+    def fetch_remote_schedule(timeout: int = 8) -> Optional[List[JSONScheduleSeries]]:
         """Performs HTTPS request to api.lmuschedule.com."""
         try:
             req = urllib.request.Request(API_URL, headers=API_HEADERS)
@@ -314,7 +319,7 @@ class LMUScheduleClient:
         return None
 
     @staticmethod
-    def load_cached_schedule(cache_file: Path = DEFAULT_CACHE_PATH) -> List[Dict[str, Any]]:
+    def load_cached_schedule(cache_file: Path = DEFAULT_CACHE_PATH) -> List[JSONScheduleSeries]:
         """Loads schedule data cached on disk."""
         if cache_file.exists():
             try:
@@ -325,7 +330,7 @@ class LMUScheduleClient:
         return []
 
     @staticmethod
-    def save_cached_schedule(data: List[Dict[str, Any]], cache_file: Path = DEFAULT_CACHE_PATH) -> None:
+    def save_cached_schedule(data: List[JSONScheduleSeries], cache_file: Path = DEFAULT_CACHE_PATH) -> None:
         """Saves schedule data to local cache."""
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
@@ -352,9 +357,9 @@ class LMUScheduleManager:
         self.audio_enabled: bool = True
         self.desktop_notifications_enabled: bool = True
         self.setups: Dict[str, RaceSetupConfig] = {}
-        self.notification_history: List[Dict[str, Any]] = []
+        self.notification_history: List[NotificationLogEntry] = []
         self._fired_alerts: Set[Tuple[str, str, int, str]] = set()  # (setup_id, series_name, slot_ts, alert_type)
-        self._raw_series_data: List[Dict[str, Any]] = []
+        self._raw_series_data: List[JSONScheduleSeries] = []
         self.last_sync_time: float = 0.0
         self.api_status: str = "Initializing..."
 
@@ -633,7 +638,7 @@ class LMUScheduleManager:
         events = self.get_all_real_events(now=current_time)
         return [e for e in events if e.start_time <= max_ts]
 
-    def update(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
+    def update(self, now: Optional[float] = None) -> List[TriggeredAlertDict]:
         """
         Checks all upcoming races for enabled Setups and triggers alerts in the FIFO queue.
         """

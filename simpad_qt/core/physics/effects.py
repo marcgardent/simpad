@@ -3,7 +3,7 @@ SimPad Physics — Haptic Processor using Normalized VehicleSensors.
 Converts normalized wheel slip ratios into 4 haptic vibration channels.
 """
 
-from typing import Dict, Any, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 from ..math_utils import apply_response_curve, clamp
 from ..telemetry.sensors import VehicleSensors
 from ..telemetry.lmu_parser import TelemetryData
@@ -22,11 +22,11 @@ class PhysicsToHaptic:
       4. Wheel spin (Acceleration / TC)
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: Optional[Dict[str, float]] = None):
         self.config = config or self.get_default_config()
 
     @staticmethod
-    def get_default_config() -> Dict[str, Any]:
+    def get_default_config() -> Dict[str, float]:
         return {
             # 1. Braking / Wheel lock (ABS) — Threshold at 15%
             "lock_threshold": 0.15,
@@ -49,7 +49,7 @@ class PhysicsToHaptic:
             "spin_high_gamma": 2.0, "spin_high_gain": 0.2, "spin_high_cutoff": 0.0,
         }
 
-    def update_config(self, new_config: Dict[str, Any]) -> None:
+    def update_config(self, new_config: Dict[str, float]) -> None:
         self.config.update(new_config)
 
     # TODO: [SLAP] Keep process() at a single high level of abstraction: extract signals -> compute effect intensities -> mix channels.

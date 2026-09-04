@@ -11,11 +11,14 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict, is_dataclass
 from enum import Enum, auto
-from typing import Dict, Any, Optional, Tuple, Protocol, TypeVar, Type, List, runtime_checkable
+from typing import Dict, Any, Optional, Tuple, Protocol, TypeVar, Type, List, runtime_checkable, TYPE_CHECKING
 
 from PySide6.QtCore import QSize, QRectF
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QWidget
+
+if TYPE_CHECKING:
+    from simpad_qt.core.config import ConfigManager
 
 # Import normalized telemetry domain model
 from simpad_qt.core.telemetry import (
@@ -90,7 +93,7 @@ class PluginContext:
     Offers strongly-typed configuration mapping and host logging.
     """
 
-    def __init__(self, plugin_id: str, config_manager: Any):
+    def __init__(self, plugin_id: str, config_manager: ConfigManager):
         self.plugin_id = plugin_id
         self._config_manager = config_manager
         self.logger = logging.getLogger(f"simpad.plugin.{plugin_id}")
@@ -102,7 +105,7 @@ class PluginContext:
         """
         return self._config_manager.get_plugin_config_as(self.plugin_id, dataclass_cls)
 
-    def save_typed_config(self, config_obj: Any, auto_save: bool = True) -> None:
+    def save_typed_config(self, config_obj: object, auto_save: bool = True) -> None:
         """Persist a strongly-typed dataclass configuration."""
         self._config_manager.set_plugin_config_from(self.plugin_id, config_obj, auto_save=auto_save)
 

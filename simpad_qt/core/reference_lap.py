@@ -12,11 +12,15 @@ Provides:
 from __future__ import annotations
 import time
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
+from isimotor_rawudp_client import FullScoringSession, CompactScoring
+
+if TYPE_CHECKING:
+    from simpad_qt.core.config import ConfigManager
 
 from simpad_qt.core.telemetry.reference_profile import (
     ReferenceLapProfile,
@@ -35,6 +39,18 @@ from simpad_qt.core.telemetry.delta_engine import (
 )
 
 logger = logging.getLogger("simpad.core.reference_lap")
+
+ScoringPacketType = Union[FullScoringSession, CompactScoring, Dict[str, Union[str, int, float, bool, None]]]
+
+
+@dataclass(frozen=True)
+class SectorInfo:
+    """Strongly-typed sector checkpoint information."""
+    time: str = "--"
+    status: str = "default"
+    delta: float = 0.0
+    delta_str: str = "--"
+    is_current: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,7 +78,7 @@ class LapDeltaPacket:
     sector2_status: str = "default"
     sector3_time: str = "--"
     sector3_status: str = "default"
-    sectors_list: List[Dict[str, Any]] = field(default_factory=list)
+    sectors_list: List[SectorInfo] = field(default_factory=list)
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
     last_lap_status: str = "default"
@@ -76,7 +92,7 @@ class LapDeltaPacket:
     vehicle_class: str = ""
     timestamp: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, object]:
         return {
             "live_delta": self.live_delta,
             "display_delta": self.display_delta,
@@ -97,7 +113,7 @@ class LapDeltaPacket:
             "sector2_status": self.sector2_status,
             "sector3_time": self.sector3_time,
             "sector3_status": self.sector3_status,
-            "sectors_list": self.sectors_list,
+            "sectors_list": [asdict(s) for s in self.sectors_list],
             "last_lap_time": self.last_lap_time,
             "last_lap_time_str": self.last_lap_time_str,
             "last_lap_status": self.last_lap_status,
@@ -128,7 +144,7 @@ class ReferenceLapManager(QObject):
 
     _instance: Optional[ReferenceLapManager] = None
 
-    def __init__(self, config_manager: Optional[Any] = None, parent: Optional[QObject] = None):
+    def __init__(self, config_manager: Optional[ConfigManager] = None, parent: Optional[QObject] = None):
         super().__init__(parent)
         ReferenceLapManager._instance = self
         self.config_manager = config_manager
@@ -319,7 +335,7 @@ class ReferenceLapManager(QObject):
         self.delta_updated.emit(packet)
         return packet
 
-    def update_scoring(self, scoring_data: Any) -> LapDeltaPacket:
+    def update_scoring(self, scoring_data: ScoringPacketType) -> LapDeltaPacket:
         """Process scoring packet in DeltaEngine, detect lap/sector transitions and return LapDeltaPacket."""
         prev_laps = self.delta_engine._last_laps_completed
         prev_sector = self.delta_engine._last_current_sector
@@ -368,27 +384,27 @@ class ReferenceLapManager(QObject):
 
         # Construct sectors list
         sec_list = [
-            {
-                "time": de._last_sector1_time,
-                "status": de._last_sector1_status,
-                "delta": de.sector1_delta,
-                "delta_str": f"{de.sector1_delta:+.3f}" if de.sector1_delta != 0.0 else "--",
-                "is_current": (de._last_current_sector == 1),
-            },
-            {
-                "time": de._last_sector2_time,
-                "status": de._last_sector2_status,
-                "delta": de.sector2_delta,
-                "delta_str": f"{de.sector2_delta:+.3f}" if de.sector2_delta != 0.0 else "--",
-                "is_current": (de._last_current_sector == 2),
-            },
-            {
-                "time": de._last_sector3_time,
-                "status": de._last_sector3_status,
-                "delta": de.sector3_delta,
-                "delta_str": f"{de.sector3_delta:+.3f}" if de.sector3_delta != 0.0 else "--",
-                "is_current": (de._last_current_sector == 3),
-            },
+            SectorInfo(
+                time=de._last_sector1_time,
+                status=de._last_sector1_status,
+                delta=de.sector1_delta,
+                delta_str=f"{de.sector1_delta:+.3f}" if de.sector1_delta != 0.0 else "--",
+                is_current=(de._last_current_sector == 1),
+            ),
+            SectorInfo(
+                time=de._last_sector2_time,
+                status=de._last_sector2_status,
+                delta=de.sector2_delta,
+                delta_str=f"{de.sector2_delta:+.3f}" if de.sector2_delta != 0.0 else "--",
+                is_current=(de._last_current_sector == 2),
+            ),
+            SectorInfo(
+                time=de._last_sector3_time,
+                status=de._last_sector3_status,
+                delta=de.sector3_delta,
+                delta_str=f"{de.sector3_delta:+.3f}" if de.sector3_delta != 0.0 else "--",
+                is_current=(de._last_current_sector == 3),
+            ),
         ]
 
         return LapDeltaPacket(

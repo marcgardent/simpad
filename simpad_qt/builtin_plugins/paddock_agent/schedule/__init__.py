@@ -14,6 +14,7 @@ from .manager import (
     make_setup_key,
     DEFAULT_SCHEDULE_CONFIG_PATH,
     DEFAULT_CACHE_PATH,
+    SetupConfigScalar,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "make_setup_key",
     "DEFAULT_SCHEDULE_CONFIG_PATH",
     "DEFAULT_CACHE_PATH",
+    "SetupConfigScalar",
 ]

@@ -6,11 +6,11 @@ SOLID architecture (SRP, OCP, DIP).
 
 import time
 import logging
-from typing import Optional, Dict, Any, Set, List
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from typing import Optional, Dict, Set, List, Tuple, Union
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, BoolParam, FloatRangeParam
+from ..params import RoleParam, BoolParam, FloatRangeParam, ParamScalarValue
 from ...telemetry.reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -18,6 +18,8 @@ from ...telemetry.reference_profile import (
     clean_name_identifier,
 )
 from ...telemetry.lmu_parser import LMUParser
+from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ class PaceNotesRole(BaseRole):
         description: str = "Announces driving voice markers from reference lap.",
         priority: int = 80,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         enable_brake: bool = True,
         enable_turn_in: bool = True,
         enable_turn: bool = True,
@@ -72,7 +74,7 @@ class PaceNotesRole(BaseRole):
         self._last_announcement_time: float = 0.0
         self._last_announced_label: str = "None"
         self._last_announced_dist: float = -1.0
-        self._last_ann_signature: List[Any] = []
+        self._last_ann_signature: List[Tuple[str, float, str, Optional[int]]] = []
         self._custom_profile: Optional[ReferenceLapProfile] = None
 
     def get_parameters(self) -> List[RoleParam]:
@@ -177,25 +179,21 @@ class PaceNotesRole(BaseRole):
 
         return None
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.TELEMETRY,
-                    preferred_hz=100,
-                    required=True,
-                    reason="Lap distance (lap_dist) and speed for marker anticipation",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.COMPACT_SCORING,
-                    preferred_hz=10,
-                    required=False,
-                    reason="Lap length and track validation",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.TELEMETRY,
+                preferred_hz=100,
+                required=True,
+                reason="Lap distance (lap_dist) and speed for marker anticipation",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.COMPACT_SCORING,
+                preferred_hz=10,
+                required=False,
+                reason="Lap length and track validation",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         sounds = {
@@ -226,11 +224,11 @@ class PaceNotesRole(BaseRole):
         dist = speed_mps * self.anticipation_time_sec
         return max(self.min_lead_distance_m, min(self.max_lead_distance_m, dist))
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Physics tick evaluation (100-120Hz TelemInfo). Real-time lap distance and speed for pace note trigger."""
         return self._evaluate_pace_notes(state, context)
 
-    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_scoring_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Scoring update evaluation (CompactScoring 10Hz). Lap transition and track length sync."""
         return self._evaluate_pace_notes(state, context)
 
@@ -238,7 +236,7 @@ class PaceNotesRole(BaseRole):
         """Polymorphic entry point for direct/manual evaluations."""
         return self._evaluate_pace_notes(context.state_store, context)
 
-    def _evaluate_pace_notes(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_pace_notes(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """
         Evaluates player position relative to track markers on each tick.
         """
@@ -336,7 +334,7 @@ class PaceNotesRole(BaseRole):
             timestamp=now,
         )
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         """Returns serializable summary for graphical interface."""
         summary = super().get_state_summary()
         profile = self.get_reference_profile()
@@ -350,7 +348,7 @@ class PaceNotesRole(BaseRole):
         })
         return summary
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, ParamScalarValue]:
         """Returns exportable configuration dictionary."""
         config = super().get_config()
         config.update({
@@ -360,7 +358,7 @@ class PaceNotesRole(BaseRole):
         })
         return config
 
-    def set_config(self, config: Dict[str, Any]) -> None:
+    def set_config(self, config: Dict[str, ParamScalarValue]) -> None:
         """Applies external configuration dictionary."""
         super().set_config(config)
         if "anticipation_time_sec" in config:

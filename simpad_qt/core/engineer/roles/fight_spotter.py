@@ -13,13 +13,15 @@ import math
 import logging
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List, Tuple, Protocol, Union
+from typing import Optional, Dict, List, Tuple, Protocol, Union
 
 from isimotor_rawudp_client import TelemVect3
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam
+from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
+from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
 
@@ -674,7 +676,7 @@ class FightSpotterRole(BaseRole):
         description: str = "",
         priority: int = 110,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         car_length_m: float = 4.2,
         car_width_m: float = 1.9,
         gap_needed_for_clear_m: float = 1.5,
@@ -822,7 +824,7 @@ class FightSpotterRole(BaseRole):
             ),
         ]
 
-    def set_param_value(self, name: str, value: Any) -> None:
+    def set_param_value(self, name: str, value: ParamScalarValue) -> None:
         """Applies and synchronizes parameters with internal subsystems."""
         super().set_param_value(name, value)
         if name in ("car_length_m", "car_width_m", "gap_needed_for_clear_m"):
@@ -841,25 +843,21 @@ class FightSpotterRole(BaseRole):
         elif name == "enable_three_wide":
             self.fsm.enable_three_wide = bool(self.enable_three_wide)
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.TELEMETRY,
-                    preferred_hz=100,
-                    required=True,
-                    reason="Player yaw orientation and precise local kinematics",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.FULL_SCORING,
-                    preferred_hz=10,
-                    required=True,
-                    reason="3D world positions and velocity vectors for all cars",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.TELEMETRY,
+                preferred_hz=100,
+                required=True,
+                reason="Player yaw orientation and precise local kinematics",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.FULL_SCORING,
+                preferred_hz=10,
+                required=True,
+                reason="3D world positions and velocity vectors for all cars",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         return {
@@ -940,11 +938,11 @@ class FightSpotterRole(BaseRole):
 
         return px, pz, vx, vz, yaw
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Physics tick evaluation (100-120Hz TelemInfo). Player high-speed cartesian kinematics."""
         return self._evaluate_fight(state, context)
 
-    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Grid update evaluation (FullScoringSession). Opponents 2D positions, side-by-side overlap, and 3-wide."""
         return self._evaluate_fight(state, context)
 
@@ -952,7 +950,7 @@ class FightSpotterRole(BaseRole):
         """Polymorphic entry point for direct/manual evaluations."""
         return self._evaluate_fight(context.state_store, context)
 
-    def _evaluate_fight(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_fight(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """
         Evaluates telemetry and relative positioning on each tick.
         """
@@ -1093,7 +1091,7 @@ class FightSpotterRole(BaseRole):
 
         return None
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         """Returns live state diagnostic for UI monitoring."""
         summary = super().get_state_summary()
         summary.update({

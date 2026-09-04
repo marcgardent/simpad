@@ -8,12 +8,16 @@ import time
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Union
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Union, Tuple
 from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
-from .base import BaseRole, EngineerMessage, RoleStatus
-from .context import EngineerContext
+from .base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from .context import EngineerContext, TelemetryTriggerPacket
 from .factory import RoleFactory
 from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from ..telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
+from .params import ParamScalarValue
 from ..utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
@@ -32,6 +36,13 @@ _SCORING_STORE_UPDATERS = {
 }
 
 
+@dataclass
+class _ChannelAggregation:
+    preferred_hz: int
+    required: bool
+    reasons: List[str] = field(default_factory=list)
+
+
 class RaceEngineer:
     """
     Main coordinator for virtual race engineer.
@@ -40,7 +51,7 @@ class RaceEngineer:
 
     def __init__(
         self,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         auto_load_builtin_roles: bool = True,
         config_path: Optional[Path] = None,
         auto_load_config: bool = True,
@@ -166,17 +177,12 @@ class RaceEngineer:
     # Aggregation of Sub-Plugin Requirements (Channels & Sounds)
     # =========================================================================
 
-    def get_channel_requirements(self) -> List[Any]:
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
         """
         Aggregates all telemetry channel requirements declared by active sub-plugins.
         Merges identical channels by selecting maximum required sampling rate.
         """
-        try:
-            from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
-        except ImportError:
-            return []
-
-        channel_map: Dict[TelemetryChannel, Dict[str, Any]] = {}
+        channel_map: Dict[TelemetryChannel, _ChannelAggregation] = {}
 
         for role in self._roles:
             if not role.enabled:
@@ -186,25 +192,25 @@ class RaceEngineer:
             for req in reqs:
                 ch = req.channel
                 if ch not in channel_map:
-                    channel_map[ch] = {
-                        "preferred_hz": req.preferred_hz,
-                        "required": req.required,
-                        "reasons": [f"[{role.name}] {req.reason}"] if req.reason else [f"[{role.name}]"],
-                    }
+                    channel_map[ch] = _ChannelAggregation(
+                        preferred_hz=req.preferred_hz,
+                        required=req.required,
+                        reasons=[f"[{role.name}] {req.reason}"] if req.reason else [f"[{role.name}]"],
+                    )
                 else:
-                    channel_map[ch]["preferred_hz"] = max(channel_map[ch]["preferred_hz"], req.preferred_hz)
-                    channel_map[ch]["required"] = channel_map[ch]["required"] or req.required
+                    channel_map[ch].preferred_hz = max(channel_map[ch].preferred_hz, req.preferred_hz)
+                    channel_map[ch].required = channel_map[ch].required or req.required
                     if req.reason:
-                        channel_map[ch]["reasons"].append(f"[{role.name}] {req.reason}")
+                        channel_map[ch].reasons.append(f"[{role.name}] {req.reason}")
 
         aggregated: List[ChannelRequirement] = []
         for ch, data in channel_map.items():
             aggregated.append(
                 ChannelRequirement(
                     channel=ch,
-                    preferred_hz=data["preferred_hz"],
-                    required=data["required"],
-                    reason="; ".join(data["reasons"]),
+                    preferred_hz=data.preferred_hz,
+                    required=data.required,
+                    reason="; ".join(data.reasons),
                 )
             )
         return aggregated
@@ -264,7 +270,7 @@ class RaceEngineer:
             logger.error(f"[RaceEngineer] Failed to generate TTS audio: {e}", exc_info=True)
             return 0, 0
 
-    def _get_active_reference_profile(self) -> Optional[Any]:
+    def _get_active_reference_profile(self) -> Optional[ReferenceLapProfile]:
         """Resolves active reference lap profile from Core ReferenceLapManager."""
         try:
             from simpad_qt.core.reference_lap import ReferenceLapManager
@@ -291,7 +297,7 @@ class RaceEngineer:
         scoring: Optional[Union[FullScoringSession, CompactScoring]] = None,
         store: Optional[TelemetryStateStore] = None,
         wake_reason: Optional[TelemetryWakeReason] = None,
-        trigger_packet: Optional[Any] = None,
+        trigger_packet: Optional[TelemetryTriggerPacket] = None,
     ) -> List[EngineerMessage]:
         """
         Main evaluation tick called upon incoming telemetry/scoring packets.
@@ -354,7 +360,7 @@ class RaceEngineer:
         for role in self._roles:
             role.reset()
 
-    def get_status_summary(self) -> Dict[str, Any]:
+    def get_status_summary(self) -> Dict[str, Union[bool, List[str], List[Dict[str, Union[str, int, float, bool, List[str], None]]]]]:
         """Returns complete state summary for UI."""
         busy_roles = [r.role_id for r in self._roles if r.enabled and r.is_busy()]
         return {
@@ -370,7 +376,7 @@ class RaceEngineer:
         if auto_save and self.config_path:
             self.save_to_file()
 
-    def save_configuration(self) -> Dict[str, Any]:
+    def save_configuration(self) -> Dict[str, Union[bool, List[str], Dict[str, Dict[str, ParamScalarValue]]]]:
         """Exports role configuration (activations, priorities, parameters)."""
         return {
             "enabled": self.enabled,
@@ -381,7 +387,7 @@ class RaceEngineer:
             "order": [r.role_id for r in self._roles],
         }
 
-    def load_configuration(self, config: Dict[str, Any]) -> None:
+    def load_configuration(self, config: Dict[str, Union[bool, List[str], Dict[str, Dict[str, ParamScalarValue]]]]) -> None:
         """Restores exported configuration."""
         if "enabled" in config:
             self.enabled = bool(config["enabled"])

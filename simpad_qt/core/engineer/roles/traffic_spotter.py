@@ -9,13 +9,15 @@ import time
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 from isimotor_rawudp_client import VehicleScoring
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam
+from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
 from ...telemetry.reference_profile import ReferenceLapProfile
+from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +82,7 @@ class TrafficSpotterRole(BaseRole):
         description: str = "",
         priority: int = 100,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         ttc_trigger_sec: float = 5.0,
         speed_delta_min_kmh: float = 20.0,
         overlap_dist_threshold_m: float = 4.0,
@@ -284,31 +286,27 @@ class TrafficSpotterRole(BaseRole):
             ),
         ]
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.TELEMETRY,
-                    preferred_hz=100,
-                    required=True,
-                    reason="Player longitudinal speed and relative distance calculation",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.FULL_SCORING,
-                    preferred_hz=10,
-                    required=True,
-                    reason="Positions and speeds of approaching vehicles (TTC)",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.COMPACT_SCORING,
-                    preferred_hz=10,
-                    required=False,
-                    reason="Track length and spline for rear distance calculation",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.TELEMETRY,
+                preferred_hz=100,
+                required=True,
+                reason="Player longitudinal speed and relative distance calculation",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.FULL_SCORING,
+                preferred_hz=10,
+                required=True,
+                reason="Positions and speeds of approaching vehicles (TTC)",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.COMPACT_SCORING,
+                preferred_hz=10,
+                required=False,
+                reason="Track length and spline for rear distance calculation",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         return {
@@ -329,15 +327,15 @@ class TrafficSpotterRole(BaseRole):
         """Role is busy as long as it is actively tracking a car (non-IDLE)."""
         return self.state != TrafficSpotterState.IDLE
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Physics tick evaluation (100-120Hz TelemInfo). Real-time distance and closing speed evaluation."""
         return self._evaluate_traffic(state, context)
 
-    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Grid update evaluation (FullScoringSession). Standings, positions and rear threats."""
         return self._evaluate_traffic(state, context)
 
-    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_scoring_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         """Scoring update evaluation (CompactScoring 10Hz). Spline tracking and session status."""
         return self._evaluate_traffic(state, context)
 
@@ -345,7 +343,7 @@ class TrafficSpotterRole(BaseRole):
         """Polymorphic entry point for direct/manual evaluations."""
         return self._evaluate_traffic(context.state_store, context)
 
-    def _evaluate_traffic(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_traffic(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled or not context.scoring or context.is_private_qualifying():
             if self.state != TrafficSpotterState.IDLE:
                 self.reset()
@@ -722,7 +720,7 @@ class TrafficSpotterRole(BaseRole):
             self._last_aborted_target_id = None
             self._last_aborted_time = 0.0
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> Dict[str, ParamScalarValue]:
         cfg = super().get_config()
         cfg.update({
             "ttc_trigger_sec": self.ttc_trigger_sec,
@@ -738,7 +736,7 @@ class TrafficSpotterRole(BaseRole):
         })
         return cfg
 
-    def set_config(self, config: Dict[str, Any]) -> None:
+    def set_config(self, config: Dict[str, ParamScalarValue]) -> None:
         super().set_config(config)
         if "ttc_trigger_sec" in config:
             self.ttc_trigger_sec = float(config["ttc_trigger_sec"])
@@ -763,7 +761,7 @@ class TrafficSpotterRole(BaseRole):
         elif "incoming_cooldown_sec" in config:
             self.target_memory_sec = float(config["incoming_cooldown_sec"])
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
         ttc_str = f"{self._live_ttc:.1f}s" if self._live_ttc < 99.0 else "--"
         dist_str = f"{self._live_distance:.1f}m" if self.state != TrafficSpotterState.IDLE else "--"

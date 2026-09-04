@@ -5,7 +5,7 @@ Coordinates active haptic subplugins, orchestrates real-time evaluation, and mix
 
 from __future__ import annotations
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from .models import HapticMotorOutput
 from .subplugins.base import BaseHapticSubplugin
 from .subplugins import get_default_subplugins
@@ -73,7 +73,7 @@ class HapticSubpluginManager:
 
         return combined
 
-    def get_config_dict(self) -> Dict[str, Any]:
+    def get_config_dict(self) -> Dict[str, object]:
         """Serializes all subplugin configurations."""
         return {
             "order": list(self._subplugin_order),
@@ -82,7 +82,7 @@ class HapticSubpluginManager:
             }
         }
 
-    def load_config_dict(self, cfg: Dict[str, Any]) -> None:
+    def load_config_dict(self, cfg: Dict[str, object]) -> None:
         """Applies saved configuration to all registered subplugins."""
         if not isinstance(cfg, dict):
             return

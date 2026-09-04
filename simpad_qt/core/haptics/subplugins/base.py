@@ -5,10 +5,12 @@ Provides standard lifecycle, parameter declarations, serialization, and evaluati
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-from ...engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam
+from typing import Dict, List, Optional, Union
+from ...engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
 from ..models import HapticMotorOutput
 from ...telemetry.sensors import VehicleSensors
+
+HapticConfigValue = Union[bool, float, Dict[str, ParamScalarValue]]
 
 
 class BaseHapticSubplugin(ABC):
@@ -34,7 +36,7 @@ class BaseHapticSubplugin(ABC):
         self.master_gain = master_gain
 
         self._param_descriptors: Dict[str, RoleParam] = {}
-        self._param_values: Dict[str, Any] = {}
+        self._param_values: Dict[str, ParamScalarValue] = {}
 
         # Initialize default values from declared descriptors
         for p in self.get_declared_params():
@@ -56,11 +58,11 @@ class BaseHapticSubplugin(ABC):
         """Returns the list of declarative parameter descriptors for UI tuning."""
         return []
 
-    def get_param(self, name: str, fallback: Any = None) -> Any:
+    def get_param(self, name: str, fallback: Optional[ParamScalarValue] = None) -> Optional[ParamScalarValue]:
         """Retrieves the current validated value for a named parameter."""
         return self._param_values.get(name, fallback)
 
-    def set_param(self, name: str, value: Any) -> None:
+    def set_param(self, name: str, value: ParamScalarValue) -> None:
         """Sets and validates a parameter value."""
         descriptor = self._param_descriptors.get(name)
         if descriptor:
@@ -68,7 +70,7 @@ class BaseHapticSubplugin(ABC):
         else:
             self._param_values[name] = value
 
-    def get_config_dict(self) -> Dict[str, Any]:
+    def get_config_dict(self) -> Dict[str, HapticConfigValue]:
         """Serializes subplugin state and parameters to a dictionary."""
         return {
             "enabled": self.enabled,
@@ -76,7 +78,7 @@ class BaseHapticSubplugin(ABC):
             "params": dict(self._param_values),
         }
 
-    def load_config_dict(self, cfg: Dict[str, Any]) -> None:
+    def load_config_dict(self, cfg: Dict[str, HapticConfigValue]) -> None:
         """Restores subplugin state and parameters from configuration."""
         if not isinstance(cfg, dict):
             return

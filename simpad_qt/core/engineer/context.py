@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Union, Any
+from typing import Optional, List, Tuple, Union
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -17,7 +17,12 @@ from isimotor_rawudp_client import (
     TelemVect3,
 )
 
+from .base import AudioEngineType
 from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from ..telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.telemetry_channels import TelemetryRawPacket
+
+TelemetryTriggerPacket = Union[TelemInfo, FullScoringSession, CompactScoring, TelemetryRawPacket]
 
 _SCORING_STORE_SYNC = {
     FullScoringSession: lambda st, sc, ts: st.update_full_scoring(sc, ts),
@@ -40,17 +45,17 @@ _GARAGE_CHECKERS = {
 @dataclass
 class EngineerContext:
     """
-    Context object passed to roles on every evaluation tick.
-    Encapsulates physical telemetry and global scoring/session info.
+    Unified telemetry & scoring context passed to each role during evaluation.
+    Encapsulates all necessary data for intelligent situational decisions.
     """
     telemetry: Optional[TelemInfo] = None
     scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
     timestamp: float = field(default_factory=time.time)
-    audio_engine: Optional[Any] = None
-    reference_profile: Optional[Any] = None
+    audio_engine: Optional[AudioEngineType] = None
+    reference_profile: Optional[ReferenceLapProfile] = None
     store: Optional[TelemetryStateStore] = None
     wake_reason: TelemetryWakeReason = TelemetryWakeReason.MANUAL_EVALUATION
-    trigger_packet: Optional[Any] = None
+    trigger_packet: Optional[TelemetryTriggerPacket] = None
 
     @property
     def state_store(self) -> TelemetryStateStore:
@@ -198,7 +203,7 @@ class EngineerContext:
             pass
         return ""
 
-    def get_reference_profile(self) -> Optional[Any]:
+    def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
         """Returns active reference lap profile if it matches current track."""
         scoring_track = self.get_track_name()
 
@@ -232,7 +237,7 @@ class EngineerContext:
     def get_reference_speed_mps(
         self,
         track_dist: float,
-        profile: Optional[Any] = None,
+        profile: Optional[ReferenceLapProfile] = None,
     ) -> Optional[float]:
         """Returns reference lap speed at given track position (m/s)."""
         ref_prof = profile or self.get_reference_profile()
@@ -245,7 +250,7 @@ class EngineerContext:
         self,
         speed_mps: float,
         track_dist: float,
-        profile: Optional[Any] = None,
+        profile: Optional[ReferenceLapProfile] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
@@ -271,7 +276,7 @@ class EngineerContext:
     def is_vehicle_in_normal_domain(
         self,
         veh: Optional[VehicleScoring],
-        profile: Optional[Any] = None,
+        profile: Optional[ReferenceLapProfile] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
@@ -293,7 +298,7 @@ class EngineerContext:
 
     def is_player_in_normal_domain(
         self,
-        profile: Optional[Any] = None,
+        profile: Optional[ReferenceLapProfile] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """Determines if player vehicle is driving within normal speed domain."""
@@ -314,7 +319,7 @@ class EngineerContext:
         self,
         player_veh: Optional[VehicleScoring],
         opp_veh: Optional[VehicleScoring],
-        profile: Optional[Any] = None,
+        profile: Optional[ReferenceLapProfile] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """

@@ -6,12 +6,14 @@ Pure stateless detection directly from the telemetry/scoring packet flags:
 """
 
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, List, Union
 
-from ..base import BaseRole, EngineerMessage, RoleStatus
+from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from ..context import EngineerContext
 from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam
+from ..params import RoleParam, FloatRangeParam, ParamScalarValue
+from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
+from ...telemetry.state_store import TelemetryStateStore
 
 
 @RoleRegistry.register(
@@ -34,9 +36,9 @@ class LapValidityRole(BaseRole):
         description: str = "",
         priority: int = 50,
         enabled: bool = True,
-        audio_engine: Optional[Any] = None,
+        audio_engine: Optional[AudioEngineType] = None,
         busy_duration_sec: float = 1.8,
-        **kwargs: Any,
+        **kwargs: ParamScalarValue,
     ):
         super().__init__(
             role_id=role_id,
@@ -66,25 +68,21 @@ class LapValidityRole(BaseRole):
             ),
         ]
 
-    def get_channel_requirements(self) -> List[Any]:
-        try:
-            from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-            return [
-                ChannelRequirement(
-                    channel=TelemetryChannel.TELEMETRY,
-                    preferred_hz=100,
-                    required=True,
-                    reason="Real-time monitoring of lap flags (mCountLapFlag)",
-                ),
-                ChannelRequirement(
-                    channel=TelemetryChannel.COMPACT_SCORING,
-                    preferred_hz=10,
-                    required=False,
-                    reason="Scoring timing line crossing and lap flags",
-                ),
-            ]
-        except ImportError:
-            return []
+    def get_channel_requirements(self) -> List[ChannelRequirement]:
+        return [
+            ChannelRequirement(
+                channel=TelemetryChannel.TELEMETRY,
+                preferred_hz=100,
+                required=True,
+                reason="Real-time monitoring of lap flags (mCountLapFlag)",
+            ),
+            ChannelRequirement(
+                channel=TelemetryChannel.COMPACT_SCORING,
+                preferred_hz=10,
+                required=False,
+                reason="Scoring timing line crossing and lap flags",
+            ),
+        ]
 
     def get_sound_requirements(self) -> Dict[str, str]:
         return {
@@ -97,19 +95,19 @@ class LapValidityRole(BaseRole):
         """Returns True briefly during audio message playback duration."""
         return (time.time() - self._last_event_time) < self.busy_duration_sec
 
-    def on_physics_tick(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         return self._evaluate_validity(state, context)
 
-    def on_scoring_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_scoring_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         return self._evaluate_validity(state, context)
 
-    def on_grid_update(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         return self._evaluate_validity(state, context)
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
         return self._evaluate_validity(context.state_store, context)
 
-    def _evaluate_validity(self, state: Any, context: EngineerContext) -> Optional[EngineerMessage]:
+    def _evaluate_validity(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
         if not self.enabled:
             return None
 
@@ -163,7 +161,7 @@ class LapValidityRole(BaseRole):
         from ...telemetry.state_store import TelemetryStateStore
         TelemetryStateStore.get_instance().reset()
 
-    def get_state_summary(self) -> Dict[str, Any]:
+    def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
         from ...telemetry.state_store import TelemetryStateStore
         st = TelemetryStateStore.get_instance()
