@@ -24,9 +24,9 @@
     "enable_logging": true,
     "rates": {
       "PlayerTelemetryRate": "unlimited",
-      "OpponentTelemetryRate": "10Hz",
+      "OpponentTelemetryRate": "off",
       "CompactScoringRate": "10Hz",
-      "FullScoringRate": "5Hz",
+      "FullScoringRate": "10Hz",
       "WeatherRate": "1Hz",
       "ExtendedStateRate": "10Hz",
       "ForceFeedbackRate": "off",
