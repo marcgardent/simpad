@@ -260,15 +260,51 @@ def test_race_engineer_widget_interactive_controls(qapp, tmp_path):
 
 
 def test_sound_library_dialog(qapp, tmp_path):
-    """Test opening SoundLibraryDialog and testing sound preview playback."""
+    """Test opening SoundLibraryDialog, title, and testing sound preview playback and filtering."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = RaceEngineerPlugin()
     ctx = PluginContext(plugin.metadata.id, cfg_mgr)
     plugin.on_load(ctx)
 
     dlg = SoundLibraryDialog(plugin)
+    assert dlg.windowTitle() == "SimPulse Voice Sound Library"
     assert dlg.table.rowCount() >= 30
     assert dlg.table.columnCount() == 4
+
+    # Test filtering
+    dlg.filter_input.setText("car_left")
+    hidden_rows = sum(1 for r in range(dlg.table.rowCount()) if dlg.table.isRowHidden(r))
+    assert hidden_rows > 0
+    dlg.filter_input.setText("")
+    hidden_rows_cleared = sum(1 for r in range(dlg.table.rowCount()) if dlg.table.isRowHidden(r))
+    assert hidden_rows_cleared == 0
+
+
+def test_race_engineer_widget_complete_audio_list(qapp, tmp_path):
+    """Test that RaceEngineerWidget displays the complete list of audios without truncating at 8."""
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    plugin = RaceEngineerPlugin()
+    ctx = PluginContext(plugin.metadata.id, cfg_mgr)
+    plugin.on_load(ctx)
+    plugin.on_enable()
+
+    tab = plugin.create_tab_widget()
+    # Find pace_notes role which has 22 phrases
+    pace_role = plugin.engineer.get_role("pace_notes")
+    assert pace_role is not None
+    sounds = pace_role.get_sound_requirements()
+    assert len(sounds) > 8
+
+    # Set role in detail widget
+    tab.role_detail_widget.set_role(pace_role)
+
+    # Check that sounds_layout has all sound rows (one row layout per phrase)
+    sound_row_count = 0
+    for i in range(tab.role_detail_widget.sounds_layout.count()):
+        item = tab.role_detail_widget.sounds_layout.itemAt(i)
+        if item.layout() is not None:
+            sound_row_count += 1
+    assert sound_row_count == len(sounds)
 
 
 def test_engineer_subplugins_in_plugin():

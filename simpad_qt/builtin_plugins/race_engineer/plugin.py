@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QGroupBox, QScrollArea, QFrame, QProgressBar,
     QDoubleSpinBox, QSpinBox, QListWidget, QListWidgetItem,
-    QDialog, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox
+    QDialog, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
+    QLineEdit
 )
 
 class RadioMessageBridge(QObject):
@@ -117,17 +118,30 @@ class SoundLibraryDialog(QDialog):
     def __init__(self, plugin: "RaceEngineerPlugin", parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.plugin = plugin
-        self.setWindowTitle("SimPad Voice Sound Library")
-        self.resize(740, 520)
+        self.setWindowTitle("SimPulse Voice Sound Library")
+        self.resize(740, 540)
         self._init_ui()
 
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        lbl_info = QLabel("<b>Declared Sub-Plugin Voice Phrases & Sound Assets</b>", self)
+        lbl_info = QLabel("<b>Declared Sub-Plugin Voice Phrases & Sound Assets (Complete List)</b>", self)
         lbl_info.setStyleSheet("font-size: 14px; color: #ffffff;")
         layout.addWidget(lbl_info)
+
+        # Filter bar
+        filter_row = QHBoxLayout()
+        filter_lbl = QLabel("🔍 Filter:", self)
+        filter_lbl.setStyleSheet("color: #94a3b8; font-weight: bold;")
+        filter_row.addWidget(filter_lbl)
+
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setPlaceholderText("Search phrase key or spoken text...")
+        self.filter_input.setStyleSheet("background-color: #0d1117; color: #ffffff; border: 1px solid #30363d; padding: 4px 8px; border-radius: 4px;")
+        self.filter_input.textChanged.connect(self._on_filter_changed)
+        filter_row.addWidget(self.filter_input)
+        layout.addLayout(filter_row)
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(4)
@@ -145,6 +159,15 @@ class SoundLibraryDialog(QDialog):
         btn_close = QPushButton("Close", self)
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def _on_filter_changed(self, text: str) -> None:
+        query = text.strip().lower()
+        for row in range(self.table.rowCount()):
+            item_k = self.table.item(row, 0)
+            item_t = self.table.item(row, 1)
+            k_text = item_k.text().lower() if item_k else ""
+            t_text = item_t.text().lower() if item_t else ""
+            self.table.setRowHidden(row, query not in k_text and query not in t_text)
 
     def _populate_table(self) -> None:
         sounds = self.plugin.engineer.get_all_sound_requirements(only_enabled=False)
@@ -480,12 +503,12 @@ class RoleDetailWidget(QWidget):
             self.sounds_layout.addWidget(lbl_none)
             return
 
-        lbl_hdr = QLabel(f"<b>{len(sounds)} Declared Phrases:</b>", self.sounds_group)
+        lbl_hdr = QLabel(f"<b>{len(sounds)} Declared Phrases (Complete List):</b>", self.sounds_group)
         lbl_hdr.setStyleSheet("color: #d2a8ff; font-size: 11px;")
         self.sounds_layout.addWidget(lbl_hdr)
 
-        # Show preview rows (up to 8, with a count indicator)
-        for key, text in list(sounds.items())[:8]:
+        # Show complete list of phrases declared by this role
+        for key, text in sorted(sounds.items()):
             row = QHBoxLayout()
             wav_path = DEFAULT_SOUND_DIR / f"{key}.wav"
             exists = wav_path.exists()
@@ -503,11 +526,6 @@ class RoleDetailWidget(QWidget):
             row.addWidget(btn_test)
 
             self.sounds_layout.addLayout(row)
-
-        if len(sounds) > 8:
-            lbl_more = QLabel(f"... and {len(sounds) - 8} more phrases (use Sound Library to view all).", self.sounds_group)
-            lbl_more.setStyleSheet("color: #8b949e; font-size: 10px; font-style: italic;")
-            self.sounds_layout.addWidget(lbl_more)
 
     def update_live_state(self) -> None:
         """Update live status and diagnostic info."""
@@ -689,7 +707,8 @@ class RaceEngineerWidget(QWidget):
         self.btn_bake_sounds.clicked.connect(self._on_bake_sounds_clicked)
         btn_row.addWidget(self.btn_bake_sounds)
 
-        self.btn_view_sounds = QPushButton("📋 Sound Library...", needs_group)
+        self.btn_view_sounds = QPushButton("📋 Complete Audio List...", needs_group)
+        self.btn_view_sounds.setToolTip("View and test the complete list of all declared audio phrases across all sub-plugins")
         self.btn_view_sounds.clicked.connect(self._open_sound_library)
         btn_row.addWidget(self.btn_view_sounds)
         n_layout.addLayout(btn_row)

@@ -875,4 +875,58 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     assert len(spy.physics_ticks) == 2
 
 
+def test_plugin_manager_widget_inspector_on_right(qapp, tmp_path):
+    """Test that Plugin Inspector is placed in a horizontal layout to the right of the plugins table."""
+    from PySide6.QtWidgets import QHBoxLayout, QGroupBox
+    from simpad_qt.ui.plugin_manager_widget import PluginManagerWidget
+
+    cfg_file = tmp_path / "config_ui.json"
+    cfg_mgr = ConfigManager(config_file=cfg_file)
+    pm = PluginManager(cfg_mgr)
+    widget = PluginManagerWidget(pm)
+
+    # Find the horizontal content layout
+    h_layouts = widget.findChildren(QHBoxLayout)
+    content_layout = next(
+        (hl for hl in h_layouts if hl.indexOf(widget.table) != -1),
+        None
+    )
+    assert content_layout is not None, "Plugins table must be in a QHBoxLayout"
+
+    table_idx = content_layout.indexOf(widget.table)
+    # The inspector QGroupBox must be after the table in the horizontal layout (i.e. to the right)
+    assert table_idx == 0
+    inspector_item = content_layout.itemAt(1)
+    assert inspector_item is not None
+    inspector_widget = inspector_item.widget()
+    assert isinstance(inspector_widget, QGroupBox)
+    assert inspector_widget.title() == "Plugin Inspector"
+
+
+def test_simpulse_window_title(qapp, tmp_path):
+    """Test that the main studio console window title is set to 'SimPulse'."""
+    from simpad_qt.ui.main_window import SimPadQtMainWindow
+    from simpad_qt.core.game_plugin_manager import GamePluginManager
+    from simpad_qt.core.game_process_watcher import GameProcessWatcher
+    from simpad_qt.core.overlay_state_machine import OverlayStateMachine
+    from simpad_qt.core.telemetry_bus import TelemetryBus
+
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
+    gpm = GamePluginManager(config_manager=cfg_mgr)
+    gw = GameProcessWatcher()
+    osm = OverlayStateMachine()
+    tb = TelemetryBus()
+
+    window = SimPadQtMainWindow(
+        plugin_manager=pm,
+        game_plugin_mgr=gpm,
+        process_watcher=gw,
+        overlay_state_machine=osm,
+        telemetry_bus=tb,
+        config_mgr=cfg_mgr,
+    )
+    assert window.windowTitle() == "SimPulse"
+
+
 

@@ -8,7 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
-    QComboBox, QGridLayout, QMessageBox, QScrollArea, QCheckBox
+    QComboBox, QGridLayout, QMessageBox, QScrollArea, QCheckBox,
+    QSizePolicy
 )
 
 from simpad_qt.core.game_plugin_manager import GamePluginManager

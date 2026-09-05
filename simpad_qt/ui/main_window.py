@@ -49,7 +49,7 @@ class SimPadQtMainWindow(QMainWindow):
         self.telemetry_bus = telemetry_bus
         self.config_mgr = config_mgr
 
-        self.setWindowTitle("SimPad Studio Console (Qt6 Pure)")
+        self.setWindowTitle("SimPulse")
         self.resize(1180, 760)
         self.setStyleSheet(DARK_STYLESHEET)
 
@@ -98,7 +98,7 @@ class SimPadQtMainWindow(QMainWindow):
         # Top Control Bar
         top_bar = QHBoxLayout()
 
-        logo_lbl = QLabel("🏎️ <b>SIMPAD</b> <span style='color:#00d2ff;'>STUDIO</span>", self)
+        logo_lbl = QLabel("🏎️ <b>SIMPULSE</b> <span style='color:#00d2ff;'>STUDIO</span>", self)
         logo_lbl.setStyleSheet("font-size: 16px; color: #ffffff;")
         top_bar.addWidget(logo_lbl)
 

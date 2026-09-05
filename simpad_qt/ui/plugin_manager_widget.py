@@ -36,10 +36,10 @@ class PluginManagerWidget(QWidget):
         layout.setSpacing(14)
 
         # Header info
-        header_group = QGroupBox("🔌 SimPad Extension & Plugin Hub", self)
+        header_group = QGroupBox("🔌 SimPulse Extension & Plugin Hub", self)
         h_layout = QVBoxLayout(header_group)
         info_lbl = QLabel(
-            "Manage modular SimPad plugins. Plugins can inject interactive studio tabs, "
+            "Manage modular SimPulse plugins. Plugins can inject interactive studio tabs, "
             "subscribe to high-frequency telemetry, and render transparent in-game HUD overlays.",
             header_group
         )
@@ -47,6 +47,10 @@ class PluginManagerWidget(QWidget):
         info_lbl.setStyleSheet("color: #94a3b8; font-size: 13px;")
         h_layout.addWidget(info_lbl)
         layout.addWidget(header_group)
+
+        # Horizontal layout: Plugins table on left, Plugin Inspector on right
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(14)
 
         # Table of plugins
         self.table = QTableWidget(self)
@@ -57,25 +61,30 @@ class PluginManagerWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self.table)
+        content_layout.addWidget(self.table, stretch=3)
 
-        # Bottom section: Plugin details & actions
+        # Right section: Plugin Inspector
         detail_group = QGroupBox("Plugin Inspector", self)
+        detail_group.setMinimumWidth(320)
         d_layout = QVBoxLayout(detail_group)
+        d_layout.setContentsMargins(12, 12, 12, 12)
+        d_layout.setSpacing(10)
+
         self.detail_text = QTextEdit(detail_group)
         self.detail_text.setReadOnly(True)
-        self.detail_text.setFixedHeight(90)
         self.detail_text.setStyleSheet("background-color: #0f1115; border: 1px solid #23272e; color: #cbd5e1;")
-        d_layout.addWidget(self.detail_text)
+        self.detail_text.setHtml("<p style='color: #64748b; font-style: italic; margin-top: 10px;'>Select a plugin in the table to inspect details.</p>")
+        d_layout.addWidget(self.detail_text, stretch=1)
 
         btn_row = QHBoxLayout()
         self.toggle_btn = QPushButton("Toggle Enable/Disable", self)
         self.toggle_btn.clicked.connect(self._toggle_selected_plugin)
         btn_row.addWidget(self.toggle_btn)
 
-        btn_row.addStretch()
         d_layout.addLayout(btn_row)
-        layout.addWidget(detail_group)
+        content_layout.addWidget(detail_group, stretch=2)
+
+        layout.addLayout(content_layout, stretch=1)
 
         self._refresh_table()
 
@@ -133,7 +142,7 @@ class PluginManagerWidget(QWidget):
     def _on_selection_changed(self) -> None:
         selected_rows = self.table.selectedIndexes()
         if not selected_rows:
-            self.detail_text.clear()
+            self.detail_text.setHtml("<p style='color: #64748b; font-style: italic; margin-top: 10px;'>Select a plugin in the table to inspect details.</p>")
             return
 
         row = selected_rows[0].row()
@@ -142,10 +151,15 @@ class PluginManagerWidget(QWidget):
             p = plugins[row]
             meta = p.metadata
             self.detail_text.setHtml(
-                f"<b>{meta.name}</b> (<code>{meta.id}</code>) v{meta.version}<br/>"
-                f"<b>Author:</b> {meta.author}<br/>"
-                f"<b>Description:</b> {meta.description}<br/>"
-                f"<b>State:</b> <span style='color: {'#22c55e' if p.state == PluginState.ENABLED else '#ef4444'}'>{p.state.name}</span>"
+                f"<div style='font-family: sans-serif; line-height: 1.4;'>"
+                f"<h3 style='margin: 0 0 8px 0; color: #38bdf8;'>{meta.icon} {meta.name}</h3>"
+                f"<p style='margin: 3px 0;'><b>ID:</b> <code>{meta.id}</code></p>"
+                f"<p style='margin: 3px 0;'><b>Version:</b> {meta.version}</p>"
+                f"<p style='margin: 3px 0;'><b>Author:</b> {meta.author}</p>"
+                f"<p style='margin: 3px 0;'><b>State:</b> <span style='font-weight: bold; color: {'#22c55e' if p.state == PluginState.ENABLED else '#ef4444'}'>{p.state.name}</span></p>"
+                f"<hr style='border: none; border-top: 1px solid #334155; margin: 10px 0;'/>"
+                f"<p style='margin: 4px 0; color: #cbd5e1;'><b>Description:</b><br/>{meta.description}</p>"
+                f"</div>"
             )
 
     def _toggle_selected_plugin(self) -> None:

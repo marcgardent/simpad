@@ -36,8 +36,8 @@ class SimPadQtApp:
 
     def __init__(self, argv: Optional[List[str]] = None):
         self.qapp = QApplication.instance() or QApplication(argv or sys.argv)
-        self.qapp.setApplicationName("SimPad")
-        self.qapp.setOrganizationName("SimPadTeam")
+        self.qapp.setApplicationName("SimPulse")
+        self.qapp.setOrganizationName("SimPulse")
 
         # 1. Configuration
         self.config_mgr = ConfigManager()
