@@ -96,6 +96,22 @@ class SimPadCoreStatusBar(QStatusBar):
         self._style_badge(self.badge_overlay, "HUD: AUTO (STANDBY)", bg="#1e293b", fg="#94a3b8", border="#334155")
         self.addPermanentWidget(self.badge_overlay)
 
+        # 6. Studio Power / Idle Badge
+        self.badge_studio_power = QLabel(self)
+        self.badge_studio_power.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._is_idle: bool = False
+        self._style_badge(self.badge_studio_power, "⚡ STUDIO: ACTIVE", bg="#064e3b", fg="#34d399", border="#059669")
+        self.addPermanentWidget(self.badge_studio_power)
+
+    def set_studio_idle(self, is_idle: bool) -> None:
+        """Update Studio power mode badge and throttle state."""
+        self._is_idle = is_idle
+        if is_idle:
+            self._style_badge(self.badge_studio_power, "💤 STUDIO: IDLE", bg="#1e293b", fg="#94a3b8", border="#334155")
+        else:
+            self._style_badge(self.badge_studio_power, "⚡ STUDIO: ACTIVE", bg="#064e3b", fg="#34d399", border="#059669")
+            self._on_metrics_updated()
+
     def _style_badge(self, label: QLabel, text: str, bg: str, fg: str, border: str) -> None:
         if label.text() != text:
             label.setText(text)
@@ -143,6 +159,8 @@ class SimPadCoreStatusBar(QStatusBar):
         self._update_udp_ui(stream_status)
 
     def _on_metrics_updated(self) -> None:
+        if getattr(self, "_is_idle", False):
+            return
         status = self.telemetry_bus.stream_status
         self._update_udp_ui(status)
 

@@ -5,7 +5,7 @@ and the Core Status Bar.
 """
 
 from typing import Dict, Optional
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QEvent, QTimer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTabWidget, QComboBox
@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from simpad_qt.plugins.manager import PluginManager
 from simpulse_sdk import ITabProvider, PluginState
 from simpad_qt.core.game_plugin_manager import GamePluginManager
-from simpad_qt.core.game_process_watcher import GameProcessWatcher
+from simpad_qt.core.game_process_watcher import GameProcessWatcher, GameStatus
 from simpad_qt.core.overlay_state_machine import OverlayStateMachine, OverlayDisplayMode
 from simpad_qt.core.telemetry_bus import TelemetryBus
 from simpad_qt.core.config import ConfigManager
@@ -28,6 +28,8 @@ from simpad_qt.core.telemetry import VehicleSensors
 
 class SimPadQtMainWindow(QMainWindow):
     """Main Studio Console Window for SimPad Qt6."""
+
+    studio_idle_changed = Signal(bool)
 
     def __init__(
         self,
@@ -54,10 +56,22 @@ class SimPadQtMainWindow(QMainWindow):
         # Create overlay window
         self.overlay_window = SimPadHudOverlayWindow(self.plugin_manager)
 
+        # Studio IDLE & Eco Mode
+        self._is_studio_idle: bool = False
+        self._idle_delay_timer = QTimer(self)
+        self._idle_delay_timer.setSingleShot(True)
+        self._idle_delay_timer.timeout.connect(self._on_idle_delay_timeout)
+
         self._plugin_tabs: Dict[str, QWidget] = {}
 
         self._init_ui()
         self._build_plugin_tabs()
+
+        # Connect tab selection to dynamically idle background tabs
+        self.tab_widget.currentChanged.connect(self._on_tab_selection_changed)
+
+        # Connect process watcher for game foreground detection
+        self.process_watcher.status_changed.connect(self._on_game_status_changed)
 
         # Connect telemetry bus
         self.telemetry_bus.telemetry_updated.connect(self._on_telemetry_updated)
@@ -169,6 +183,7 @@ class SimPadQtMainWindow(QMainWindow):
         for plugin in self.plugin_manager.plugins.values():
             if plugin.state == PluginState.ENABLED and isinstance(plugin, ITabProvider):
                 self._add_plugin_tab(plugin)
+        self._update_tabs_idle_state()
 
     def _add_plugin_tab(self, plugin: ITabProvider) -> None:
         pid = plugin.metadata.id
@@ -179,6 +194,7 @@ class SimPadQtMainWindow(QMainWindow):
         title = f"{plugin.get_tab_icon()} {plugin.get_tab_title()}"
         self.tab_widget.addTab(tab_widget, title)
         self._plugin_tabs[pid] = tab_widget
+        self._update_tabs_idle_state()
 
     def _remove_plugin_tab(self, plugin_id: str) -> None:
         widget = self._plugin_tabs.pop(plugin_id, None)
@@ -186,6 +202,7 @@ class SimPadQtMainWindow(QMainWindow):
             index = self.tab_widget.indexOf(widget)
             if index != -1:
                 self.tab_widget.removeTab(index)
+        self._update_tabs_idle_state()
 
     def _on_plugin_state_changed(self, plugin_id: str, state: PluginState) -> None:
         plugin = self.plugin_manager.plugins.get(plugin_id)
@@ -224,13 +241,92 @@ class SimPadQtMainWindow(QMainWindow):
         self.overlay_window.update_telemetry(sensors)
 
     def _on_fps_changed(self, fps: float) -> None:
-        self.fps_badge.setText(f"Telem: {fps:.1f} FPS")
+        if not self._is_studio_idle:
+            self.fps_badge.setText(f"Telem: {fps:.1f} FPS")
 
     def _on_metrics_updated(self) -> None:
-        bw = self.telemetry_bus.total_measured_kbs
-        self.bw_badge.setText(f"Bandwidth: {bw:.1f} Kb/s")
+        if not self._is_studio_idle:
+            bw = self.telemetry_bus.total_measured_kbs
+            self.bw_badge.setText(f"Bandwidth: {bw:.1f} Kb/s")
+
+    # =========================================================================
+    # Studio IDLE & Eco Mode
+    # =========================================================================
+
+    @property
+    def is_studio_idle(self) -> bool:
+        """Whether the Studio Console is in IDLE background power-saving mode."""
+        return self._is_studio_idle
+
+    def _evaluate_idle_state(self) -> None:
+        """Evaluate whether Studio Console should enter or exit IDLE Eco mode."""
+        eco_enabled = getattr(self.config_mgr.config.app, "studio_eco_mode", True)
+        if not eco_enabled:
+            self._idle_delay_timer.stop()
+            self._set_studio_idle(False)
+            return
+
+        # Condition 1: Minimized or hidden
+        if self.isMinimized() or self.isHidden():
+            self._idle_delay_timer.stop()
+            self._set_studio_idle(True)
+            return
+
+        # Condition 2: Game is in foreground and Studio is not active
+        game_status = self.process_watcher.current_status
+        if game_status.is_foreground and not self.isActiveWindow():
+            self._idle_delay_timer.stop()
+            self._set_studio_idle(True)
+            return
+
+        # Condition 3: Window has active focus
+        if self.isActiveWindow():
+            self._idle_delay_timer.stop()
+            self._set_studio_idle(False)
+            return
+
+        # Condition 4: Window lost focus but not minimized / game not foreground
+        delay_sec = getattr(self.config_mgr.config.app, "studio_eco_idle_delay_sec", 2.0)
+        if not self._is_studio_idle and not self._idle_delay_timer.isActive():
+            self._idle_delay_timer.start(int(delay_sec * 1000))
+
+    def _on_idle_delay_timeout(self) -> None:
+        if not self.isActiveWindow():
+            self._set_studio_idle(True)
+
+    def _set_studio_idle(self, is_idle: bool) -> None:
+        if self._is_studio_idle == is_idle:
+            return
+        self._is_studio_idle = is_idle
+        self.status_bar.set_studio_idle(is_idle)
+        self._update_tabs_idle_state()
+        self.studio_idle_changed.emit(is_idle)
+        if not is_idle:
+            # Immediate refresh on wake-up
+            self.fps_badge.setText(f"Telem: {self.telemetry_bus.total_measured_hz:.1f} FPS")
+            self.bw_badge.setText(f"Bandwidth: {self.telemetry_bus.total_measured_kbs:.1f} Kb/s")
+
+    def _update_tabs_idle_state(self) -> None:
+        """Propagate idle state to all loaded plugin tab widgets."""
+        current_widget = self.tab_widget.currentWidget()
+        for pid, tab in self._plugin_tabs.items():
+            if hasattr(tab, "set_idle_mode"):
+                is_tab_idle = self._is_studio_idle or (tab != current_widget)
+                tab.set_idle_mode(is_tab_idle)
+
+    def _on_tab_selection_changed(self, index: int) -> None:
+        self._update_tabs_idle_state()
+
+    def _on_game_status_changed(self, status: GameStatus) -> None:
+        self._evaluate_idle_state()
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.ActivationChange, QEvent.Type.WindowStateChange):
+            self._evaluate_idle_state()
 
     def closeEvent(self, event) -> None:
+        self._idle_delay_timer.stop()
         self.process_watcher.stop()
         self.overlay_window.close()
         self.telemetry_bus.stop()

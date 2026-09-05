@@ -173,12 +173,12 @@ class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
 
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
         self.latest_sensors = sensors
-        if self._active_tab_widget and self._active_tab_widget.isVisible():
+        if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
             self._active_tab_widget.update_telemetry_ui(sensors)
 
     def on_delta_frame(self, delta_packet: LapDeltaPacket) -> None:
         self.latest_delta = delta_packet
-        if self._active_tab_widget and self._active_tab_widget.isVisible():
+        if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
             self._active_tab_widget.update_delta_ui(delta_packet)
 
     # =========================================================================

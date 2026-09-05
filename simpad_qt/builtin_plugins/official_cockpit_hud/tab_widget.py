@@ -28,6 +28,7 @@ class OfficialCockpitHudTabWidget(QWidget):
     def __init__(self, plugin: OfficialCockpitHudPlugin, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.plugin = plugin
+        self._is_idle: bool = False
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -197,8 +198,18 @@ class OfficialCockpitHudTabWidget(QWidget):
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
 
+    def set_idle_mode(self, is_idle: bool) -> None:
+        """Switch between active rendering and power-saving idle mode."""
+        self._is_idle = is_idle
+        if not is_idle:
+            self.update_telemetry_ui(self.plugin.latest_sensors)
+            self.update_delta_ui(self.plugin.latest_delta)
+
     def update_telemetry_ui(self, sensors: VehicleSensors) -> None:
         """Update telemetry numbers and refresh preview canvas."""
+        if getattr(self, "_is_idle", False):
+            return
+
         spd = sensors.vehicle_speed * 3.6
         unit = "KM/H"
         if self.plugin.config.speed_unit == "mph":
@@ -222,7 +233,7 @@ class OfficialCockpitHudTabWidget(QWidget):
 
     def update_delta_ui(self, delta: LapDeltaPacket) -> None:
         """Update live delta indicators from authoritative LapDeltaPacket."""
-        if not self.isVisible():
+        if getattr(self, "_is_idle", False) or not self.isVisible():
             return
         delta_display = delta.last_lap_time_str if delta.is_lap_freeze_active else delta.delta_str
         self.lbl_delta.setText(f"Δ {delta_display}  (Last: {delta.last_lap_time_str})")

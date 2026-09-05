@@ -42,6 +42,7 @@ class StreamDiagnosticsWidget(QWidget):
         super().__init__(parent)
         self.plugin = plugin
         self._is_paused = False
+        self._is_idle = False
         self._init_ui()
 
         # UI Refresh timer at 15 Hz for smooth stats rendering
@@ -156,8 +157,18 @@ class StreamDiagnosticsWidget(QWidget):
         self._is_paused = not self._is_paused
         self.btn_pause.setText("▶️ Resume" if self._is_paused else "⏸️ Freeze")
 
+    def set_idle_mode(self, is_idle: bool) -> None:
+        """Switch between active timer updates and power-saving idle mode."""
+        self._is_idle = is_idle
+        if is_idle:
+            self._timer.stop()
+        else:
+            if not self._is_paused and not self._timer.isActive():
+                self._timer.start()
+            self._refresh_ui()
+
     def _refresh_ui(self) -> None:
-        if not self.isVisible() or self._is_paused:
+        if getattr(self, "_is_idle", False) or not self.isVisible() or self._is_paused:
             return
 
         now = time.time()

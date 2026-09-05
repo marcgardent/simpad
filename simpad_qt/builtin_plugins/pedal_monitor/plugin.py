@@ -35,6 +35,7 @@ class PedalMonitorWidget(QWidget):
     def __init__(self, plugin: "PedalTelemetryPlugin", parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.plugin = plugin
+        self._is_idle: bool = False
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -116,7 +117,18 @@ class PedalMonitorWidget(QWidget):
         layout.addWidget(cfg_group)
         layout.addStretch()
 
+    def set_idle_mode(self, is_idle: bool) -> None:
+        """Switch between active live view and power-saving idle mode."""
+        self._is_idle = is_idle
+        if not is_idle:
+            self.update_live_view(
+                self.plugin._throttle_pct, self.plugin._brake_pct,
+                self.plugin._abs_pct, self.plugin._tc_pct
+            )
+
     def update_live_view(self, throttle_pct: float, brake_pct: float, abs_pct: float, tc_pct: float) -> None:
+        if getattr(self, "_is_idle", False):
+            return
         self.pbar_throttle.setValue(int(throttle_pct))
         self.pbar_brake.setValue(int(brake_pct))
         self.pbar_abs.setValue(int(abs_pct))
@@ -198,7 +210,7 @@ class PedalTelemetryPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
         self._throttle_pct = state.throttle_pct
         self._brake_pct = state.brake_pct
 
-        if self._active_tab_widget and self._active_tab_widget.isVisible():
+        if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
             self._active_tab_widget.update_live_view(
                 self._throttle_pct, self._brake_pct, self._abs_pct, self._tc_pct
             )
@@ -209,7 +221,7 @@ class PedalTelemetryPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
         self._abs_pct = max(sensors.ecu_abs_active, sensors.lock_intensity) * 100.0
         self._tc_pct = max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0
 
-        if self._active_tab_widget and self._active_tab_widget.isVisible():
+        if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
             self._active_tab_widget.update_live_view(
                 self._throttle_pct, self._brake_pct, self._abs_pct, self._tc_pct
             )

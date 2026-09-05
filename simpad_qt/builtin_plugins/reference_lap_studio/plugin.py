@@ -490,6 +490,7 @@ class ReferenceLapStudioTabWidget(QWidget):
         self.ref_manager: ReferenceLapManager = plugin.ref_manager
         self.selected_annotation_id: Optional[str] = None
         self._available_files: List[Path] = []
+        self._is_idle: bool = False
 
         self._setup_ui()
         self._setup_shortcuts()
@@ -501,6 +502,12 @@ class ReferenceLapStudioTabWidget(QWidget):
 
         self._refresh_files_list()
         self.refresh_ui()
+
+    def set_idle_mode(self, is_idle: bool) -> None:
+        """Switch between active canvas tracking and power-saving idle mode."""
+        self._is_idle = is_idle
+        if not is_idle:
+            self.canvas.update()
 
     @property
     def active_profile(self) -> Optional[ReferenceLapProfile]:
@@ -1012,7 +1019,7 @@ class ReferenceLapStudioTabWidget(QWidget):
         self.canvas.update()
 
     def _on_delta_updated(self, pkt: LapDeltaPacket) -> None:
-        if self.isVisible() and pkt.player_dist >= 0:
+        if not getattr(self, "_is_idle", False) and self.isVisible() and pkt.player_dist >= 0:
             self.canvas.set_live_car_distance(pkt.player_dist)
 
 
@@ -1066,5 +1073,5 @@ class ReferenceLapStudioPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
 
     # IDeltaSubscriber
     def on_delta_frame(self, delta_packet: LapDeltaPacket) -> None:
-        if self._active_tab and self._active_tab.isVisible():
+        if self._active_tab and self._active_tab.isVisible() and not getattr(self._active_tab, "_is_idle", False):
             self._active_tab.canvas.set_live_car_distance(delta_packet.player_dist)

@@ -39,6 +39,8 @@ class AppSettings:
     udp_host: str = "127.0.0.1"
     udp_port: int = 5000
     update_rate_hz: int = 100
+    studio_eco_mode: bool = True
+    studio_eco_idle_delay_sec: float = 2.0
 
 
 @dataclass
