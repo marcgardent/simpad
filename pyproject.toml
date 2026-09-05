@@ -11,7 +11,7 @@ dependencies = [
     "numpy>=2.5.2",
     "piper-tts>=1.2.0",
     "tqdm>=4.66.0",
-    "isimotor-rawudp-client @ https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl",
+    "isimotor-rawudp-client @ https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isimotor_rawudp_client-0.3.0-py3-none-any.whl",
 ]
 
 [dependency-groups]

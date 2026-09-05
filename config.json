@@ -13,7 +13,9 @@
     "lateral_slide_threshold": 0.1,
     "udp_host": "127.0.0.1",
     "udp_port": 5000,
-    "update_rate_hz": 100
+    "update_rate_hz": 100,
+    "studio_eco_mode": true,
+    "studio_eco_idle_delay_sec": 2.0
   },
   "game_plugin": {
     "target_ip": "127.0.0.1",

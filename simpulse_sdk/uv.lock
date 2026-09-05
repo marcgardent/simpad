@@ -4,10 +4,10 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "isimotor-rawudp-client"
-version = "0.2.0"
-source = { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl" }
+version = "0.3.0"
+source = { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isimotor_rawudp_client-0.3.0-py3-none-any.whl" }
 wheels = [
-    { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl", hash = "sha256:4c7c5603949a1612e6cffd2eec1ca23fe83a9df79cf048755f0c772798dffeaa" },
+    { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isimotor_rawudp_client-0.3.0-py3-none-any.whl", hash = "sha256:a8deeb9f22d794ad651a12d11f571801aae715880994108edbb81890d8422ce2" },
 ]
 
 [[package]]
@@ -19,4 +19,4 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "isimotor-rawudp-client", url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl" }]
+requires-dist = [{ name = "isimotor-rawudp-client", url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isimotor_rawudp_client-0.3.0-py3-none-any.whl" }]

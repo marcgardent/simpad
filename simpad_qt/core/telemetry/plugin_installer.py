@@ -17,7 +17,7 @@ from typing import Optional, Tuple, List, Dict
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PLUGIN_RELEASE_URL = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isiMotor-RawUDP-Plugin-v0.2.0-Windows-x64-MinGW-w64.zip"
+DEFAULT_PLUGIN_RELEASE_URL = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isiMotor-RawUDP-Plugin-v0.3.0-Windows-x64-MinGW-w64.zip"
 PLUGIN_DLL_NAME = "isiMotor_RawUDP.dll"
 
 SUPPORTED_GAMES: Dict[str, Dict[str, str]] = { # TODO MGT on créer un type
