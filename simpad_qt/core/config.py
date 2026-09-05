@@ -6,8 +6,10 @@ Provides the IConfigManager contract interface and concrete unified ConfigManage
 from __future__ import annotations
 import json
 import logging
+import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict, is_dataclass, fields
+from enum import Enum
 from pathlib import Path
 from typing import Dict, Type, TypeVar, Union
 
@@ -243,18 +245,31 @@ class ConfigFactory:
             return cls.create_default_config()
 
     @classmethod
+    def _sanitize_primitive(cls, obj: object) -> object:
+        """Recursively ensure enums, dicts, lists, etc. are converted to JSON-serializable primitives."""
+        if isinstance(obj, Enum):
+            return obj.value
+        elif isinstance(obj, dict):
+            return {k: cls._sanitize_primitive(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple, set)):
+            return [cls._sanitize_primitive(v) for v in obj]
+        return obj
+
+    @classmethod
     def serialize_to_dict(cls, config: SimPadConfig) -> dict:
         """Convert SimPadConfig tree into primitive dictionary for serialization."""
-        return asdict(config)
+        return cls._sanitize_primitive(asdict(config))
 
     @classmethod
     def serialize_plugin_data(cls, dataclass_obj: object) -> Dict[str, PluginScalar]:
         """Convert plugin object (dataclass or dict) into dictionary format."""
         if is_dataclass(dataclass_obj):
-            return asdict(dataclass_obj)
+            data = asdict(dataclass_obj)
         elif isinstance(dataclass_obj, dict):
-            return dataclass_obj
-        raise TypeError(f"Expected dataclass or dict, got {type(dataclass_obj)}")
+            data = dict(dataclass_obj)
+        else:
+            raise TypeError(f"Expected dataclass or dict, got {type(dataclass_obj)}")
+        return cls._sanitize_primitive(data)
 
 
 class ConfigManager(IConfigManager):
@@ -281,7 +296,11 @@ class ConfigManager(IConfigManager):
             data = ConfigFactory.serialize_to_dict(self.config)
             parent_dir = self.config_file.parent
             parent_dir.mkdir(parents=True, exist_ok=True)
-            text = json.dumps(data, indent=2)
+            text = json.dumps(
+                data,
+                indent=2,
+                default=lambda o: o.value if isinstance(o, Enum) else str(o),
+            )
             self.config_file.write_text(text, encoding="utf-8")
             logger.debug(f"Saved config to '{self.config_file}'")
         except Exception as e:
@@ -321,11 +340,23 @@ class ConfigManager(IConfigManager):
 
     def get_plugin_config_as(self, plugin_id: str, dataclass_cls: Type[T]) -> T:
         raw_plugin_data = self.config.get_plugin_data(plugin_id)
-        if is_dataclass(dataclass_cls):
-            field_names = {f.name for f in fields(dataclass_cls)}
-        else:
-            field_names = set()
-        valid_kwargs = {k: v for k, v in raw_plugin_data.items() if k in field_names}
+        if not is_dataclass(dataclass_cls):
+            return dataclass_cls()
+        try:
+            type_hints = typing.get_type_hints(dataclass_cls)
+        except Exception:
+            type_hints = {}
+        valid_kwargs = {}
+        for f in fields(dataclass_cls):
+            if f.name in raw_plugin_data:
+                val = raw_plugin_data[f.name]
+                field_type = type_hints.get(f.name, f.type)
+                if isinstance(field_type, type) and issubclass(field_type, Enum) and not isinstance(val, field_type):
+                    try:
+                        val = field_type(val)
+                    except (ValueError, KeyError):
+                        pass
+                valid_kwargs[f.name] = val
         return dataclass_cls(**valid_kwargs)
 
     def set_plugin_config_from(self, plugin_id: str, dataclass_obj: object, auto_save: bool = True) -> None:

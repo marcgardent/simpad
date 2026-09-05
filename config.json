@@ -46,23 +46,16 @@
     "delta_debug": false
   },
   "plugins_enabled": {
-    "simpad.builtin.race_engineer": true
+    "simpad.builtin.race_engineer": true,
+    "simpad.builtin.pedal_monitor": false,
+    "simpad.builtin.gear_speed_hud": false
   },
   "plugins": {
     "simpad.builtin.race_engineer": {
       "master_enabled": true,
       "muted": false,
-      "subplugin_order": [
-        "traffic_spotter",
-        "fight_spotter",
-        "pitlane_spotter",
-        "pace_notes",
-        "traffic_jam",
-        "lap_validity"
-      ],
       "subplugin_configs": {
         "traffic_spotter": {
-          "enabled": true,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "speed_delta_min_kmh": 20.0,
@@ -75,7 +68,6 @@
           "phrase_mode": "alongside"
         },
         "fight_spotter": {
-          "enabled": true,
           "car_length_m": 4.2,
           "car_width_m": 1.9,
           "gap_needed_for_clear_m": 1.5,
@@ -87,7 +79,6 @@
           "enable_three_wide": true
         },
         "pitlane_spotter": {
-          "enabled": true,
           "enable_unsafe_release": true,
           "unsafe_release_distance_m": 28.0,
           "unsafe_release_ttc_sec": 2.5,
@@ -98,7 +89,6 @@
           "pit_slow_speed_threshold_kmh": 20.0
         },
         "pace_notes": {
-          "enabled": true,
           "enable_brake": true,
           "enable_turn_in": true,
           "enable_turn": true,
@@ -108,7 +98,6 @@
           "max_lead_distance_m": 75.0
         },
         "traffic_jam": {
-          "enabled": true,
           "enable_ref_lap_filter": true,
           "domain_speed_tolerance_kmh": 30.0,
           "slow_speed_threshold_kmh": 50.0,
@@ -116,10 +105,17 @@
           "cooldown_sec": 8.0
         },
         "lap_validity": {
-          "enabled": true,
           "busy_duration_sec": 1.8
         }
-      }
+      },
+      "subplugin_order": [
+        "traffic_spotter",
+        "fight_spotter",
+        "pitlane_spotter",
+        "pace_notes",
+        "traffic_jam",
+        "lap_validity"
+      ]
     }
   }
 }

@@ -27,7 +27,7 @@ except ImportError:
         height: float = 0.0
 
 
-class HudSlot(Enum):
+class HudSlot(str, Enum):
     """Predefined screen layout slots for HUD Overlay Compositor."""
     TOP_LEFT = "top_left"
     TOP_CENTER = "top_center"

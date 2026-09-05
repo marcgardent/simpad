@@ -175,3 +175,33 @@ def test_race_engineer_subplugin_order_without_priority(tmp_path):
     roles_dict = exported["roles"]
     for role_id, role_cfg in roles_dict.items():
         assert "priority" not in role_cfg, f"Role '{role_id}' must NOT contain 'priority' in serialized config"
+
+
+def test_plugin_config_with_hud_slot_serialization(tmp_path):
+    """Verify plugins with HudSlot and Enums serialize cleanly to JSON and deserialize back."""
+    from simpulse_sdk import HudSlot
+
+    @dataclass
+    class HudWidgetTestConfig:
+        slot: HudSlot = HudSlot.COCKPIT_CENTER
+        opacity: float = 0.85
+
+    config_file = tmp_path / "config.json"
+    mgr = ConfigManager(config_file=config_file)
+
+    # Save a dataclass containing a HudSlot Enum
+    widget_cfg = HudWidgetTestConfig(slot=HudSlot.TOP_RIGHT, opacity=0.9)
+    mgr.set_plugin_config_from("hud_widget_test", widget_cfg, auto_save=True)
+
+    # Verify JSON file on disk was written without errors and contains string value
+    raw_text = config_file.read_text(encoding="utf-8")
+    parsed = json.loads(raw_text)
+    assert parsed["plugins"]["hud_widget_test"]["slot"] == "top_right"
+    assert parsed["plugins"]["hud_widget_test"]["opacity"] == 0.9
+
+    # Reload in a new manager instance and verify typed config restores HudSlot
+    mgr2 = ConfigManager(config_file=config_file)
+    restored = mgr2.get_plugin_config_as("hud_widget_test", HudWidgetTestConfig)
+    assert isinstance(restored.slot, HudSlot)
+    assert restored.slot == HudSlot.TOP_RIGHT
+    assert restored.opacity == 0.9

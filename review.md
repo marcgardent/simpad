@@ -72,7 +72,15 @@ Option en argument :
 def get_instance(cls) -> "TelemetryStateStore":
 
 
-
-
 if TYPE_CHECKING:
     from ..models.context import EngineerContext
+
+
+
+# Layout 
+
+* Plugin Inspector à droite
+* Race engineer > afficher la liste complete des audios
+* Changer le titre de l'ui ! SimPulse
+* Faire un mode IDLE de l'UI quand le jeu video est en Live, overlay actif. Pour consommer moins de ressource.
+
