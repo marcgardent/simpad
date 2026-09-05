@@ -2,7 +2,7 @@ import socket
 import threading
 import time
 import logging
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Callable, Union
 
 from isimotor_rawudp_client import (
     IsiMotorClient,
@@ -18,6 +18,7 @@ from isimotor_rawudp_client import (
     WeatherControlCommand,
 )
 
+from simpad_qt.core.telemetry_channels import TelemetryPayload
 from .lmu_parser import LMUParser, TelemetryData
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class UDPServer:
         host: str = "0.0.0.0",
         port: int = 5000,
         target_port: int = 5001,
-        packet_listener: Optional[Any] = None,
+        packet_listener: Optional[Callable[[str, Optional[TelemetryPayload], int], None]] = None,
     ):
         self.host = host
         self.port = port
@@ -146,7 +147,7 @@ class UDPServer:
                 else:
                     self._latest_data = snap
 
-        def _handle_packet(pkt: Any):
+        def _handle_packet(pkt: Union[ForceFeedback, WeatherControl, Graphics, ExtendedState]):
             # Internal handling of packet (FFB, Weather, Graphics, ExtendedState) without polluting physics stream
             LMUParser.process_packet(pkt)
 
@@ -213,19 +214,19 @@ class UDPServer:
                     return self._latest_data
             return None
 
-    def get_latest_telemetry(self) -> Optional[Any]:
+    def get_latest_telemetry(self) -> Optional[TelemInfo]:
         """Returns latest TelemInfo packet received."""
         if self._client:
             return self._client.get_latest_telemetry() or LMUParser.get_latest_telemetry_info()
         return LMUParser.get_latest_telemetry_info()
 
-    def get_latest_scoring(self) -> Optional[Any]:
+    def get_latest_scoring(self) -> Optional[CompactScoring]:
         """Returns latest CompactScoring packet received."""
         if self._client:
             return self._client.get_latest_scoring() or LMUParser.get_latest_compact_scoring()
         return LMUParser.get_latest_compact_scoring()
 
-    def get_latest_full_scoring(self) -> Optional[Any]:
+    def get_latest_full_scoring(self) -> Optional[FullScoringSession]:
         """Returns latest FullScoringSession packet received."""
         if self._client:
             return self._client.get_latest_full_scoring() or LMUParser.get_latest_full_scoring()
@@ -238,7 +239,12 @@ class UDPServer:
 
     # ── Outbound Control API ──────────────────────────────────────────────────
 
-    def send_hw_control(self, command: Any, control_value: float = 1.0, duration_ms: int = 50) -> None:
+    def send_hw_control(
+        self,
+        command: Union[HWControlCommand, str],
+        control_value: float = 1.0,
+        duration_ms: int = 50,
+    ) -> None:
         """Sends a hardware control command (HWControlCommand or str) to the simulator."""
         if not self._client:
             return
@@ -255,7 +261,11 @@ class UDPServer:
                 duration_ms=duration_ms,
             )
 
-    def send_weather_override(self, command: Any = None, **kwargs) -> None:
+    def send_weather_override(
+        self,
+        command: Optional[Union[WeatherControlCommand, Dict[str, Union[float, int, bool]]]] = None,
+        **kwargs: Union[float, int, bool],
+    ) -> None:
         """Sends a weather override command (WeatherControlCommand or kwargs) to the simulator."""
         if not self._client:
             return

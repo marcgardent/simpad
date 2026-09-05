@@ -4,7 +4,7 @@ Exclusively implements the official binary SIMP standard protocol via isimotor_r
 """
 
 from dataclasses import dataclass
-from typing import Tuple, Optional, Any, Union
+from typing import Tuple, Optional, Union
 import logging
 
 from isimotor_rawudp_client import (
@@ -255,7 +255,7 @@ class LMUParser:
         return cls._last_telem_info
 
     @classmethod
-    def to_vehicle_sensors(cls, data: Any) -> VehicleSensors:
+    def to_vehicle_sensors(cls, data: Union[VehicleSensors, TelemetryData, TelemInfo]) -> VehicleSensors:
         """Convert a TelemInfo or TelemetryData instance into VehicleSensors."""
         if isinstance(data, VehicleSensors):
             return data
@@ -297,7 +297,7 @@ class LMUParser:
 
     @classmethod
     def _update_player_sector_times_from_model(
-        cls, player_veh: Any, session_bests: Tuple[float, float, float]
+        cls, player_veh: VehicleScoring, session_bests: Tuple[float, float, float]
     ) -> None:
         """Helper to extract individual sector times and color coding from VehicleScoring."""
         session_best_s1, session_best_s2_indiv, session_best_s3_indiv = session_bests
@@ -702,7 +702,10 @@ class LMUParser:
         return cls._build_telemetry_snapshot()
 
     @classmethod
-    def process_packet(cls, pkt: Any) -> Optional[TelemetryData]:
+    def process_packet(
+        cls,
+        pkt: Union[TelemInfo, CompactScoring, FullScoringSession, SystemEvent, ExtendedState, ForceFeedback, Graphics, WeatherControl, None],
+    ) -> Optional[TelemetryData]:
         """Routes any isimotor_rawudp_client domain packet to corresponding specialized method."""
         if isinstance(pkt, TelemInfo):
             return cls.process_telemetry(pkt)

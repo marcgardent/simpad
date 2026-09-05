@@ -5,7 +5,8 @@ SimPad Loader — Dynamic cross-platform loading of the SDL3 library.
 import ctypes
 import ctypes.util
 import logging
-from typing import Optional, Any, Tuple
+import types
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,11 @@ class SDL3Loader:
       2. System library via ctypes.util.find_library("SDL3")
     """
 
-    _sdl_module: Optional[Any] = None
+    _sdl_module: Optional[types.ModuleType] = None
     _sdl_cdll: Optional[ctypes.CDLL] = None
 
     @classmethod
-    def load(cls) -> Tuple[Optional[Any], Optional[ctypes.CDLL]]:
+    def load(cls) -> Tuple[Optional[types.ModuleType], Optional[ctypes.CDLL]]:
         """
         Attempts to load SDL3.
         Returns a tuple (sdl_module, cdll_handle).

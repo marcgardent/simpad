@@ -51,6 +51,6 @@ getattr(
 isinstance(
 Any
 Option
-
+ __getitem__, get() et to_dict() 
 
 supprimer le lerp dans les overlay c'est chiant visuelement ca donne une impression de molesse.

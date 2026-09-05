@@ -9,7 +9,7 @@ import sys
 import ctypes
 import threading
 import logging
-from typing import Optional, Any
+from typing import Optional
 
 from .base import HapticController
 from .sdl3_controller import SDL3HapticController
@@ -70,11 +70,11 @@ class NativeWindowsXInputController(HapticController):
         self.right_low = 0.0
         self.right_high = 0.0
 
-        self._dll: Optional[Any] = self._load_xinput_dll()
+        self._dll: Optional[ctypes.CDLL] = self._load_xinput_dll()
         self._connected = False
         self._gamepad_name = f"Xbox Controller (XInput Slot {device_index + 1})"
 
-    def _load_xinput_dll(self) -> Optional[Any]:
+    def _load_xinput_dll(self) -> Optional[ctypes.CDLL]:
         if sys.platform != "win32":
             return None
         for dll_name in ("xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"):

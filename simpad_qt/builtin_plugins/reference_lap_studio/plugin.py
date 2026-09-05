@@ -15,7 +15,7 @@ import time
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List, Tuple
 
 from PySide6.QtCore import Qt, QSize, QRectF, QPointF, Signal
 from PySide6.QtGui import (

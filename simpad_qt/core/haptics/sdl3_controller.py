@@ -8,7 +8,7 @@ import time
 import ctypes
 import threading
 import logging
-from typing import Optional, Any
+from typing import Optional, Union
 
 from .base import HapticController
 from .loader import SDL3Loader
@@ -48,7 +48,7 @@ class SDL3HapticController(HapticController):
         self._running = False
         self._sdl_mod = None
         self._sdl_cdll = None
-        self._gamepad: Optional[Any] = None
+        self._gamepad: Optional[Union[ctypes.c_void_p, int]] = None
         self._gamepad_name = "No Gamepad"
 
         self._init_sdl()

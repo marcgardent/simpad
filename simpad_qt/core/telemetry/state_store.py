@@ -9,7 +9,7 @@ import time
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -21,6 +21,8 @@ from isimotor_rawudp_client import (
     Graphics,
     SystemEvent,
 )
+
+T = TypeVar("T")
 
 
 class TelemetryWakeReason(Enum):
@@ -36,9 +38,9 @@ class TelemetryWakeReason(Enum):
 
 
 @dataclass
-class PacketSlot:
+class PacketSlot(Generic[T]):
     """A slot holding the latest received raw data packet and its arrival timestamp."""
-    data: Any = None
+    data: Optional[T] = None
     timestamp: float = 0.0
     sequence_id: int = 0
 
@@ -53,7 +55,7 @@ class PacketSlot:
         """Returns True if the cached packet was received within max_age_sec."""
         return self.data is not None and self.age_sec <= max_age_sec
 
-    def update(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update(self, data: Optional[T], timestamp: Optional[float] = None) -> None:
         """Updates slot with new packet data."""
         self.data = data
         self.timestamp = timestamp if timestamp is not None else time.time()
@@ -193,7 +195,7 @@ class TelemetryStateStore:
             self._hit_lap_reference = None
             self._recalculate_cache()
 
-    def _process_lap_validity(self, raw_flag: Any, timestamp: Optional[float] = None) -> None:
+    def _process_lap_validity(self, raw_flag: Optional[Union[int, float, str]], timestamp: Optional[float] = None) -> None:
         """
         Authoritative 100% stateless lap validity & timing transition processor:
         - Maintains is_lap_valid (flag == 2) and is_lap_invalid (flag in (0, 1))
@@ -373,36 +375,44 @@ class TelemetryStateStore:
         with self._mutex:
             self.system.update(data, timestamp)
 
-    def update_system_events(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_system_events(self, data: Optional[SystemEvent], timestamp: Optional[float] = None) -> None:
         """Ingests system session / cockpit event (plural alias)."""
         self.update_system_event(data, timestamp)
 
-    def update_opponent_telemetry(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_opponent_telemetry(self, data: Optional[TelemInfo], timestamp: Optional[float] = None) -> None:
         """Ingests opponent vehicle dynamics."""
         with self._mutex:
             self.opponent_telemetry.update(data, timestamp)
 
-    def update_extended_state(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_extended_state(self, data: Optional[ExtendedState], timestamp: Optional[float] = None) -> None:
         """Ingests extended vehicle state (lights, wipers, ignition, flags)."""
         with self._mutex:
             self.extended_state.update(data, timestamp)
 
-    def update_force_feedback(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_force_feedback(self, data: Optional[ForceFeedback], timestamp: Optional[float] = None) -> None:
         """Ingests force feedback packet."""
         with self._mutex:
             self.force_feedback.update(data, timestamp)
 
-    def update_graphics(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_graphics(self, data: Optional[Graphics], timestamp: Optional[float] = None) -> None:
         """Ingests camera / graphics telemetry frame."""
         with self._mutex:
             self.graphics.update(data, timestamp)
 
-    def update_track_rules(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_track_rules(
+        self,
+        data: Optional[Union[bytes, Dict[str, Union[str, int, float, bool, None]]]],
+        timestamp: Optional[float] = None,
+    ) -> None:
         """Ingests track rules / flag conditions."""
         with self._mutex:
             self.track_rules.update(data, timestamp)
 
-    def update_pit_menu(self, data: Any, timestamp: Optional[float] = None) -> None:
+    def update_pit_menu(
+        self,
+        data: Optional[Union[bytes, Dict[str, Union[str, int, float, bool, None]]]],
+        timestamp: Optional[float] = None,
+    ) -> None:
         """Ingests pit strategy menu state."""
         with self._mutex:
             self.pit_menu.update(data, timestamp)

@@ -6,7 +6,7 @@ Zero vibration while cruising; proportional vibration only on lock, spin, overst
 
 import math
 from dataclasses import dataclass
-from typing import Tuple, Optional, Any, Union
+from typing import Tuple, Optional, Union, Dict
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -404,7 +404,7 @@ class VehicleSensors:
     def from_telem_info(
         cls,
         telem: "TelemInfo",
-        scoring: Optional[Any] = None,
+        scoring: Optional[Union[CompactScoring, FullScoringSession, Dict[str, Union[int, float, str, bool]]]] = None,
         delta_time: float = 0.0,
         estimated_lap_time: float = 0.0,
         estimated_lap_time_str: str = "--:--.---",

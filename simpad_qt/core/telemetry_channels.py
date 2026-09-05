@@ -7,7 +7,32 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Union
+
+from isimotor_rawudp_client import (
+    TelemInfo,
+    CompactScoring,
+    FullScoringSession,
+    WeatherControl,
+    ExtendedState,
+    ForceFeedback,
+    Graphics,
+    SystemEvent,
+)
+
+TelemetryPayload = Union[
+    TelemInfo,
+    CompactScoring,
+    FullScoringSession,
+    WeatherControl,
+    ExtendedState,
+    ForceFeedback,
+    Graphics,
+    SystemEvent,
+    bytes,
+    Dict[str, Union[str, int, float, bool, None]],
+    None,
+]
 
 
 class TelemetryChannel(Enum):
@@ -107,7 +132,7 @@ class ChannelMetrics:
 class TelemetryRawPacket:
     """Strongly-typed packet wrapper dispatched from UDP server to plugins."""
     channel: TelemetryChannel
-    data: Any
+    data: TelemetryPayload
     raw_bytes_len: int = 0
     timestamp: float = field(default_factory=time.time)
 

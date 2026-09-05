@@ -11,7 +11,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict, is_dataclass
 from enum import Enum, auto
-from typing import Dict, Any, Optional, Tuple, Protocol, TypeVar, Type, List, runtime_checkable, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, Protocol, TypeVar, Type, List, runtime_checkable, TYPE_CHECKING
 
 from PySide6.QtCore import QSize, QRectF
 from PySide6.QtGui import QPainter

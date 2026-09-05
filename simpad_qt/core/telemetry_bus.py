@@ -9,7 +9,7 @@ import time
 import logging
 from collections import deque
 from enum import Enum
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Union, TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal, QTimer
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ from simpad_qt.core.telemetry import (
     LMUParser,
 )
 from simpad_qt.core.telemetry_channels import (
-    TelemetryChannel, ChannelMetrics, TelemetryRawPacket
+    TelemetryChannel, ChannelMetrics, TelemetryRawPacket, TelemetryPayload
 )
 from simpad_qt.core.reference_lap import ReferenceLapManager, LapDeltaPacket
 from simpad_qt.core.mock_telemetry import MockTelemetryGenerator
@@ -189,7 +189,12 @@ class TelemetryBus(QObject):
             logger.info("Stopped live UDP telemetry listener.")
             self._check_status_change()
 
-    def _on_udp_packet_received(self, channel_str_or_enum: Any, packet_data: Any, raw_bytes_len: int) -> None:
+    def _on_udp_packet_received(
+        self,
+        channel_str_or_enum: Union[TelemetryChannel, str],
+        packet_data: TelemetryPayload,
+        raw_bytes_len: int,
+    ) -> None:
         """Callback invoked by UDPServer whenever a decoded UDP packet arrives from the game."""
         if isinstance(channel_str_or_enum, TelemetryChannel):
             channel = channel_str_or_enum
@@ -204,7 +209,7 @@ class TelemetryBus(QObject):
     def process_raw_packet(
         self,
         channel: TelemetryChannel,
-        data: Any,
+        data: TelemetryPayload,
         raw_bytes_len: int,
         override_sensors: Optional[VehicleSensors] = None,
     ) -> None:

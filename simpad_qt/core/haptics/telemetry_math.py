@@ -5,7 +5,7 @@ Understeer, Engine Regime, Curbs/Travel, Tire Grip) to drive haptic effects.
 """
 
 from __future__ import annotations
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict
 from .math_engine import clamp
 from ..telemetry.sensors import VehicleSensors
 

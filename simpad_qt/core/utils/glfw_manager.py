@@ -4,9 +4,10 @@ Provides cross-platform window management, screen resolution queries,
 and transparent overlay window creation using GLFW.
 """
 
+from __future__ import annotations
 import sys
 import logging
-from typing import Tuple, Optional, Any
+from typing import Tuple, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class GLFWWindowManager:
         height: int = 600,
         title: str = "SimPad GLFW Overlay",
         visible: bool = True
-    ) -> Optional[Any]:
+    ) -> Optional[glfw._GLFWwindow]:
         """
         Creates a GLFW overlay window (Borderless, Always-On-Top, Transparent Framebuffer, NO_API).
         """

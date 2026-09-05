@@ -7,7 +7,7 @@ Outputs structured, human-readable logs to 'track_limits_debug.log'.
 import time
 import os
 import threading
-from typing import Optional, Any
+from typing import Optional
 
 
 class TrackLimitsLogger:
