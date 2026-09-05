@@ -7,7 +7,7 @@ Outputs structured, human-readable logs to 'track_limits_debug.log'.
 import time
 import os
 import threading
-from typing import Optional
+from typing import Optional, Self
 
 
 class TrackLimitsLogger:
@@ -17,7 +17,7 @@ class TrackLimitsLogger:
     Explicitly tracks Race Control color levels (GREEN, YELLOW, ORANGE, RED).
     """
 
-    _instance: Optional["TrackLimitsLogger"] = None
+    _instance: Optional[Self] = None
     _lock = threading.Lock()
     _header_written: bool = False
     default_enabled: bool = True
@@ -55,7 +55,7 @@ class TrackLimitsLogger:
             print(f"[TrackLimitsLogger] Error opening log {self.log_path}: {e}")
 
     @classmethod
-    def get_instance(cls) -> "TrackLimitsLogger":
+    def get_instance(cls) -> Self:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
@@ -237,7 +237,7 @@ class TrackLimitsLogger:
         lap_flag: int = 2,
     ) -> None:
         """
-        Logs strictly event-driven transitions between ON-TRACK (route) and OFF-TRACK (hors-piste) surfaces.
+        Logs strictly event-driven transitions between ON-TRACK (road) and OFF-TRACK (off-track) surfaces.
         Suppresses all identical frames.
         """
         if not self.enabled or self._log_file is None:

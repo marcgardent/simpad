@@ -4,9 +4,11 @@ Normalizes raw wheel velocities into dimensionless physical slip ratios (0.0 to 
 Zero vibration while cruising; proportional vibration only on lock, spin, oversteer, or understeer.
 """
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
-from typing import Tuple, Optional, Union, Dict
+from typing import Tuple, Optional, Union, Dict, Self
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -195,7 +197,7 @@ class VehicleSensors:
         wheels_on_track: int = 4,
         surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0),
         terrain_names: Tuple[str, str, str, str] = ("", "", "", ""),
-    ) -> "VehicleSensors":
+    ) -> Self:
 
         ut_f = max(0.0, min(1.0, float(unfiltered_throttle)))
         ub_f = max(0.0, min(1.0, float(unfiltered_brake)))
@@ -403,7 +405,7 @@ class VehicleSensors:
     @classmethod
     def from_telem_info(
         cls,
-        telem: "TelemInfo",
+        telem: TelemInfo,
         scoring: Optional[Union[CompactScoring, FullScoringSession, Dict[str, Union[int, float, str, bool]]]] = None,
         delta_time: float = 0.0,
         estimated_lap_time: float = 0.0,
@@ -428,7 +430,7 @@ class VehicleSensors:
         last_lap_status: str = "default",
         is_lap_freeze_active: bool = False,
         in_realtime: bool = True,
-    ) -> "VehicleSensors":
+    ) -> Self:
         """Instantiates a VehicleSensors object directly from a binary TelemInfo packet of isimotor_rawudp_client."""
         wheels = telem.wheels
         if wheels and len(wheels) >= 4:

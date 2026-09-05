@@ -3,6 +3,7 @@ Unit Tests for TelemetryStateStore Hit Tracking, Clean/Dirty Lap Calculation,
 and QtLapStatusWidget Rendering.
 """
 
+import time
 import unittest
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
@@ -31,12 +32,13 @@ class TestHitAndCleanLap(unittest.TestCase):
         self.assertFalse(self.store.is_dirty_lap)
 
     def test_impact_detection_increments_hit_counter_and_dirties_lap(self):
-        self.store.update_lap_validity(2)
+        now = time.time()
+        self.store.update_lap_validity(2, timestamp=now)
         self.assertTrue(self.store.is_clean_lap)
 
         # Impact 1 at 10.5s
         t1 = TelemInfo(lap_number=1, last_impact_et=10.5)
-        self.store.update_telemetry(t1)
+        self.store.update_telemetry(t1, timestamp=now)
         self.assertEqual(self.store.hit_count_current_lap, 1)
         self.assertFalse(self.store.is_clean_lap)
         self.assertTrue(self.store.is_dirty_lap)
@@ -44,40 +46,42 @@ class TestHitAndCleanLap(unittest.TestCase):
 
         # Duplicate frame with same impact timestamp: no increment
         t2 = TelemInfo(lap_number=1, last_impact_et=10.5)
-        self.store.update_telemetry(t2)
+        self.store.update_telemetry(t2, timestamp=now + 0.01)
         self.assertEqual(self.store.hit_count_current_lap, 1)
 
         # Impact 2 at 15.8s
         t3 = TelemInfo(lap_number=1, last_impact_et=15.8)
-        self.store.update_telemetry(t3)
+        self.store.update_telemetry(t3, timestamp=now + 0.02)
         self.assertEqual(self.store.hit_count_current_lap, 2)
         self.assertFalse(self.store.is_clean_lap)
 
     def test_lap_change_resets_hit_counter_and_restores_clean_lap(self):
-        self.store.update_lap_validity(2)
+        now = time.time()
+        self.store.update_lap_validity(2, timestamp=now)
 
         # Lap 1 with impact
         t1 = TelemInfo(lap_number=1, last_impact_et=10.5)
-        self.store.update_telemetry(t1)
+        self.store.update_telemetry(t1, timestamp=now)
         self.assertEqual(self.store.hit_count_current_lap, 1)
         self.assertFalse(self.store.is_clean_lap)
 
         # Lap 2 begins (lap_number changes from 1 to 2)
         t2 = TelemInfo(lap_number=2, last_impact_et=10.5)
-        self.store.update_telemetry(t2)
+        self.store.update_telemetry(t2, timestamp=now + 1.0)
         self.assertEqual(self.store.hit_count_current_lap, 0)
         self.assertTrue(self.store.is_clean_lap)
         self.assertEqual(self.store.clean_lap_status, "clean")
 
     def test_invalid_lap_is_dirty_even_with_zero_hits(self):
+        now = time.time()
         # Lap flag 0 = time deleted
-        self.store.update_lap_validity(0)
+        self.store.update_lap_validity(0, timestamp=now)
         self.assertEqual(self.store.hit_count_current_lap, 0)
         self.assertFalse(self.store.is_clean_lap)
         self.assertTrue(self.store.is_dirty_lap)
 
         # Lap flag 2 = restored valid
-        self.store.update_lap_validity(2)
+        self.store.update_lap_validity(2, timestamp=now + 0.5)
         self.assertTrue(self.store.is_clean_lap)
 
     def test_lap_status_widget_paint_both_states(self):

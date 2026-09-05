@@ -8,7 +8,7 @@ Outputs to 'hud_overlay_glitch.log' and prints to stdout with [HUD-GLITCH-ALERT]
 import time
 import os
 import threading
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, Self
 from pathlib import Path
 
 LogDetailValue = Union[str, int, float, bool]
@@ -22,7 +22,7 @@ class OverlayAnomalyLogger:
     High-visibility audit and diagnostic logger for HUD / Overlay anomalies.
     """
 
-    _instance: Optional["OverlayAnomalyLogger"] = None
+    _instance: Optional[Self] = None
     _lock = threading.Lock()
     default_enabled: bool = True
 
@@ -46,7 +46,7 @@ class OverlayAnomalyLogger:
             print(f"[OverlayAnomalyLogger] Error opening log file: {e}", flush=True)
 
     @classmethod
-    def get_instance(cls) -> "OverlayAnomalyLogger":
+    def get_instance(cls) -> Self:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()

@@ -16,7 +16,7 @@ import subprocess
 import urllib.request
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Tuple, Set, Callable, Union
+from typing import Dict, List, Optional, Tuple, Set, Callable, Union, Self
 
 from simpad_qt.core.utils.audio import AudioAnnouncer
 
@@ -103,7 +103,7 @@ class RaceSetupConfig:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, SetupConfigScalar]) -> "RaceSetupConfig":
+    def from_dict(cls, data: Dict[str, SetupConfigScalar]) -> Self:
         # Backward compatibility with legacy configuration keys
         mapped_data = dict(data)
         if "race_id" in mapped_data and "setup_id" not in mapped_data:

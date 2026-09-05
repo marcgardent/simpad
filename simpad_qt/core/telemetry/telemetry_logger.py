@@ -6,7 +6,7 @@ Outputs structured tabular traces to 'telemetry_live.log' for deep diagnostics a
 
 import time
 import os
-from typing import Optional
+from typing import Optional, Self
 from .sensors import VehicleSensors
 
 
@@ -16,7 +16,7 @@ class TelemetryDiagnosticLogger:
     Logs wheel velocities, slip, lock, raw vs filtered pedals, and ECU signals.
     """
 
-    _instance: Optional["TelemetryDiagnosticLogger"] = None
+    _instance: Optional[Self] = None
 
     def __init__(self, log_path: str = "telemetry_live.log", sample_interval_sec: float = 0.10):
         self.log_path = log_path
@@ -43,7 +43,7 @@ class TelemetryDiagnosticLogger:
             print(f"[TelemetryDiagnosticLogger] Error opening file: {e}")
 
     @classmethod
-    def get_instance(cls) -> "TelemetryDiagnosticLogger":
+    def get_instance(cls) -> Self:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

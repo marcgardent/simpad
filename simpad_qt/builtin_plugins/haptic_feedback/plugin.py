@@ -110,7 +110,7 @@ class SubpluginListItemWidget(QWidget):
 class HapticFeedbackWidget(QWidget):
     """Main Studio Console Tab for configuring XInput Haptic Feedback and Subplugins."""
 
-    def __init__(self, plugin: "HapticFeedbackPlugin", parent: Optional[QWidget] = None):
+    def __init__(self, plugin: HapticFeedbackPlugin, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.plugin = plugin
         self._selected_subplugin_id: Optional[str] = None

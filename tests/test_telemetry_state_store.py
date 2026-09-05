@@ -48,6 +48,7 @@ class TestTelemetryStateStore(unittest.TestCase):
     def test_unified_state_cross_channel_sync(self):
         """Verify 120Hz TelemInfo and 10Hz CompactScoring combine into unified state without data loss."""
         # 1. TelemInfo arrives: 4 wheels in grass (surface_type=2)
+        now = time.time()
         wheels = [
             TelemWheel(surface_type=2, terrain_name="GRAS"),
             TelemWheel(surface_type=2, terrain_name="GRAS"),
@@ -60,7 +61,7 @@ class TestTelemetryStateStore(unittest.TestCase):
             unfiltered_throttle=0.0,
             unfiltered_brake=0.5,
         )
-        self.store.update_telemetry(telem)
+        self.store.update_telemetry(telem, timestamp=now)
 
         # Store properties should reflect grass excursion
         self.assertEqual(self.store.wheels_on_track, 0)
@@ -71,7 +72,7 @@ class TestTelemetryStateStore(unittest.TestCase):
 
         # 2. CompactScoring arrives 20ms later (has no wheels!)
         compact = CompactScoring(count_lap_flag=1, total_laps=5, sector=2, in_realtime=1)
-        self.store.update_compact_scoring(compact)
+        self.store.update_compact_scoring(compact, timestamp=now + 0.02)
 
         # wheels_on_track MUST STILL BE 0 (NOT 4!), and lap_flag MUST BE 1
         self.assertEqual(self.store.wheels_on_track, 0)
@@ -88,7 +89,7 @@ class TestTelemetryStateStore(unittest.TestCase):
             TelemWheel(surface_type=0, terrain_name="ROAD"),
         ]
         telem2 = TelemInfo(wheels=road_wheels, local_vel=TelemVect3(x=0.0, y=0.0, z=40.0))
-        self.store.update_telemetry(telem2)
+        self.store.update_telemetry(telem2, timestamp=now + 0.04)
 
         self.assertEqual(self.store.wheels_on_track, 4)
         self.assertTrue(self.store.is_on_track)
@@ -234,7 +235,8 @@ class TestTelemetryStateStore(unittest.TestCase):
         self.assertEqual(telem.gear, 4)
 
         # 2. Test ingestion of strongly-typed TelemInfo in TelemetryStateStore
-        self.store.update_telemetry(telem)
+        now = time.time()
+        self.store.update_telemetry(telem, timestamp=now)
         self.assertAlmostEqual(self.store._last_speed_kmh, 180.0, places=1)
         self.assertEqual(self.store._last_gear, 4)
         self.assertEqual(self.store._last_wheels_on_track, 4)
@@ -242,9 +244,9 @@ class TestTelemetryStateStore(unittest.TestCase):
 
         # 3. Test ingestion of strongly-typed scoring handlers
         compact = CompactScoring(sector=2, in_realtime=True, count_lap_flag=2)
-        self.store.update_compact_scoring(compact)
+        self.store.update_compact_scoring(compact, timestamp=now + 0.01)
         self.assertEqual(self.store._last_current_sector, 2)
-        self.store.update_full_scoring(FullScoringSession())
+        self.store.update_full_scoring(FullScoringSession(), timestamp=now + 0.02)
 
         # 4. Test TelemetryBus mock execution
         pm = PluginManager(config_manager=ConfigManager())

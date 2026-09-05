@@ -58,7 +58,7 @@ IGNORE_DIRS = {
 }
 
 IGNORE_FILES = {
-    "french_drift.py"
+    "french_drift.py", "lint_oop_evil.py"
 }
 
 IGNORE_EXTENSIONS = {
@@ -162,7 +162,8 @@ def scan_directory(root_dir: Path, target_extensions: Set[str]) -> List[FileDrif
             if fpath.suffix.lower() in IGNORE_EXTENSIONS:
                 continue
             if target_extensions and fpath.suffix.lower() not in target_extensions:
-                continue
+                if fpath.name != "Makefile":
+                    continue
 
             rep = scan_file(fpath)
             if rep.total_occurrences > 0:
@@ -238,8 +239,8 @@ def main():
     parser.add_argument(
         "paths",
         nargs="*",
-        default=["simpad_qt", "scripts", "main_qt.py"],
-        help="Paths to scan (default: simpad_qt, scripts, main_qt.py)"
+        default=["simpad_qt", "scripts", "main_qt.py", "Makefile"],
+        help="Paths to scan (default: simpad_qt, scripts, main_qt.py, Makefile)"
     )
     parser.add_argument(
         "-s", "--summary-only",

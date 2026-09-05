@@ -4,6 +4,8 @@ Provides type descriptors for role parameters (BoolParam, IntRangeParam, FloatRa
 SOLID architecture (SRP, OCP, LSP).
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, List, Callable, Generic, TypeVar, Union, TYPE_CHECKING
@@ -35,10 +37,10 @@ class RoleParam(ABC, Generic[T]):
 
     def create_widget(
         self,
-        parent: Optional["QWidget"],
+        parent: Optional[QWidget],
         current_value: Optional[ParamScalarValue],
         on_change: Callable[..., None],
-    ) -> Optional["QWidget"]:
+    ) -> Optional[QWidget]:
         """Polymorphic widget factory for Qt UI. Returns configured QWidget."""
         return None
 
@@ -57,10 +59,10 @@ class BoolParam(RoleParam[bool]):
 
     def create_widget(
         self,
-        parent: Optional["QWidget"],
+        parent: Optional[QWidget],
         current_value: Optional[ParamScalarValue],
         on_change: Callable[..., None],
-    ) -> "QWidget":
+    ) -> QWidget:
         from PySide6.QtWidgets import QCheckBox
         chk = QCheckBox(parent)
         val = self.default if current_value is None else current_value
@@ -87,10 +89,10 @@ class IntRangeParam(RoleParam[int]):
 
     def create_widget(
         self,
-        parent: Optional["QWidget"],
+        parent: Optional[QWidget],
         current_value: Optional[ParamScalarValue],
         on_change: Callable[..., None],
-    ) -> "QWidget":
+    ) -> QWidget:
         from PySide6.QtWidgets import QSpinBox
         spin = QSpinBox(parent)
         spin.setRange(self.min_val, self.max_val)
@@ -122,10 +124,10 @@ class FloatRangeParam(RoleParam[float]):
 
     def create_widget(
         self,
-        parent: Optional["QWidget"],
+        parent: Optional[QWidget],
         current_value: Optional[ParamScalarValue],
         on_change: Callable[..., None],
-    ) -> "QWidget":
+    ) -> QWidget:
         from PySide6.QtWidgets import QDoubleSpinBox
         spin = QDoubleSpinBox(parent)
         spin.setRange(self.min_val, self.max_val)
@@ -158,10 +160,10 @@ class ChoiceParam(RoleParam[str]):
 
     def create_widget(
         self,
-        parent: Optional["QWidget"],
+        parent: Optional[QWidget],
         current_value: Optional[ParamScalarValue],
         on_change: Callable[..., None],
-    ) -> "QWidget":
+    ) -> QWidget:
         from PySide6.QtWidgets import QComboBox
         combo = QComboBox(parent)
         if self.choices:

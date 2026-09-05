@@ -9,7 +9,7 @@ import time
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union, Self
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -55,10 +55,10 @@ class PacketSlot(Generic[T]):
         """Returns True if the cached packet was received within max_age_sec."""
         return self.data is not None and self.age_sec <= max_age_sec
 
-    def update(self, data: T, timestamp: Optional[float] = None) -> None:
+    def update(self, data: T, timestamp: float) -> None:
         """Updates slot with new packet data."""
         self.data = data
-        self.timestamp = timestamp if timestamp is not None else time.time()
+        self.timestamp = timestamp
         self.sequence_id += 1
 
 
@@ -68,7 +68,7 @@ class TelemetryStateStore:
     Preserves the latest known frame for every telemetry channel and provides
     unified cross-channel vehicle state without stale defaults or race conditions.
     """
-    _instance: Optional["TelemetryStateStore"] = None
+    _instance: Optional[Self] = None
     _lock = threading.RLock()
 
     def __init__(self):
@@ -126,7 +126,7 @@ class TelemetryStateStore:
         self._cache_hit_count: int = 0
 
     @classmethod
-    def get_instance(cls) -> "TelemetryStateStore":
+    def get_instance(cls) -> Self:
         """Singleton accessor for global telemetry state store."""
         with cls._lock:
             if cls._instance is None:
@@ -136,7 +136,7 @@ class TelemetryStateStore:
     def _recalculate_cache(self) -> None:
         """Recalculates clean/dirty lap cache based on timing status and hits in current lap."""
         self._cache_hit_count = self._hit_count_current_lap
-        # Clean Lap = tour chronométré (timing in progress <=> flag == 2) && 0 Hits
+        # Clean Lap = timed lap (timing in progress <=> flag == 2) && 0 Hits
         self._cache_is_clean_lap = (self._is_lap_valid and self._hit_count_current_lap == 0)
         self._cache_clean_lap_status = "clean" if self._cache_is_clean_lap else "dirty"
 
@@ -195,7 +195,7 @@ class TelemetryStateStore:
             self._hit_lap_reference = None
             self._recalculate_cache()
 
-    def _process_lap_validity(self, raw_flag: Union[int, float, str], timestamp: Optional[float] = None) -> None:
+    def _process_lap_validity(self, raw_flag: Union[int, float, str], timestamp: float) -> None:
         """
         Authoritative 100% stateless lap validity & timing transition processor:
         - Maintains is_lap_valid (flag == 2) and is_lap_invalid (flag in (0, 1))
@@ -267,7 +267,7 @@ class TelemetryStateStore:
 
     # ── Ingestion Handlers ───────────────────────────────────────────────────
 
-    def update_telemetry(self, data: TelemInfo, timestamp: Optional[float] = None) -> None:
+    def update_telemetry(self, data: TelemInfo, timestamp: float) -> None:
         """Ingests a 120Hz TelemInfo frame and updates physics state."""
         with self._mutex:
             self.telemetry.update(data, timestamp)
@@ -309,7 +309,7 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_compact_scoring(self, data: CompactScoring, timestamp: Optional[float] = None) -> None:
+    def update_compact_scoring(self, data: CompactScoring, timestamp: float) -> None:
         """Ingests a 10Hz CompactScoring frame and updates timing & lap flag state."""
         with self._mutex:
             self.compact_scoring.update(data, timestamp)
@@ -329,7 +329,7 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_full_scoring(self, data: FullScoringSession, timestamp: Optional[float] = None) -> None:
+    def update_full_scoring(self, data: FullScoringSession, timestamp: float) -> None:
         """Ingests a 2-5Hz FullScoringSession frame and updates grid, penalties & rule parameters."""
         with self._mutex:
             self.full_scoring.update(data, timestamp)
@@ -357,36 +357,36 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_weather(self, data: WeatherControl, timestamp: Optional[float] = None) -> None:
+    def update_weather(self, data: WeatherControl, timestamp: float) -> None:
         """Ingests weather packet."""
         with self._mutex:
             self.weather.update(data, timestamp)
 
-    def update_system_event(self, data: SystemEvent, timestamp: Optional[float] = None) -> None:
+    def update_system_event(self, data: SystemEvent, timestamp: float) -> None:
         """Ingests system session / cockpit event."""
         with self._mutex:
             self.system.update(data, timestamp)
 
-    def update_system_events(self, data: SystemEvent, timestamp: Optional[float] = None) -> None:
+    def update_system_events(self, data: SystemEvent, timestamp: float) -> None:
         """Ingests system session / cockpit event (plural alias)."""
         self.update_system_event(data, timestamp)
 
-    def update_opponent_telemetry(self, data: TelemInfo, timestamp: Optional[float] = None) -> None:
+    def update_opponent_telemetry(self, data: TelemInfo, timestamp: float) -> None:
         """Ingests opponent vehicle dynamics."""
         with self._mutex:
             self.opponent_telemetry.update(data, timestamp)
 
-    def update_extended_state(self, data: ExtendedState, timestamp: Optional[float] = None) -> None:
+    def update_extended_state(self, data: ExtendedState, timestamp: float) -> None:
         """Ingests extended vehicle state (lights, wipers, ignition, flags)."""
         with self._mutex:
             self.extended_state.update(data, timestamp)
 
-    def update_force_feedback(self, data: ForceFeedback, timestamp: Optional[float] = None) -> None:
+    def update_force_feedback(self, data: ForceFeedback, timestamp: float) -> None:
         """Ingests force feedback packet."""
         with self._mutex:
             self.force_feedback.update(data, timestamp)
 
-    def update_graphics(self, data: Graphics, timestamp: Optional[float] = None) -> None:
+    def update_graphics(self, data: Graphics, timestamp: float) -> None:
         """Ingests camera / graphics telemetry frame."""
         with self._mutex:
             self.graphics.update(data, timestamp)
@@ -394,7 +394,7 @@ class TelemetryStateStore:
     def update_track_rules(
         self,
         data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
-        timestamp: Optional[float] = None,
+        timestamp: float,
     ) -> None:
         """Ingests track rules / flag conditions."""
         with self._mutex:
@@ -403,13 +403,13 @@ class TelemetryStateStore:
     def update_pit_menu(
         self,
         data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
-        timestamp: Optional[float] = None,
+        timestamp: float,
     ) -> None:
         """Ingests pit strategy menu state."""
         with self._mutex:
             self.pit_menu.update(data, timestamp)
 
-    def update_lap_validity(self, flag: int, timestamp: Optional[float] = None) -> None:
+    def update_lap_validity(self, flag: int, timestamp: float) -> None:
         """Explicit update of authoritative lap validity flag."""
         with self._mutex:
             self._process_lap_validity(flag, timestamp)

@@ -30,7 +30,7 @@ A fusionner dans config.json verifier le binding de config.json completement ign
 
 ## French drift
 
-[Makefile](Makefile)
+- [x] [Makefile](Makefile) (translated to English and added `make french-drift` target)
 
 
 ## user_data
@@ -43,6 +43,10 @@ regrouper les data  utilisateur, et cache téléchargé
 * [isiMotor-RawUDP-Plugin](assets/plugins/isiMotor-RawUDP-Plugin)
 * [models](assets/models)
 
+
+## overlay
+
+supprimer le lerp dans les overlay c'est chiant visuelement ca donne une impression de molesse.
 
 ## cripy code
 
@@ -64,7 +68,9 @@ Option en argument :
   - soit suppresion de l'appel quand la data est pas disponible  
   - soit tu découpes en deux methodes un avec la data une sans la data
 
-
  __getitem__, get() et to_dict() 
+def get_instance(cls) -> "TelemetryStateStore":
 
-supprimer le lerp dans les overlay c'est chiant visuelement ca donne une impression de molesse.
+
+
+

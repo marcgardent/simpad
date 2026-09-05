@@ -4,6 +4,7 @@ Exclusively implements the official binary SIMP standard protocol via isimotor_r
 """
 
 from dataclasses import dataclass
+import time
 from typing import Tuple, Optional, Union
 import logging
 
@@ -483,7 +484,7 @@ class LMUParser:
                 sector=cls._last_current_sector,
                 lap_flag=cls._last_lap_flag,
             )
-            TelemetryStateStore.get_instance().update_telemetry(telem)
+            TelemetryStateStore.get_instance().update_telemetry(telem, timestamp=time.time())
         except Exception:
             pass
         return snap

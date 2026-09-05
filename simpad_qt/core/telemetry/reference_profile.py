@@ -14,7 +14,7 @@ from enum import Enum
 import json
 import logging
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple, Union
+from typing import Optional, List, Dict, Tuple, Union, Self
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -197,7 +197,7 @@ class TrackAnnotation:
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, AnnotationDictValue]) -> "TrackAnnotation":
+    def from_dict(cls, data: Dict[str, AnnotationDictValue]) -> Self:
         """Deserializes an annotation from a JSON dict."""
         raw_type = data.get("type", AnnotationType.BRAKE.value)
         try:
@@ -521,7 +521,7 @@ class ReferenceLapProfile:
 
     # ── Combined Loading (Telemetry + Marks) ──────────────────────────────────
     @classmethod
-    def load_from_file(cls, filepath: Path) -> Optional["ReferenceLapProfile"]:
+    def load_from_file(cls, filepath: Path) -> Optional[Self]:
         """
         Loads a reference profile from '.json' telemetry file
         and automatically loads annotations from the associated '.marks.json' file.
