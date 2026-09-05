@@ -51,6 +51,7 @@ class GamePluginConfigWidget(QWidget):
         # 1. Detected Game Simulators & Plugin Deployment
         # =====================================================================
         self.inst_group = QGroupBox("🎮 Detected Simulators & isiMotor_RawUDP.dll Deployment", content)
+        self.inst_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.inst_layout = QVBoxLayout(self.inst_group)
 
         # Container for dynamic simulator rows
@@ -78,17 +79,29 @@ class GamePluginConfigWidget(QWidget):
         # =====================================================================
         # 2. Aggregated Plugin Desiderata Table
         # =====================================================================
-        desiderata_group = QGroupBox("📋 Active SimPad Plugins Desiderata (Required Channels & Hz)", content)
+        desiderata_group = QGroupBox("📋 Active SimPulse Plugins Desiderata (Required Channels & Hz)", content)
+        desiderata_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         desiderata_layout = QVBoxLayout(desiderata_group)
+        desiderata_layout.setContentsMargins(12, 10, 12, 10)
+        desiderata_layout.setSpacing(8)
 
+        # Compact header row: description on left, apply button on right
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
         desiderata_desc = QLabel(
-            "Each SimPad plugin declares the telemetry channels it requires and its preferred rate (Hz). "
-            "SimPad Core synthesizes these requirements to configure optimal game rates.",
+            "Each SimPulse plugin declares the telemetry channels it requires and its preferred rate (Hz). "
+            "SimPulse Core synthesizes these requirements to configure optimal game rates.",
             desiderata_group
         )
-        desiderata_desc.setStyleSheet("color: #94a3b8;")
+        desiderata_desc.setStyleSheet("color: #94a3b8; font-size: 12px;")
         desiderata_desc.setWordWrap(True)
-        desiderata_layout.addWidget(desiderata_desc)
+        top_row.addWidget(desiderata_desc, stretch=1)
+
+        btn_apply_recom = QPushButton("⚡ Apply Recommended Rates", desiderata_group)
+        btn_apply_recom.setStyleSheet("background-color: #0284c7; color: #ffffff; font-weight: bold; padding: 6px 12px;")
+        btn_apply_recom.clicked.connect(self._apply_recommended_rates)
+        top_row.addWidget(btn_apply_recom)
+        desiderata_layout.addLayout(top_row)
 
         self.desiderata_table = QTableWidget(desiderata_group)
         self.desiderata_table.setColumnCount(4)
@@ -99,20 +112,17 @@ class GamePluginConfigWidget(QWidget):
         self.desiderata_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.desiderata_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.desiderata_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.desiderata_table.setFixedHeight(160)
+        self.desiderata_table.verticalHeader().setVisible(False)
+        self.desiderata_table.setFixedHeight(80)
         desiderata_layout.addWidget(self.desiderata_table)
-
-        btn_apply_recom = QPushButton("⚡ Synthesize & Apply Recommended Rates", desiderata_group)
-        btn_apply_recom.setStyleSheet("background-color: #0284c7; color: #ffffff; font-weight: bold;")
-        btn_apply_recom.clicked.connect(self._apply_recommended_rates)
-        desiderata_layout.addWidget(btn_apply_recom)
 
         layout.addWidget(desiderata_group)
 
         # =====================================================================
-        # 3. Channel Rates Configuration (SimPad Local Storage & Multi-Sim Propagation)
+        # 3. Channel Rates Configuration (SimPulse Local Storage & Multi-Sim Propagation)
         # =====================================================================
-        cfg_group = QGroupBox("⚙️ Telemetry Channel Rates Configuration (SimPad Preferences)", content)
+        cfg_group = QGroupBox("⚙️ Telemetry Channel Rates Configuration (SimPulse Preferences)", content)
+        cfg_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         c_layout = QVBoxLayout(cfg_group)
 
         grid = QGridLayout()
@@ -150,6 +160,7 @@ class GamePluginConfigWidget(QWidget):
         c_layout.addWidget(save_btn)
 
         layout.addWidget(cfg_group)
+        layout.addStretch(1)
 
         scroll.setWidget(content)
 
@@ -202,6 +213,11 @@ class GamePluginConfigWidget(QWidget):
         reqs_by_plugin = self.plugin_mgr.get_all_channel_requirements()
         total_rows = sum(len(req_list) for req_list in reqs_by_plugin.values())
         self.desiderata_table.setRowCount(total_rows)
+
+        # Adapt table height to row count dynamically (so empty/few rows don't take excess space)
+        header_h = self.desiderata_table.horizontalHeader().height() or 26
+        target_h = max(58, min(140, header_h + (total_rows * 26) + 4))
+        self.desiderata_table.setFixedHeight(target_h)
 
         row = 0
         for pid, req_list in reqs_by_plugin.items():
@@ -269,7 +285,7 @@ class GamePluginConfigWidget(QWidget):
             QMessageBox.information(
                 self,
                 "Preferences Saved & Propagated",
-                f"Preferences saved locally in SimPad (config.json) and "
+                f"Preferences saved locally in SimPulse (config.json) and "
                 f"successfully propagated to {count} detected simulator installation(s)!"
             )
         else:

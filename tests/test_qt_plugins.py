@@ -929,4 +929,19 @@ def test_simpulse_window_title(qapp, tmp_path):
     assert window.windowTitle() == "SimPulse"
 
 
+def test_game_plugin_config_widget_compact_layout(qapp, tmp_path):
+    """Test that GamePluginConfigWidget uses compact QSizePolicy.Policy.Maximum and layout stretch."""
+    from PySide6.QtWidgets import QSizePolicy
+    from simpad_qt.ui.game_plugin_config_widget import GamePluginConfigWidget
+    from simpad_qt.core.game_plugin_manager import GamePluginManager
+
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
+    gpm = GamePluginManager(config_manager=cfg_mgr)
+
+    widget = GamePluginConfigWidget(game_plugin_mgr=gpm, plugin_mgr=pm)
+    assert widget.desiderata_table.height() <= 160
+    assert widget.inst_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
+
+
 
