@@ -55,7 +55,7 @@ class PacketSlot(Generic[T]):
         """Returns True if the cached packet was received within max_age_sec."""
         return self.data is not None and self.age_sec <= max_age_sec
 
-    def update(self, data: Optional[T], timestamp: Optional[float] = None) -> None:
+    def update(self, data: T, timestamp: Optional[float] = None) -> None:
         """Updates slot with new packet data."""
         self.data = data
         self.timestamp = timestamp if timestamp is not None else time.time()
@@ -195,7 +195,7 @@ class TelemetryStateStore:
             self._hit_lap_reference = None
             self._recalculate_cache()
 
-    def _process_lap_validity(self, raw_flag: Optional[Union[int, float, str]], timestamp: Optional[float] = None) -> None:
+    def _process_lap_validity(self, raw_flag: Union[int, float, str], timestamp: Optional[float] = None) -> None:
         """
         Authoritative 100% stateless lap validity & timing transition processor:
         - Maintains is_lap_valid (flag == 2) and is_lap_invalid (flag in (0, 1))
@@ -205,8 +205,6 @@ class TelemetryStateStore:
             2 -> (0, 1) => "time_deleted"
         - Handles garage / pause silence
         """
-        if raw_flag is None:
-            return
 
         try:
             current_flag = int(raw_flag)
@@ -269,12 +267,10 @@ class TelemetryStateStore:
 
     # ── Ingestion Handlers ───────────────────────────────────────────────────
 
-    def update_telemetry(self, data: Optional[TelemInfo], timestamp: Optional[float] = None) -> None:
+    def update_telemetry(self, data: TelemInfo, timestamp: Optional[float] = None) -> None:
         """Ingests a 120Hz TelemInfo frame and updates physics state."""
         with self._mutex:
             self.telemetry.update(data, timestamp)
-            if data is None:
-                return
 
             # Extract wheels and surface types
             wheels = data.wheels
@@ -313,12 +309,10 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_compact_scoring(self, data: Optional[CompactScoring], timestamp: Optional[float] = None) -> None:
+    def update_compact_scoring(self, data: CompactScoring, timestamp: Optional[float] = None) -> None:
         """Ingests a 10Hz CompactScoring frame and updates timing & lap flag state."""
         with self._mutex:
             self.compact_scoring.update(data, timestamp)
-            if data is None:
-                return
 
             self._last_in_realtime = data.in_realtime
             self._last_in_garage = data.in_garage_stall
@@ -335,12 +329,10 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_full_scoring(self, data: Optional[FullScoringSession], timestamp: Optional[float] = None) -> None:
+    def update_full_scoring(self, data: FullScoringSession, timestamp: Optional[float] = None) -> None:
         """Ingests a 2-5Hz FullScoringSession frame and updates grid, penalties & rule parameters."""
         with self._mutex:
             self.full_scoring.update(data, timestamp)
-            if data is None:
-                return
 
             # Rules parameters LMU
             if data.lmu:
@@ -365,43 +357,43 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_weather(self, data: Optional[WeatherControl], timestamp: Optional[float] = None) -> None:
+    def update_weather(self, data: WeatherControl, timestamp: Optional[float] = None) -> None:
         """Ingests weather packet."""
         with self._mutex:
             self.weather.update(data, timestamp)
 
-    def update_system_event(self, data: Optional[SystemEvent], timestamp: Optional[float] = None) -> None:
+    def update_system_event(self, data: SystemEvent, timestamp: Optional[float] = None) -> None:
         """Ingests system session / cockpit event."""
         with self._mutex:
             self.system.update(data, timestamp)
 
-    def update_system_events(self, data: Optional[SystemEvent], timestamp: Optional[float] = None) -> None:
+    def update_system_events(self, data: SystemEvent, timestamp: Optional[float] = None) -> None:
         """Ingests system session / cockpit event (plural alias)."""
         self.update_system_event(data, timestamp)
 
-    def update_opponent_telemetry(self, data: Optional[TelemInfo], timestamp: Optional[float] = None) -> None:
+    def update_opponent_telemetry(self, data: TelemInfo, timestamp: Optional[float] = None) -> None:
         """Ingests opponent vehicle dynamics."""
         with self._mutex:
             self.opponent_telemetry.update(data, timestamp)
 
-    def update_extended_state(self, data: Optional[ExtendedState], timestamp: Optional[float] = None) -> None:
+    def update_extended_state(self, data: ExtendedState, timestamp: Optional[float] = None) -> None:
         """Ingests extended vehicle state (lights, wipers, ignition, flags)."""
         with self._mutex:
             self.extended_state.update(data, timestamp)
 
-    def update_force_feedback(self, data: Optional[ForceFeedback], timestamp: Optional[float] = None) -> None:
+    def update_force_feedback(self, data: ForceFeedback, timestamp: Optional[float] = None) -> None:
         """Ingests force feedback packet."""
         with self._mutex:
             self.force_feedback.update(data, timestamp)
 
-    def update_graphics(self, data: Optional[Graphics], timestamp: Optional[float] = None) -> None:
+    def update_graphics(self, data: Graphics, timestamp: Optional[float] = None) -> None:
         """Ingests camera / graphics telemetry frame."""
         with self._mutex:
             self.graphics.update(data, timestamp)
 
     def update_track_rules(
         self,
-        data: Optional[Union[bytes, Dict[str, Union[str, int, float, bool, None]]]],
+        data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
         timestamp: Optional[float] = None,
     ) -> None:
         """Ingests track rules / flag conditions."""
@@ -410,7 +402,7 @@ class TelemetryStateStore:
 
     def update_pit_menu(
         self,
-        data: Optional[Union[bytes, Dict[str, Union[str, int, float, bool, None]]]],
+        data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
         timestamp: Optional[float] = None,
     ) -> None:
         """Ingests pit strategy menu state."""

@@ -346,6 +346,9 @@ class PluginManager(QObject):
         data = packet.data
         t = packet.timestamp
 
+        if data is None:
+            return
+
         # 1. Update timestamped slot in state store
         wake_reason: Optional[TelemetryWakeReason] = None
         if ch == TelemetryChannel.TELEMETRY:

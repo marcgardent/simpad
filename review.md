@@ -46,11 +46,25 @@ regrouper les data  utilisateur, et cache téléchargé
 
 ## cripy code
 
-Dict[str, Any],
+Dict[str, Any] :
+ - typer et pas utiliser d'autre type générique
+ - Si il faut manipuler une abstraction, et bien tu créer le type.
+
 getattr(
-isinstance(
-Any
-Option
+ - ca degage sans ambiguité
+
+ - isinstance():
+ - acceptable dans une Factory, dans le reste du code, on utilise le polymorphisme, on créer un abstract  
+
+Any:
+  - typer et pas utiliser d'autre type générique
+  - Si il faut manipuler une abstraction, et bien tu créer le type.
+
+Option en argument :
+  - soit suppresion de l'appel quand la data est pas disponible  
+  - soit tu découpes en deux methodes un avec la data une sans la data
+
+
  __getitem__, get() et to_dict() 
 
 supprimer le lerp dans les overlay c'est chiant visuelement ca donne une impression de molesse.

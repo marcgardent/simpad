@@ -40,6 +40,7 @@ from simpad_qt.core.reference_lap import LapDeltaPacket
 from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
 from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.core.engineer.context import TelemetryTriggerPacket
 from simpad_qt.core.engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam, ParamScalarValue
 from simpad_qt.core.utils.audio import AudioAnnouncer
 from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
@@ -1031,7 +1032,7 @@ class RaceEngineerPlugin(
         self,
         wake_reason: TelemetryWakeReason,
         state: TelemetryStateStore,
-        trigger_packet: Optional[object] = None,
+        trigger_packet: Optional[TelemetryTriggerPacket] = None,
     ) -> None:
         if not self.engineer.enabled:
             return
