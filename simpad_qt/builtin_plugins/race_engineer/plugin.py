@@ -29,15 +29,12 @@ class RadioMessageBridge(QObject):
 
 
 from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IPacketSubscriber
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IPacketSubscriber,
+    TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
+    LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 )
-from simpad_qt.core.telemetry_channels import (
-    TelemetryChannel, ChannelRequirement, TelemetryRawPacket
-)
-from simpad_qt.core.reference_lap import LapDeltaPacket
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 from .base import BaseRole, EngineerMessage, RoleStatus
 from .manager import RaceEngineer
 from .context import TelemetryTriggerPacket
@@ -886,7 +883,7 @@ class RaceEngineerWidget(QWidget):
 # =============================================================================
 
 class RaceEngineerPlugin(
-    SimPadPlugin,
+    SimPulsePlugin,
     ITabProvider,
     ITelemetrySubscriber,
     IDeltaSubscriber,
@@ -962,15 +959,17 @@ class RaceEngineerPlugin(
         self.engineer.reset_all()
 
     def save_plugin_config(self) -> None:
-        """Persist current master switch, sub-plugin states, and priorities to config."""
+        """Persist current master switch, sub-plugin states, and order to config."""
         if not self.context:
             return
         self.config.master_enabled = self.engineer.enabled
         self.config.muted = AudioAnnouncer.is_muted()
-        self.config.subplugin_configs = {
-            r.role_id: r.get_config()
-            for r in self.engineer.get_roles()
-        }
+        configs = {}
+        for r in self.engineer.get_roles():
+            cfg = dict(r.get_config())
+            cfg.pop("priority", None)
+            configs[r.role_id] = cfg
+        self.config.subplugin_configs = configs
         self.config.subplugin_order = [r.role_id for r in self.engineer.get_roles()]
         self.context.save_typed_config(self.config)
 

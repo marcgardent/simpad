@@ -9,16 +9,15 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext, PluginState,
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext, PluginState,
     HudSlot, HudLayoutSpec, PluginErrorReport,
-    ITabProvider, ITelemetrySubscriber, IPacketSubscriber, IHudWidgetProvider
+    ITabProvider, ITelemetrySubscriber, IPacketSubscriber, IHudWidgetProvider,
+    TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
+    VehicleSensors,
 )
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.config import ConfigManager, AppSettings
-from simpad_qt.core.telemetry_channels import (
-    TelemetryChannel, ChannelRequirement, TelemetryRawPacket
-)
 from simpad_qt.core.game_plugin_manager import GamePluginManager
 from simpad_qt.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
 from simpad_qt.core.overlay_state_machine import (
@@ -53,7 +52,7 @@ class DummyConfig:
     enabled: bool = True
 
 
-class DummyTestPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
+class DummyTestPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
     """Test plugin implementing all capabilities with strongly-typed config."""
 
     def __init__(self):
@@ -103,7 +102,7 @@ class DummyTestPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudWidg
         painter.drawText(0, 10, "Dummy HUD")
 
 
-class FaultyTestPlugin(SimPadPlugin, ITelemetrySubscriber):
+class FaultyTestPlugin(SimPulsePlugin, ITelemetrySubscriber):
     """Plugin designed to test circuit breaker tripping."""
 
     def __init__(self):
@@ -362,7 +361,8 @@ def test_telemetry_bus_integration(qapp, tmp_path):
     plugin = DummyTestPlugin()
     pm.register_plugin(plugin)
 
-    bus = TelemetryBus(pm)
+    bus = TelemetryBus()
+    pm.connect_telemetry_bus(bus)
     sensors = VehicleSensors()
     sensors.vehicle_speed = 33.3
 
@@ -417,7 +417,7 @@ def test_game_process_watcher_and_status_bar(qapp, tmp_path):
     """Test GameProcessWatcher and SimPadCoreStatusBar rendering and state transitions."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
-    bus = TelemetryBus(pm)
+    bus = TelemetryBus()
     watcher = GameProcessWatcher()
     osm = OverlayStateMachine()
 
@@ -457,7 +457,8 @@ def test_udp_server_to_telemetry_bus_integration(qapp, tmp_path):
     diag_plugin = TelemetryDiagnosticsPlugin()
     pm.register_plugin(diag_plugin)
 
-    bus = TelemetryBus(pm)
+    bus = TelemetryBus()
+    pm.connect_telemetry_bus(bus)
 
     # 1. Simulate datagram callback from UDPServer for TelemInfo
     telem = TelemInfo(local_vel=TelemVect3(0.0, 0.0, 62.5), gear=3, engine_rpm=6500.0)
@@ -524,7 +525,7 @@ def test_telemetry_bus_full_scoring_garage_integration(qapp, tmp_path):
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
-    bus = TelemetryBus(pm)
+    bus = TelemetryBus()
     osm = OverlayStateMachine(display_mode=OverlayDisplayMode.AUTO)
     bus.telemetry_updated.connect(osm.update_telemetry)
 
@@ -755,19 +756,16 @@ def test_plugin_activation_persistence(qapp, tmp_path):
     assert cfg_mgr_reloaded2.is_plugin_enabled("test.dummy") is True
 
 
-def test_plugin_context_activation_methods(tmp_path):
-    """Test PluginContext is_enabled and set_enabled methods."""
+def test_plugin_activation_config(tmp_path):
+    """Test CoreConfigProvider is_plugin_enabled and set_plugin_enabled methods."""
     cfg_file = tmp_path / "config_ctx.json"
     cfg_mgr = ConfigManager(config_file=cfg_file)
-    ctx = PluginContext("test.my_plugin", cfg_mgr)
 
-    assert ctx.is_enabled() is True
-    ctx.set_enabled(False)
-    assert ctx.is_enabled() is False
+    assert cfg_mgr.is_plugin_enabled("test.my_plugin") is True
+    cfg_mgr.set_plugin_enabled("test.my_plugin", False)
     assert cfg_mgr.is_plugin_enabled("test.my_plugin") is False
 
-    ctx.set_enabled(True)
-    assert ctx.is_enabled() is True
+    cfg_mgr.set_plugin_enabled("test.my_plugin", True)
     assert cfg_mgr.is_plugin_enabled("test.my_plugin") is True
 
 
@@ -795,7 +793,7 @@ def test_plugin_manager_widget_toggle_persists_config(qapp, tmp_path):
     assert cfg_mgr.is_plugin_enabled("test.dummy") is True
 
 
-class EventHookSpyPlugin(SimPadPlugin):
+class EventHookSpyPlugin(SimPulsePlugin):
     """Plugin spy that captures all polymorphic event hook calls."""
 
     def __init__(self):

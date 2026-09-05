@@ -18,9 +18,8 @@ from PySide6.QtGui import QPainter, QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import QWidget, QApplication
 
 from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.plugins.contracts import IHudWidgetProvider
+from simpulse_sdk import IHudWidgetProvider, SimPulsePlugin, VehicleSensors
 from simpad_qt.ui.slot_compositor import HudSlotCompositor
-from simpad_qt.core.telemetry import VehicleSensors
 
 logger = logging.getLogger("simpad.overlay")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -200,7 +199,7 @@ class SimPadHudOverlayWindow(QWidget):
                         self._latest_sensors,
                     )
                 except Exception as e:
-                    pid_str = provider.metadata.id if isinstance(provider, SimPadPlugin) else str(provider)
+                    pid_str = provider.metadata.id if isinstance(provider, SimPulsePlugin) else str(provider)
                     self.plugin_manager._handle_plugin_error(pid_str, "paint_hud", e)
                 finally:
                     painter.restore()

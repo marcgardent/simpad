@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QProgressBar, QCheckBox, QComboBox
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot,
+    VehicleSensors, TelemetryStateStore
 )
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 
 
 @dataclass
@@ -132,7 +132,7 @@ class PedalMonitorWidget(QWidget):
         self.plugin.save_config()
 
 
-class PedalTelemetryPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
+class PedalTelemetryPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
     """Plugin displaying live pedal inputs and electronic assists with strongly-typed config."""
 
     def __init__(self):

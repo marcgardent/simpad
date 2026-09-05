@@ -14,7 +14,7 @@ from simpad_qt.core.game_process_watcher import GameProcessWatcher, GameStatus, 
 from simpad_qt.core.overlay_state_machine import OverlayStateMachine, GameSceneState, OverlayDisplayMode, OverlayStateSnapshot
 from simpad_qt.core.telemetry_bus import TelemetryBus, UdpStreamStatus
 from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.plugins.contracts import PluginState
+from simpulse_sdk import PluginState
 
 
 class SimPadCoreStatusBar(QStatusBar):

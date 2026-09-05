@@ -1,7 +1,7 @@
 """
 Automated validation and discovery tests for SimPad plugins.
 Ensures that all built-in plugins (and dynamically discovered external plugins)
-can be loaded, initialized, and satisfy all SimPadPlugin contracts without runtime errors.
+can be loaded, initialized, and satisfy all SimPulsePlugin contracts without runtime errors.
 """
 
 import pytest
@@ -9,8 +9,8 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtCore import QSize
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin,
+from simpulse_sdk import (
+    SimPulsePlugin,
     PluginState,
     ITabProvider,
     ITelemetrySubscriber,
@@ -18,10 +18,10 @@ from simpad_qt.plugins.contracts import (
     IDeltaSubscriber,
     IPacketSubscriber,
     HudSlot,
+    ChannelRequirement,
 )
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.telemetry_channels import ChannelRequirement
 
 
 @pytest.fixture(scope="session")
@@ -78,7 +78,7 @@ def test_all_builtin_plugins_discover_and_load_without_errors(qapp, tmp_path, bu
 
 def test_builtin_plugins_contract_and_lifecycle_compliance(qapp, tmp_path, builtin_plugins_dir):
     """
-    Verify each loaded plugin conforms strictly to SimPadPlugin contracts:
+    Verify each loaded plugin conforms strictly to SimPulsePlugin contracts:
     - Valid metadata (id, name, version)
     - State is ENABLED
     - ITabProvider: valid tab title and widget instantiation
@@ -135,10 +135,10 @@ def test_dynamic_package_relative_imports(qapp, tmp_path):
     (my_plugin_dir / "__init__.py").write_text('\"\"\"Custom package.\"\"\"\n')
     (my_plugin_dir / "helper.py").write_text('GREETING = "Hello from helper"\n')
     plugin_code = '''
-from simpad_qt.plugins.contracts import SimPadPlugin, PluginMetadata
+from simpulse_sdk import SimPulsePlugin, PluginMetadata
 from .helper import GREETING
 
-class CustomRelativePlugin(SimPadPlugin):
+class CustomRelativePlugin(SimPulsePlugin):
     def __init__(self):
         super().__init__(PluginMetadata(
             id="test.custom.relative",
@@ -200,7 +200,8 @@ def test_all_builtin_plugins_live_telemetry_and_mock_execution(qapp, tmp_path, b
         for r in re_plugin.engineer._roles:
             r.enabled = True
 
-    bus = TelemetryBus(pm)
+    bus = TelemetryBus()
+    pm.connect_telemetry_bus(bus)
 
     # Step through 60 frames (1 second of 60Hz telemetry covering all channels)
     for _ in range(60):

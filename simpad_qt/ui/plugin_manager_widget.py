@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QMessageBox
 )
 from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.plugins.contracts import (
+from simpulse_sdk import (
     PluginState, PluginErrorReport, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider
 )
 

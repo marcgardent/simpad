@@ -15,25 +15,25 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from simpad_qt.core.config import ConfigManager, AppSettings
-from simpad_qt.core.reference_lap import (
-    ReferenceLapManager,
-    LapDeltaPacket,
-    ReferenceLapProfile,
-    TrackAnnotation,
-    AnnotationType,
-    DeltaReferenceMode,
-)
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin,
+from simpulse_sdk import (
+    SimPulsePlugin,
     PluginMetadata,
     PluginContext,
     IDeltaSubscriber,
     ITelemetrySubscriber,
+    LapDeltaPacket,
+    DeltaReferenceMode,
+    VehicleSensors,
+)
+from simpad_qt.core.reference_lap import (
+    ReferenceLapManager,
+    ReferenceLapProfile,
+    TrackAnnotation,
+    AnnotationType,
 )
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.telemetry_bus import TelemetryBus
 from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
-from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")
@@ -44,7 +44,7 @@ def qapp():
     return app
 
 
-class DummyDeltaSubscriberPlugin(SimPadPlugin, IDeltaSubscriber, ITelemetrySubscriber):
+class DummyDeltaSubscriberPlugin(SimPulsePlugin, IDeltaSubscriber, ITelemetrySubscriber):
     """Plugin implementing IDeltaSubscriber to verify delta stream ingestion."""
 
     def __init__(self):
@@ -233,7 +233,8 @@ def test_telemetry_bus_and_plugin_delta_subscription(qapp, tmp_path):
     plugin_mgr.register_plugin(dummy_plugin)
     plugin_mgr.register_plugin(hud_plugin)
 
-    bus = TelemetryBus(plugin_manager=plugin_mgr, reference_lap_mgr=ref_mgr)
+    bus = TelemetryBus(reference_lap_mgr=ref_mgr)
+    plugin_mgr.connect_telemetry_bus(bus)
 
     # Setup reference profile
     prof = ReferenceLapProfile(

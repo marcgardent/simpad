@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (
     QCheckBox, QGroupBox, QProgressBar
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot,
+    VehicleSensors, TelemetryStateStore
 )
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 
 
 @dataclass
@@ -145,7 +145,7 @@ class GearSpeedHudWidget(QWidget):
         self.plugin.save_config()
 
 
-class GearSpeedHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
+class GearSpeedHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider):
     """
     Plugin implementing Tab, Telemetry and HUD Overlay capabilities with strongly-typed config.
     """

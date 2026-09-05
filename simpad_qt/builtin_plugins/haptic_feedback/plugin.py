@@ -19,14 +19,12 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QMessageBox
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber,
+    TelemetryChannel, ChannelRequirement,
+    VehicleSensors, TelemetryStateStore
 )
-from simpad_qt.core.telemetry_channels import (
-    TelemetryChannel, ChannelRequirement
-)
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 from .base import HapticController
 from .factory import HapticBackendFactory
 from .manager import HapticSubpluginManager
@@ -397,7 +395,7 @@ class HapticFeedbackWidget(QWidget):
 # Haptic Feedback SimPad Plugin Implementation
 # =============================================================================
 
-class HapticFeedbackPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber):
+class HapticFeedbackPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber):
     """
     SimPad Qt6 Builtin Plugin for XInput Haptic Feedback.
     Evaluates real-time telemetry across modular subplugins and controls hardware gamepad motors.

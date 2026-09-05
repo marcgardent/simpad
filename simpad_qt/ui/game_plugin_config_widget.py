@@ -268,7 +268,7 @@ class GamePluginConfigWidget(QWidget):
             QMessageBox.information(
                 self,
                 "Preferences Saved & Propagated",
-                f"Preferences saved locally in SimPad (config/game_plugin_settings.json) and "
+                f"Preferences saved locally in SimPad (config.json) and "
                 f"successfully propagated to {count} detected simulator installation(s)!"
             )
         else:

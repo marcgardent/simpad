@@ -16,14 +16,12 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QGroupBox, QPushButton
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IPacketSubscriber
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IPacketSubscriber,
+    TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
+    VehicleSensors, TelemetryStateStore
 )
-from simpad_qt.core.telemetry_channels import (
-    TelemetryChannel, ChannelRequirement, TelemetryRawPacket
-)
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 
 
 @dataclass
@@ -234,7 +232,7 @@ class StreamDiagnosticsWidget(QWidget):
                 stat_item.setForeground(QColor(100, 116, 139))
 
 
-class TelemetryDiagnosticsPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IPacketSubscriber):
+class TelemetryDiagnosticsPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IPacketSubscriber):
     """
     Official SimPad Stream Diagnostics & Packet Analyzer plugin.
     Inspects all raw UDP packets, measures live frequencies and bandwidth consumption.

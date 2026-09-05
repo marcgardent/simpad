@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, Signal
 
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 from simpad_qt.core.telemetry.plugin_installer import LMUPluginManager, SimulatorInstallInfo
+from simpad_qt.core.config import IConfigManager, ConfigManager, GamePluginConfig
 
 logger = logging.getLogger("simpad.game_plugin_manager")
 
@@ -57,7 +58,7 @@ class ChannelSettings:
             "target_port": self.target_port,
             "inbound_port": self.inbound_port,
             "enable_logging": self.enable_logging,
-            "rates": {ch.name: val for ch, val in self.rates.items()},
+            "rates": {ch.json_variable_name: val for ch, val in self.rates.items()},
         }
 
     @classmethod
@@ -70,8 +71,7 @@ class ChannelSettings:
         )
         rates_dict = data.get("rates", {})
         for ch in TelemetryChannel:
-            # Check by Enum member name or Enum value or json variable name
-            val = rates_dict.get(ch.name, rates_dict.get(ch.value, rates_dict.get(ch.json_variable_name)))
+            val = rates_dict.get(ch.json_variable_name)
             if val is not None:
                 settings.rates[ch] = str(val)
         return settings
@@ -86,10 +86,9 @@ class GamePluginManager(QObject):
     state_changed = Signal()
     rates_applied = Signal()
 
-    LOCAL_SETTINGS_PATH = Path("config") / "game_plugin_settings.json"
-
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent: Optional[QObject] = None, config_manager: IConfigManager = None):
         super().__init__(parent)
+        self.config_manager = config_manager if config_manager is not None else ConfigManager()
         self.settings = ChannelSettings()
         self.state = GamePluginInstallationState()
         self.simulators: List[SimulatorInstallInfo] = []
@@ -127,57 +126,37 @@ class GamePluginManager(QObject):
         return self.state
 
     def load_local_settings(self) -> None:
-        """
-        Load preferences locally from SimPad's persistent storage.
-        If local file doesn't exist, try importing from the first detected simulator JSON.
-        """
-        if self.LOCAL_SETTINGS_PATH.exists():
-            try:
-                content = self.LOCAL_SETTINGS_PATH.read_text(encoding="utf-8", errors="ignore")
-                data = json.loads(content)
-                self.settings = ChannelSettings.from_dict(data)
-                logger.info(f"Loaded local game plugin preferences from {self.LOCAL_SETTINGS_PATH}")
-                return
-            except Exception as e:
-                logger.warning(f"Failed to read local settings {self.LOCAL_SETTINGS_PATH}: {e}")
-
-        # Fallback: Check if any detected simulator already has custom variables
-        for sim in self.simulators:
-            for cv_path in sim.custom_variables_paths:
-                if cv_path.exists():
-                    try:
-                        content = cv_path.read_text(encoding="utf-8", errors="ignore")
-                        data = json.loads(content)
-                        entry = data.get("isiMotor_RawUDP.dll", data.get("isiMotor_RawUDP", {}))
-                        if isinstance(entry, dict):
-                            self.settings.target_ip = entry.get("TargetIP", "127.0.0.1")
-                            self.settings.target_port = int(entry.get("TargetPort", 5000))
-                            self.settings.inbound_port = int(entry.get("InboundPort", 5001))
-                            log_val = str(entry.get("EnableLogging", "Disabled")).lower()
-                            self.settings.enable_logging = log_val in ("enabled", "1", "true")
-
-                            for channel in TelemetryChannel:
-                                var_name = channel.json_variable_name
-                                if var_name in entry:
-                                    self.settings.rates[channel] = entry[var_name]
-
-                            self.save_local_settings()
-                            logger.info(f"Initialized local settings from {cv_path}")
-                            return
-                    except Exception as e:
-                        logger.warning(f"Failed to import initial rates from {cv_path}: {e}")
+        """Load preferences from unified ConfigManager (config.json)."""
+        gp_cfg = self.config_manager.get_game_plugin_settings()
+        rates_map = dict(self.settings.rates)
+        for channel in TelemetryChannel:
+            val = gp_cfg.rates.get(channel.json_variable_name)
+            if val is not None:
+                rates_map[channel] = str(val)
+        self.settings = ChannelSettings(
+            target_ip=gp_cfg.target_ip,
+            target_port=gp_cfg.target_port,
+            inbound_port=gp_cfg.inbound_port,
+            enable_logging=gp_cfg.enable_logging,
+            rates=rates_map,
+        )
+        logger.info("Loaded game plugin preferences from config.json")
 
     def save_local_settings(self) -> bool:
-        """Persist current preferences locally in SimPad storage."""
+        """Persist current preferences in unified config (config.json)."""
         try:
-            self.LOCAL_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-            self.LOCAL_SETTINGS_PATH.write_text(
-                json.dumps(self.settings.to_dict(), indent=2), encoding="utf-8"
+            gp_cfg = GamePluginConfig(
+                target_ip=self.settings.target_ip,
+                target_port=self.settings.target_port,
+                inbound_port=self.settings.inbound_port,
+                enable_logging=self.settings.enable_logging,
+                rates={ch.json_variable_name: val for ch, val in self.settings.rates.items()},
             )
-            logger.info(f"Saved local game plugin settings to {self.LOCAL_SETTINGS_PATH}")
+            self.config_manager.set_game_plugin_settings(gp_cfg, auto_save=True)
+            logger.info("Saved game plugin settings to config.json")
             return True
         except Exception as e:
-            logger.error(f"Failed to save local settings {self.LOCAL_SETTINGS_PATH}: {e}")
+            logger.error(f"Failed to save settings to config.json: {e}")
             return False
 
     def install_plugin_for_simulator(self, sim: SimulatorInstallInfo) -> Tuple[bool, str]:

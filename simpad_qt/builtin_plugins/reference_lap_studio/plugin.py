@@ -29,16 +29,17 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QSizePolicy
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber,
+    LapDeltaPacket, DeltaReferenceMode, format_lap_time,
+    VehicleSensors, TelemetryStateStore
 )
 from simpad_qt.core.reference_lap import (
-    ReferenceLapManager, LapDeltaPacket, ReferenceLapProfile,
-    TrackAnnotation, AnnotationType, DeltaReferenceMode,
-    DEFAULT_REF_LAPS_DIR, format_lap_time
+    ReferenceLapManager, ReferenceLapProfile,
+    TrackAnnotation, AnnotationType,
+    DEFAULT_REF_LAPS_DIR
 )
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpad.plugin.reference_lap_studio")
@@ -1015,7 +1016,7 @@ class ReferenceLapStudioTabWidget(QWidget):
             self.canvas.set_live_car_distance(pkt.player_dist)
 
 
-class ReferenceLapStudioPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber):
+class ReferenceLapStudioPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber):
     """
     Reference Lap & Mark Editor Studio Built-in Plugin.
     Provides interactive Studio Tab for reference lap visualization and pace note annotations.

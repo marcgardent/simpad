@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from simpad_qt.plugins.contracts import PluginState, PluginContext
+from simpulse_sdk import PluginState, PluginContext
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.config import ConfigManager
 from simpad_qt.builtin_plugins.haptic_feedback import HapticFeedbackPlugin

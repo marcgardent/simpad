@@ -23,12 +23,11 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QPainter, QFontDatabase
 from PySide6.QtWidgets import QWidget
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider, HudSlot
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider, HudSlot,
+    LapDeltaPacket, VehicleSensors, TelemetryStateStore
 )
-from simpad_qt.core.reference_lap import LapDeltaPacket
-from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
 from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     CockpitWidgetContext,
     QtGearSpeedWidget,
@@ -54,7 +53,7 @@ logger = logging.getLogger("simpad.plugin.official_cockpit_hud")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
-class OfficialCockpitHudPlugin(SimPadPlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider):
+class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider):
     """
     Official SimPad Center Cockpit Racing HUD Plugin.
     Implements Tab, Telemetry, and high-performance vector HUD rendering for the 12-widget telemetry suite.

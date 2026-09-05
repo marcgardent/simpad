@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "simpulse-sdk"
+version = "0.1.0"
+description = "SimPulse SDK — Contracts and Domain Models for SimPulse & SimPad Plugins"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "isimotor-rawudp-client @ https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl",
+]

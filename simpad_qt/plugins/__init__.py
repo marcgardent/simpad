@@ -1,23 +1,5 @@
-"""SimPad Qt6 Plugin SDK."""
+"""SimPad Qt6 Plugin Management."""
 
-from simpad_qt.plugins.contracts import (
-    HudSlot,
-    PluginState,
-    PluginMetadata,
-    PluginContext,
-    SimPadPlugin,
-    ITabProvider,
-    ITelemetrySubscriber,
-    IHudWidgetProvider,
-)
+from simpad_qt.plugins.manager import PluginManager
 
-__all__ = [
-    "HudSlot",
-    "PluginState",
-    "PluginMetadata",
-    "PluginContext",
-    "SimPadPlugin",
-    "ITabProvider",
-    "ITelemetrySubscriber",
-    "IHudWidgetProvider",
-]
+__all__ = ["PluginManager"]

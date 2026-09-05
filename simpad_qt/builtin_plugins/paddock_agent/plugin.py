@@ -21,11 +21,9 @@ from PySide6.QtWidgets import (
     QHeaderView, QTabWidget, QMessageBox
 )
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber
-)
-from simpad_qt.core.telemetry_channels import (
+from simpulse_sdk import (
+    SimPulsePlugin, PluginMetadata, PluginContext,
+    ITabProvider, ITelemetrySubscriber,
     TelemetryChannel, ChannelRequirement
 )
 try:
@@ -671,7 +669,7 @@ class PaddockAgentWidget(QWidget):
 # LMU Paddock Agent Plugin Definition
 # =============================================================================
 
-class PaddockAgentPlugin(SimPadPlugin, ITabProvider):
+class PaddockAgentPlugin(SimPulsePlugin, ITabProvider):
     """
     SimPad Builtin Plugin for LMU Paddock Agent & Online Race Schedule.
     """

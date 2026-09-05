@@ -3,7 +3,7 @@ Configuration schema for the Official Cockpit HUD plugin.
 """
 
 from dataclasses import dataclass
-from simpad_qt.plugins.contracts import HudSlot
+from simpulse_sdk import HudSlot
 
 
 @dataclass

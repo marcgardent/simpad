@@ -1,0 +1,22 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "isimotor-rawudp-client"
+version = "0.2.0"
+source = { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl", hash = "sha256:4c7c5603949a1612e6cffd2eec1ca23fe83a9df79cf048755f0c772798dffeaa" },
+]
+
+[[package]]
+name = "simpulse-sdk"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "isimotor-rawudp-client" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "isimotor-rawudp-client", url = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.2.0/isimotor_rawudp_client-0.2.0-py3-none-any.whl" }]

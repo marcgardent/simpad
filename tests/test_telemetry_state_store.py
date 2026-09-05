@@ -173,7 +173,7 @@ class TestTelemetryStateStore(unittest.TestCase):
     def test_all_telemetry_channel_update_methods(self):
         """Verify TelemetryStateStore provides update methods for all TelemetryChannel values."""
         from simpad_qt.core.telemetry_channels import TelemetryChannel
-        from simpad_qt.plugins.contracts import TelemetryRawPacket
+        from simpulse_sdk import TelemetryRawPacket
         from simpad_qt.plugins.manager import PluginManager
         from simpad_qt.core.config import ConfigManager
 
@@ -250,7 +250,8 @@ class TestTelemetryStateStore(unittest.TestCase):
 
         # 4. Test TelemetryBus mock execution
         pm = PluginManager(config_manager=ConfigManager())
-        bus = TelemetryBus(pm)
+        bus = TelemetryBus()
+        pm.connect_telemetry_bus(bus)
         for _ in range(30):
             bus.mock_generator._step()
 

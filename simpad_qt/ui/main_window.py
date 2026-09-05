@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.plugins.contracts import ITabProvider, PluginState
+from simpulse_sdk import ITabProvider, PluginState
 from simpad_qt.core.game_plugin_manager import GamePluginManager
 from simpad_qt.core.game_process_watcher import GameProcessWatcher
 from simpad_qt.core.overlay_state_machine import OverlayStateMachine, OverlayDisplayMode

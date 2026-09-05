@@ -297,11 +297,13 @@ class TestLMUSteamDetection(unittest.TestCase):
         """Verify GamePluginManager local settings persistence and multi-game propagation."""
         from simpad_qt.core.game_plugin_manager import GamePluginManager, ChannelSettings
         from simpad_qt.core.telemetry_channels import TelemetryChannel
+        from simpad_qt.core.config import ConfigManager
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            local_cfg = tmp_path / "game_plugin_settings.json"
+            cfg_file = tmp_path / "config.json"
+            cfg_mgr = ConfigManager(config_file=cfg_file)
 
             lmu_dir = tmp_path / "LMU"
             lmu_dir.mkdir(parents=True)
@@ -314,11 +316,10 @@ class TestLMUSteamDetection(unittest.TestCase):
             vdf_file = tmp_path / "libraryfolders.vdf"
             vdf_file.write_text(f'"libraryfolders" {{\n  "0" {{\n    "path" "{tmp_path}"\n  }}\n}}')
 
-            with patch("simpad_qt.core.game_plugin_manager.GamePluginManager.LOCAL_SETTINGS_PATH", local_cfg), \
-                 patch("simpad_qt.core.telemetry.plugin_installer.LMUPluginManager.get_all_lmu_install_dirs", return_value=[lmu_dir, rf2_dir]), \
+            with patch("simpad_qt.core.telemetry.plugin_installer.LMUPluginManager.get_all_lmu_install_dirs", return_value=[lmu_dir, rf2_dir]), \
                  patch("simpad_qt.core.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
 
-                gpm = GamePluginManager()
+                gpm = GamePluginManager(config_manager=cfg_mgr)
                 gpm.settings.rates[TelemetryChannel.TELEMETRY] = "unlimited"
                 gpm.settings.rates[TelemetryChannel.OPPONENT_TELEMETRY] = "10Hz"
                 gpm.settings.enable_logging = True
@@ -327,12 +328,11 @@ class TestLMUSteamDetection(unittest.TestCase):
                 ok = gpm.apply_rates_to_game()
                 self.assertTrue(ok)
 
-                # Verify local file was created
-                self.assertTrue(local_cfg.exists())
-                local_data = json.loads(local_cfg.read_text(encoding="utf-8"))
-                self.assertEqual(local_data["rates"]["TELEMETRY"], "unlimited")
-                self.assertEqual(local_data["rates"]["OPPONENT_TELEMETRY"], "10Hz")
-                self.assertTrue(local_data["enable_logging"])
+                # Verify saved to unified config.json with official keys
+                saved_gp = cfg_mgr.get_game_plugin_settings()
+                self.assertEqual(saved_gp.rates["PlayerTelemetryRate"], "unlimited")
+                self.assertEqual(saved_gp.rates["OpponentTelemetryRate"], "10Hz")
+                self.assertTrue(saved_gp.enable_logging)
 
                 # Verify both simulators received CustomPluginVariables.JSON
                 for gdir in [lmu_dir, rf2_dir]:

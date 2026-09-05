@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
-from simpad_qt.plugins.contracts import PluginState
+from simpulse_sdk import PluginState
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.config import ConfigManager
 from simpad_qt.builtin_plugins.paddock_agent import PaddockAgentPlugin

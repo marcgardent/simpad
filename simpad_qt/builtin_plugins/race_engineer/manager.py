@@ -22,8 +22,6 @@ from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ENGINEER_CONFIG_PATH = Path("engineer_config.json")
-
 _PACKET_WAKE_REASONS = {
     TelemInfo: TelemetryWakeReason.PHYSICS_TICK,
     FullScoringSession: TelemetryWakeReason.GRID_UPDATE,
@@ -58,10 +56,7 @@ class RaceEngineer:
     ):
         self.enabled: bool = True
         self.audio_engine = audio_engine if audio_engine is not None else AudioAnnouncer
-        if config_path is None:
-            self.config_path = DEFAULT_ENGINEER_CONFIG_PATH if auto_load_builtin_roles else None
-        else:
-            self.config_path = Path(config_path)
+        self.config_path = Path(config_path) if config_path is not None else None
         self._roles: List[BaseRole] = []
         self._last_processed_time: float = 0.0
 
@@ -384,13 +379,15 @@ class RaceEngineer:
             self.save_to_file()
 
     def save_configuration(self) -> Dict[str, Union[bool, List[str], Dict[str, Dict[str, ParamScalarValue]]]]:
-        """Exports role configuration (activations, priorities, parameters)."""
+        """Exports role configuration (activations, parameters)."""
+        roles_cfg: Dict[str, Dict[str, ParamScalarValue]] = {}
+        for r in self._roles:
+            cfg = dict(r.get_config())
+            cfg.pop("priority", None)
+            roles_cfg[r.role_id] = cfg
         return {
             "enabled": self.enabled,
-            "roles": {
-                r.role_id: r.get_config()
-                for r in self._roles
-            },
+            "roles": roles_cfg,
             "order": [r.role_id for r in self._roles],
         }
 

@@ -12,9 +12,7 @@ from PySide6.QtWidgets import (
     QComboBox, QCheckBox, QGroupBox, QSlider, QScrollArea, QFrame
 )
 
-from simpad_qt.plugins.contracts import HudSlot
-from simpad_qt.core.reference_lap import LapDeltaPacket
-from simpad_qt.core.telemetry import VehicleSensors
+from simpulse_sdk import HudSlot, LapDeltaPacket, VehicleSensors
 from simpad_qt.builtin_plugins.official_cockpit_hud.preview_canvas import OfficialHudPreviewCanvas
 
 if TYPE_CHECKING:

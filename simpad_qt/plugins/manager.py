@@ -11,12 +11,12 @@ import logging
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from PySide6.QtCore import QObject, Signal
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin,
+from simpulse_sdk import (
+    SimPulsePlugin,
     PluginState,
     PluginContext,
     PluginErrorReport,
@@ -24,12 +24,13 @@ from simpad_qt.plugins.contracts import (
     ITelemetrySubscriber,
     IDeltaSubscriber,
     IPacketSubscriber,
+    ITelemetryStateSubscriber,
     IHudWidgetProvider,
-)
-from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryRawPacket, TelemetryChannel
-from simpad_qt.core.reference_lap import LapDeltaPacket
-from simpad_qt.core.telemetry import (
+    IConfigManager,
+    ChannelRequirement,
+    TelemetryRawPacket,
+    TelemetryChannel,
+    LapDeltaPacket,
     VehicleSensors,
     TelemetryStateStore,
     TelemetryWakeReason,
@@ -50,18 +51,18 @@ class PluginManager(QObject):
 
     CIRCUIT_BREAKER_THRESHOLD = 5  # Max consecutive errors before auto-faulting
 
-    def __init__(self, config_manager: ConfigManager, parent: Optional[QObject] = None):
+    def __init__(self, config_manager: IConfigManager, parent: Optional[QObject] = None):
         super().__init__(parent)
         self.logger = logging.getLogger("simpad.plugin_manager")
         self.config_manager = config_manager
 
-        self._plugins: Dict[str, SimPadPlugin] = {}
+        self._plugins: Dict[str, SimPulsePlugin] = {}
         self._error_counts: Dict[str, int] = {}
         self._plugin_paths: Dict[str, Path] = {}
         self._load_errors: Dict[Path, str] = {}
 
     @property
-    def plugins(self) -> Dict[str, SimPadPlugin]:
+    def plugins(self) -> Dict[str, SimPulsePlugin]:
         """Return all registered plugin instances indexed by ID."""
         return dict(self._plugins)
 
@@ -90,8 +91,8 @@ class PluginManager(QObject):
                 if target_file:
                     self._load_plugin_from_file(target_file)
 
-    def _load_plugin_from_file(self, file_path: Path) -> Optional[SimPadPlugin]:
-        """Dynamically import a Python file and instantiate any SimPadPlugin subclass found."""
+    def _load_plugin_from_file(self, file_path: Path) -> Optional[SimPulsePlugin]:
+        """Dynamically import a Python file and instantiate any SimPulsePlugin subclass found."""
         resolved_path = file_path.resolve()
         module = None
 
@@ -146,10 +147,10 @@ class PluginManager(QObject):
                     sys.modules[mod_name] = module
                     spec.loader.exec_module(module)
 
-            # Find subclasses of SimPadPlugin
+            # Find subclasses of SimPulsePlugin
             for name, obj in inspect.getmembers(module, inspect.isclass):
-                if issubclass(obj, SimPadPlugin) and obj is not SimPadPlugin:
-                    plugin_instance: SimPadPlugin = obj()
+                if issubclass(obj, SimPulsePlugin) and obj is not SimPulsePlugin:
+                    plugin_instance: SimPulsePlugin = obj()
                     self.register_plugin(plugin_instance, file_path)
                     self._load_errors.pop(file_path, None)
                     return plugin_instance
@@ -162,7 +163,7 @@ class PluginManager(QObject):
 
         return None
 
-    def register_plugin(self, plugin: SimPadPlugin, file_path: Optional[Path] = None) -> bool:
+    def register_plugin(self, plugin: SimPulsePlugin, file_path: Optional[Path] = None) -> bool:
         """Register, initialize, and activate/deactivate a plugin instance based on saved config."""
         pid = plugin.metadata.id
         if pid in self._plugins:
@@ -181,7 +182,7 @@ class PluginManager(QObject):
 
             # Check if plugin is enabled in saved configuration (defaults to True)
             is_enabled = True
-            if self.config_manager and hasattr(self.config_manager, "is_plugin_enabled"):
+            if self.config_manager:
                 is_enabled = self.config_manager.is_plugin_enabled(pid, default=True)
 
             if is_enabled:
@@ -213,7 +214,7 @@ class PluginManager(QObject):
         if not plugin:
             return False
 
-        if save_config and self.config_manager and hasattr(self.config_manager, "set_plugin_enabled"):
+        if save_config and self.config_manager:
             self.config_manager.set_plugin_enabled(plugin_id, True)
 
         if plugin.state == PluginState.ENABLED:
@@ -243,7 +244,7 @@ class PluginManager(QObject):
         if not plugin:
             return False
 
-        if save_config and self.config_manager and hasattr(self.config_manager, "set_plugin_enabled"):
+        if save_config and self.config_manager:
             self.config_manager.set_plugin_enabled(plugin_id, False)
 
         if plugin.state == PluginState.DISABLED:
@@ -311,6 +312,24 @@ class PluginManager(QObject):
             p for p in self._plugins.values()
             if p.state == PluginState.ENABLED and isinstance(p, IDeltaSubscriber)
         ]
+
+    def connect_telemetry_bus(self, telemetry_bus: Any) -> None:
+        """Connect this PluginManager's dispatch handlers to TelemetryBus signals."""
+        telemetry_bus.packet_received.connect(self.dispatch_packet)
+        telemetry_bus.telemetry_updated.connect(self.dispatch_telemetry)
+        telemetry_bus.delta_updated.connect(self.dispatch_delta)
+
+    def disconnect_telemetry_bus(self, telemetry_bus: Any) -> None:
+        """Disconnect this PluginManager's dispatch handlers from TelemetryBus signals."""
+        for sig, slot in [
+            (telemetry_bus.packet_received, self.dispatch_packet),
+            (telemetry_bus.telemetry_updated, self.dispatch_telemetry),
+            (telemetry_bus.delta_updated, self.dispatch_delta),
+        ]:
+            try:
+                sig.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
 
     def dispatch_telemetry(self, sensors: VehicleSensors) -> None:
         """Dispatch a telemetry frame safely to all active subscribers."""

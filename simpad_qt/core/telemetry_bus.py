@@ -9,11 +9,8 @@ import time
 import logging
 from collections import deque
 from enum import Enum
-from typing import Optional, Dict, Union, TYPE_CHECKING
+from typing import Optional, Dict, Union
 from PySide6.QtCore import QObject, Signal, QTimer
-
-if TYPE_CHECKING:
-    from simpad_qt.plugins.manager import PluginManager
 
 from simpad_qt.core.telemetry import (
     VehicleSensors,
@@ -60,12 +57,10 @@ class TelemetryBus(QObject):
 
     def __init__(
         self,
-        plugin_manager: PluginManager,
         reference_lap_mgr: Optional[ReferenceLapManager] = None,
         parent: Optional[QObject] = None,
     ):
         super().__init__(parent)
-        self.plugin_manager = plugin_manager
         self.reference_lap_mgr = reference_lap_mgr or ReferenceLapManager.get_instance()
         self.mock_generator = MockTelemetryGenerator(fps=60, parent=self)
         self.mock_generator.frame_ready.connect(self._on_mock_frame)
@@ -228,8 +223,7 @@ class TelemetryBus(QObject):
             timestamp=now
         )
 
-        # 1. Dispatch raw packet to IPacketSubscriber plugins (e.g. TelemetryDiagnosticsPlugin)
-        self.plugin_manager.dispatch_packet(packet)
+        # 1. Dispatch raw packet to observers via Qt Signal
         self.packet_received.emit(packet)
 
         # 2. Process high-level telemetry domain representations and delta calculations
@@ -301,23 +295,16 @@ class TelemetryBus(QObject):
                     sensors.is_pit_lap = delta_pkt.is_pit_lap
                     sensors.lap_flag = delta_pkt.lap_flag
                     sensors.current_sector = delta_pkt.current_sector
-
                 self.process_frame(sensors, delta_pkt)
 
     def process_frame(self, sensors: VehicleSensors, delta_packet: Optional[LapDeltaPacket] = None) -> None:
-        """Handle incoming high-level telemetry frame and broadcast to plugins and UI."""
+        """Handle incoming high-level telemetry frame and broadcast to observers."""
         self._latest_sensors = sensors
         if delta_packet is None:
             delta_packet = self.reference_lap_mgr.latest_packet
         self._latest_delta = delta_packet
 
-        # 1. Dispatch safely to all ITelemetrySubscriber plugins
-        self.plugin_manager.dispatch_telemetry(sensors)
-
-        # 2. Dispatch authoritative LapDeltaPacket to all IDeltaSubscriber plugins
-        self.plugin_manager.dispatch_delta(delta_packet)
-
-        # 3. Emit signals for host UI observers
+        # Emit signals for host UI, overlay, and plugin observers
         self.telemetry_updated.emit(sensors)
         self.delta_updated.emit(delta_packet)
 

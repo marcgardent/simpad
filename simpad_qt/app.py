@@ -43,7 +43,7 @@ class SimPadQtApp:
         self.config_mgr = ConfigManager()
 
         # 2. Game Plugin & Channels Manager (LMU isiMotor_RawUDP.dll + JSON Rates)
-        self.game_plugin_mgr = GamePluginManager()
+        self.game_plugin_mgr = GamePluginManager(config_manager=self.config_mgr)
 
         # 3. Game Process & Window Watcher (LMU Execution & Focus tracking)
         self.process_watcher = GameProcessWatcher()
@@ -64,21 +64,25 @@ class SimPadQtApp:
 
         # 7. Telemetry Bus (Ingestion pipeline)
         self.telemetry_bus = TelemetryBus(
-            plugin_manager=self.plugin_manager,
             reference_lap_mgr=self.reference_lap_mgr,
         )
+        self.plugin_manager.connect_telemetry_bus(self.telemetry_bus)
         self.telemetry_bus.telemetry_updated.connect(self.overlay_state_machine.update_telemetry)
 
-        # 7. Start telemetry stream (Live UDP server by default, or Mock Feeder if enabled)
+        # 8. Start telemetry stream (Live UDP server by default, or Mock Feeder if enabled)
         if self.config_mgr.config.app.mock_telemetry:
             self.telemetry_bus.start_mock()
         else:
-            self.telemetry_bus.start_udp_server()
+            gp_cfg = self.config_mgr.get_game_plugin_settings()
+            self.telemetry_bus.start_udp_server(
+                port=gp_cfg.target_port,
+                target_port=gp_cfg.inbound_port,
+            )
 
-        # 8. Discover & Load Plugins
+        # 9. Discover & Load Plugins
         self._load_plugins()
 
-        # 9. Main Window
+        # 10. Main Window
         self.main_window = SimPadQtMainWindow(
             plugin_manager=self.plugin_manager,
             game_plugin_mgr=self.game_plugin_mgr,
@@ -91,7 +95,7 @@ class SimPadQtApp:
     def _load_plugins(self) -> None:
         """Discover and load both built-in and user external plugins."""
         search_paths = [
-            Path(__file__).resolve().parent.parent / "builtin_plugins",
+            Path(__file__).resolve().parent / "builtin_plugins",
             Path.cwd() / "plugins",
         ]
         self.plugin_manager.discover_and_load(search_paths)

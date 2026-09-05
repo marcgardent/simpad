@@ -10,7 +10,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from simpad_qt.core.app import SimPadQtApp
+from simpad_qt.app import SimPadQtApp
 
 
 def main():

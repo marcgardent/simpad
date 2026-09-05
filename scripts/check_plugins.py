@@ -4,7 +4,7 @@ SimPad Plugin Integrity and Contract Verification CLI.
 
 Checks all built-in (and optionally external) plugins:
 - Syntax & importability (detects broken relative/absolute imports)
-- Contract conformance (SimPadPlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider)
+- Contract conformance (SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHudWidgetProvider)
 - Widget and configuration instantiation without runtime crashes
 - Returns exit code 0 on success, 1 on any failure (suitable for CI/CD / pre-commit).
 """
@@ -26,17 +26,17 @@ if str(PROJECT_ROOT) not in sys.path:
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtCore import QSize
 
-from simpad_qt.plugins.contracts import (
-    SimPadPlugin,
+from simpulse_sdk import (
+    SimPulsePlugin,
     PluginState,
     ITabProvider,
     ITelemetrySubscriber,
     IHudWidgetProvider,
     HudSlot,
+    ChannelRequirement,
 )
 from simpad_qt.plugins.manager import PluginManager
 from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.telemetry_channels import ChannelRequirement
 
 
 def verify_plugins(search_paths: list[Path], verbose: bool = False) -> bool:

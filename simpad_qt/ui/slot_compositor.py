@@ -4,7 +4,7 @@ Uses strongly-typed HudLayoutSpec dataclasses for overlay layout geometry.
 """
 
 from PySide6.QtCore import QRectF, QSize
-from simpad_qt.plugins.contracts import HudSlot, HudLayoutSpec
+from simpulse_sdk import HudSlot, HudLayoutSpec
 
 
 class HudSlotCompositor:
