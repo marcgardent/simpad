@@ -6,9 +6,9 @@ Provides standard lifecycle, parameter declarations, serialization, and evaluati
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union
-from ...engineer.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
+from simpad_qt.core.params import RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
 from ..models import HapticMotorOutput
-from ...telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 HapticConfigValue = Union[bool, float, Dict[str, ParamScalarValue]]
 

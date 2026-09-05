@@ -5,8 +5,8 @@ Unit tests for SimPad Central TelemetryStateStore and TelemetryWakeReason pipeli
 import time
 import unittest
 from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
-from simpad_qt.core.engineer.context import EngineerContext
-from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
 from isimotor_rawudp_client import (
     CompactScoring,
     FullScoringSession,

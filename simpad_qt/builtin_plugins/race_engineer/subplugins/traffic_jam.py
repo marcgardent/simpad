@@ -7,12 +7,12 @@ spinning cars, or traffic jams.
 import time
 import logging
 from typing import Optional, Dict, List, Union
-from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
-from ..context import EngineerContext
-from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
-from ...telemetry.reference_profile import ReferenceLapProfile
-from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class TrafficJamRole(BaseRole):
         if context:
             return context.get_reference_profile()
         try:
-            from ...telemetry.lmu_parser import LMUParser
+            from simpad_qt.core.telemetry.lmu_parser import LMUParser
             delta_eng = LMUParser._delta_engine
             if delta_eng:
                 return delta_eng.all_time_best_profile or delta_eng.current_profile
@@ -282,3 +282,7 @@ class TrafficJamRole(BaseRole):
             "is_busy": self.is_busy(),
         })
         return summary
+
+
+# Sub-plugin alias
+TrafficJamSubplugin = TrafficJamRole

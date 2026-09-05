@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from .models import HapticMotorOutput
 from .subplugins.base import BaseHapticSubplugin
 from .subplugins import get_default_subplugins
-from ..telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 logger = logging.getLogger("simpad.haptics.manager")
 

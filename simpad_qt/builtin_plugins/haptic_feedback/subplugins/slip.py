@@ -5,12 +5,12 @@ Provides progressive rumble on cornering grip loss, rear-end drift, and front-en
 
 from __future__ import annotations
 from typing import List
-from ...engineer.params import RoleParam, FloatRangeParam, ChoiceParam
+from simpad_qt.core.params import RoleParam, FloatRangeParam, ChoiceParam
 from ..models import HapticMotorOutput
 from ..math_engine import apply_response_curve, generate_waveform, WaveformShape
 from ..telemetry_math import calc_oversteer_slip, calc_understeer_scrub
 from .base import BaseHapticSubplugin
-from ...telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 class SlipHapticSubplugin(BaseHapticSubplugin):

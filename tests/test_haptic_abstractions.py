@@ -1,8 +1,8 @@
 import unittest
-from simpad_qt.core.haptics.base import HapticController
-from simpad_qt.core.haptics.mock_controller import MockHapticController
-from simpad_qt.core.haptics.mapper import DirectMixMapper, XInputSeparatedMapper
-from simpad_qt.core.haptics.factory import HapticBackendFactory
+from simpad_qt.builtin_plugins.haptic_feedback.base import HapticController
+from simpad_qt.builtin_plugins.haptic_feedback.mock_controller import MockHapticController
+from simpad_qt.builtin_plugins.haptic_feedback.mapper import DirectMixMapper, XInputSeparatedMapper
+from simpad_qt.builtin_plugins.haptic_feedback.factory import HapticBackendFactory
 
 
 class TestHapticAbstractions(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestHapticAbstractions(unittest.TestCase):
         self.assertTrue(backend.is_connected())
 
     def test_sdl3_controller_auto_reconnect_simulation(self):
-        from simpad_qt.core.haptics.sdl3_controller import SDL3HapticController
+        from simpad_qt.builtin_plugins.haptic_feedback.sdl3_controller import SDL3HapticController
         from unittest.mock import MagicMock
         import ctypes
 
@@ -103,7 +103,7 @@ class TestHapticAbstractions(unittest.TestCase):
 
 
     def test_native_windows_xinput_disconnect_reconnect(self):
-        from simpad_qt.core.haptics.windows import NativeWindowsXInputController
+        from simpad_qt.builtin_plugins.haptic_feedback.windows import NativeWindowsXInputController
         from unittest.mock import MagicMock
 
         ctrl = NativeWindowsXInputController(device_index=0)

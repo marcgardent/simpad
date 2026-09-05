@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import time
 from typing import Optional, Dict, List, Tuple, TYPE_CHECKING, Callable, Union, Protocol, runtime_checkable
 
-from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
 from .params import RoleParam, ParamScalarValue
 
@@ -240,3 +240,8 @@ class BaseRole(ABC):
                 self.audio_engine.play_phrase(phrase_key, interrupt=interrupt)
             elif callable(self.audio_engine):
                 self.audio_engine(phrase_key, interrupt=interrupt)
+
+
+# Modular sub-plugin aliases
+BaseEngineerSubplugin = BaseRole
+EngineerSubplugin = BaseRole

@@ -21,9 +21,9 @@ from simpad_qt.builtin_plugins.race_engineer import RaceEngineerPlugin
 from simpad_qt.builtin_plugins.race_engineer.plugin import (
     RaceEngineerPluginConfig, RaceEngineerWidget, RoleListItemWidget, RoleDetailWidget, SoundLibraryDialog
 )
-from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from simpad_qt.core.engineer.params import BoolParam
-from simpad_qt.core.engineer.manager import RaceEngineer
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.builtin_plugins.race_engineer.params import BoolParam
+from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
 from simpad_qt.core.telemetry.sensors import VehicleSensors
 from simpad_qt.core.utils.audio import AudioAnnouncer
 from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, VehicleScoring
@@ -269,3 +269,37 @@ def test_sound_library_dialog(qapp, tmp_path):
     dlg = SoundLibraryDialog(plugin)
     assert dlg.table.rowCount() >= 30
     assert dlg.table.columnCount() == 4
+
+
+def test_engineer_subplugins_in_plugin():
+    """Verify that engineer roles are sub-plugins located directly within race_engineer plugin package."""
+    from simpad_qt.builtin_plugins.race_engineer import subplugins
+    from simpad_qt.builtin_plugins.race_engineer import roles
+    from simpad_qt.builtin_plugins.race_engineer.registry import SubpluginRegistry, RoleRegistry
+    from simpad_qt.builtin_plugins.race_engineer.factory import SubpluginFactory, RoleFactory
+    from simpad_qt.builtin_plugins.race_engineer.base import BaseEngineerSubplugin, BaseRole
+
+    assert SubpluginRegistry is RoleRegistry
+    assert SubpluginFactory is RoleFactory
+    assert BaseEngineerSubplugin is BaseRole
+
+    # Verify all 6 subplugins and role aliases are exposed from the plugin package
+    assert subplugins.LapValiditySubplugin is subplugins.LapValidityRole
+    assert subplugins.TrafficSpotterSubplugin is subplugins.TrafficSpotterRole
+    assert subplugins.TrafficJamSubplugin is subplugins.TrafficJamRole
+    assert subplugins.PaceNotesSubplugin is subplugins.PaceNotesRole
+    assert subplugins.PitlaneSpotterSubplugin is subplugins.PitlaneSpotterRole
+    assert subplugins.FightSpotterSubplugin is subplugins.FightSpotterRole
+
+    # Verify roles alias module matches subplugins
+    assert roles.LapValidityRole is subplugins.LapValidityRole
+    assert roles.TrafficSpotterRole is subplugins.TrafficSpotterRole
+    assert roles.TrafficJamRole is subplugins.TrafficJamRole
+    assert roles.PaceNotesRole is subplugins.PaceNotesRole
+    assert roles.PitlaneSpotterRole is subplugins.PitlaneSpotterRole
+    assert roles.FightSpotterRole is subplugins.FightSpotterRole
+
+    # Verify instantiation and registration
+    inst = subplugins.LapValiditySubplugin()
+    assert inst.role_id == "lap_validity"
+    assert RoleRegistry.is_registered("lap_validity")

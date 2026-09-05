@@ -8,12 +8,12 @@ Pure stateless detection directly from the telemetry/scoring packet flags:
 import time
 from typing import Optional, Dict, List, Union
 
-from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
-from ..context import EngineerContext
-from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, ParamScalarValue
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, ParamScalarValue
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
-from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 
 
 @RoleRegistry.register(
@@ -118,7 +118,7 @@ class LapValidityRole(BaseRole):
         elif isinstance(state, TelemetryStateStore):
             state_store = state
         else:
-            from ...telemetry.state_store import TelemetryStateStore
+            from simpad_qt.core.telemetry.state_store import TelemetryStateStore
             state_store = TelemetryStateStore.get_instance()
 
         # Consume authoritative transition processed directly by the state store
@@ -144,7 +144,7 @@ class LapValidityRole(BaseRole):
         """Plays sound and logs event in track_limits_debug.log."""
         super().emit_sound(phrase_key, interrupt=interrupt)
         try:
-            from ...telemetry.track_limits_logger import TrackLimitsLogger
+            from simpad_qt.core.telemetry.track_limits_logger import TrackLimitsLogger
             TrackLimitsLogger.get_instance().log_spotter_action(
                 phrase_key=phrase_key,
                 interrupt=interrupt,
@@ -158,12 +158,12 @@ class LapValidityRole(BaseRole):
         self._last_event_time = 0.0
         self._last_event_name = "IDLE"
         self._was_in_garage = False
-        from ...telemetry.state_store import TelemetryStateStore
+        from simpad_qt.core.telemetry.state_store import TelemetryStateStore
         TelemetryStateStore.get_instance().reset()
 
     def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
-        from ...telemetry.state_store import TelemetryStateStore
+        from simpad_qt.core.telemetry.state_store import TelemetryStateStore
         st = TelemetryStateStore.get_instance()
         summary.update({
             "lap_flag": st.lap_flag,
@@ -176,4 +176,5 @@ class LapValidityRole(BaseRole):
         return summary
 
 
-
+# Sub-plugin alias
+LapValiditySubplugin = LapValidityRole

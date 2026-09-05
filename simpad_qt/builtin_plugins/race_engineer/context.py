@@ -18,8 +18,8 @@ from isimotor_rawudp_client import (
 )
 
 from .base import AudioEngineType
-from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
-from ..telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
 from simpad_qt.core.telemetry_channels import TelemetryRawPacket
 
 TelemetryTriggerPacket = Union[TelemInfo, FullScoringSession, CompactScoring, TelemetryRawPacket]
@@ -195,7 +195,7 @@ class EngineerContext:
             if ref_name:
                 return ref_name
         try:
-            from ..telemetry.lmu_parser import LMUParser
+            from simpad_qt.core.telemetry.lmu_parser import LMUParser
             delta_eng = LMUParser._delta_engine
             if delta_eng and delta_eng.track_name:
                 return delta_eng.track_name
@@ -217,7 +217,7 @@ class EngineerContext:
             return self.reference_profile
 
         try:
-            from ..telemetry.lmu_parser import LMUParser
+            from simpad_qt.core.telemetry.lmu_parser import LMUParser
             delta_eng = LMUParser._delta_engine
             if delta_eng:
                 # Track engineer (traffic, markers) always uses all-time best reference lap

@@ -6,12 +6,12 @@ and smooth sine rumble on under-rev (low RPM / downshift indicator).
 
 from __future__ import annotations
 from typing import List
-from ...engineer.params import RoleParam, FloatRangeParam, ChoiceParam, BoolParam
+from simpad_qt.core.params import RoleParam, FloatRangeParam, ChoiceParam, BoolParam
 from ..models import HapticMotorOutput
 from ..math_engine import apply_response_curve, generate_waveform, WaveformShape
 from ..telemetry_math import calc_engine_rev_state
 from .base import BaseHapticSubplugin
-from ...telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 class MarcEngineShiftSubplugin(BaseHapticSubplugin):

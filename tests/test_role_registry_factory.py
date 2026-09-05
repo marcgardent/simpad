@@ -3,10 +3,10 @@ Tests unitaires pour RoleRegistry et RoleFactory (Race Engineer).
 """
 
 import pytest
-from simpad_qt.core.engineer.base import BaseRole, EngineerMessage, RoleStatus
-from simpad_qt.core.engineer.context import EngineerContext
-from simpad_qt.core.engineer.registry import RoleRegistry
-from simpad_qt.core.engineer.factory import RoleFactory
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.factory import RoleFactory
 
 
 class DummyRole(BaseRole):

@@ -106,3 +106,8 @@ class RoleRegistry:
         """Clears the registry (primarily for unit tests)."""
         cls._registry.clear()
         cls._metadata.clear()
+
+
+# Sub-plugin registry aliases
+SubpluginMetadata = RoleMetadata
+SubpluginRegistry = RoleRegistry

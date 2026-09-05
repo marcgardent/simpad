@@ -16,11 +16,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple, Protocol, Union
 
 from isimotor_rawudp_client import TelemVect3
-from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
-from ..context import EngineerContext
-from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
-from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
@@ -1102,3 +1102,7 @@ class FightSpotterRole(BaseRole):
             "is_busy": self.is_busy(),
         })
         return summary
+
+
+# Sub-plugin alias
+FightSpotterSubplugin = FightSpotterRole

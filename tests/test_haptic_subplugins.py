@@ -4,15 +4,15 @@ Unit tests for SimPad Haptics Subplugins and Marc Profile Decomposition.
 
 import pytest
 from simpad_qt.core.telemetry.sensors import VehicleSensors
-from simpad_qt.core.haptics.models import HapticMotorOutput
-from simpad_qt.core.haptics.subplugins.marc_abs import MarcAbsSubplugin
-from simpad_qt.core.haptics.subplugins.marc_tc import MarcTcSubplugin
-from simpad_qt.core.haptics.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
-from simpad_qt.core.haptics.subplugins.curbs import CurbsHapticSubplugin
-from simpad_qt.core.haptics.subplugins.slip import SlipHapticSubplugin
-from simpad_qt.core.haptics.subplugins.grip import TireGripHapticSubplugin
-from simpad_qt.core.haptics.manager import HapticSubpluginManager
-from simpad_qt.core.haptics.math_engine import WaveformShape
+from simpad_qt.builtin_plugins.haptic_feedback.models import HapticMotorOutput
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_abs import MarcAbsSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_tc import MarcTcSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.curbs import CurbsHapticSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.slip import SlipHapticSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.grip import TireGripHapticSubplugin
+from simpad_qt.builtin_plugins.haptic_feedback.manager import HapticSubpluginManager
+from simpad_qt.builtin_plugins.haptic_feedback.math_engine import WaveformShape
 
 
 def test_haptic_motor_output_xinput_mapping():

@@ -5,12 +5,12 @@ Monitors the global tire friction envelope and vibrates when overall grip drops 
 
 from __future__ import annotations
 from typing import List
-from ...engineer.params import RoleParam, FloatRangeParam, ChoiceParam
+from simpad_qt.core.params import RoleParam, FloatRangeParam, ChoiceParam
 from ..models import HapticMotorOutput
 from ..math_engine import apply_response_curve, generate_waveform, WaveformShape
 from ..telemetry_math import calc_tire_grip_loss
 from .base import BaseHapticSubplugin
-from ...telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
 class TireGripHapticSubplugin(BaseHapticSubplugin):

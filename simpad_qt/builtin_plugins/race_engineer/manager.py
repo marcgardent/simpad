@@ -14,11 +14,11 @@ from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
 from .base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
 from .context import EngineerContext, TelemetryTriggerPacket
 from .factory import RoleFactory
-from ..telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
-from ..telemetry.reference_profile import ReferenceLapProfile
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
 from simpad_qt.core.telemetry_channels import ChannelRequirement, TelemetryChannel
 from .params import ParamScalarValue
-from ..utils.audio import AudioAnnouncer
+from simpad_qt.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,13 @@ class RaceEngineer:
                 role.reset()
             if auto_save and self.config_path:
                 self.save_to_file()
+
+    # Sub-plugin alias methods
+    get_subplugins = get_roles
+    get_subplugin = get_role
+    add_subplugin = add_role
+    remove_subplugin = remove_role
+    set_subplugin_enabled = set_role_enabled
 
     def move_role_up(self, role_id: str, auto_save: bool = True) -> bool:
         """
@@ -235,7 +242,7 @@ class RaceEngineer:
         Checks disk for existence of .wav files required by sub-plugins
         and returns dictionary of missing phrases to generate.
         """
-        from ..utils.audio_baker import DEFAULT_SOUND_DIR
+        from simpad_qt.core.utils.audio_baker import DEFAULT_SOUND_DIR
         target_dir = Path(sound_dir or DEFAULT_SOUND_DIR)
         all_required = self.get_all_sound_requirements(only_enabled=only_enabled)
         missing: Dict[str, str] = {}
@@ -256,7 +263,7 @@ class RaceEngineer:
         Returns tuple (num_generated, num_already_present).
         """
         try:
-            from ..utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
+            from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_SOUND_DIR, DEFAULT_MODEL_PATH
             target_dir = Path(sound_dir or DEFAULT_SOUND_DIR)
             model = Path(model_path or DEFAULT_MODEL_PATH)
             required_phrases = self.get_all_sound_requirements(only_enabled=False)
@@ -283,7 +290,7 @@ class RaceEngineer:
             pass
 
         try:
-            from ..telemetry.lmu_parser import LMUParser
+            from simpad_qt.core.telemetry.lmu_parser import LMUParser
             delta_eng = LMUParser._delta_engine
             if delta_eng:
                 return delta_eng.all_time_best_profile or delta_eng.current_profile

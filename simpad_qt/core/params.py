@@ -176,3 +176,19 @@ class ChoiceParam(RoleParam[str]):
         combo.currentTextChanged.connect(on_change)
         return combo
 
+
+# Aliases
+SubpluginParam = RoleParam
+ParamDescriptor = RoleParam
+
+__all__ = [
+    "RoleParam",
+    "SubpluginParam",
+    "ParamDescriptor",
+    "BoolParam",
+    "IntRangeParam",
+    "FloatRangeParam",
+    "ChoiceParam",
+    "ParamScalarValue",
+]
+

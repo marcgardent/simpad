@@ -27,11 +27,11 @@ from simpad_qt.core.telemetry_channels import (
     TelemetryChannel, ChannelRequirement
 )
 from simpad_qt.core.telemetry import VehicleSensors, TelemetryStateStore
-from simpad_qt.core.haptics.base import HapticController
-from simpad_qt.core.haptics.factory import HapticBackendFactory
-from simpad_qt.core.haptics.manager import HapticSubpluginManager
-from simpad_qt.core.haptics.subplugins.base import BaseHapticSubplugin
-from simpad_qt.core.engineer.params import (
+from .base import HapticController
+from .factory import HapticBackendFactory
+from .manager import HapticSubpluginManager
+from .subplugins.base import BaseHapticSubplugin
+from simpad_qt.core.params import (
     RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
 )
 

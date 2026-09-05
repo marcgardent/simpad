@@ -7,18 +7,18 @@ SOLID architecture (SRP, OCP, DIP).
 import time
 import logging
 from typing import Optional, Dict, Set, List, Tuple, Union
-from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
-from ..context import EngineerContext
-from ..registry import RoleRegistry
-from ..params import RoleParam, BoolParam, FloatRangeParam, ParamScalarValue
-from ...telemetry.reference_profile import (
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, BoolParam, FloatRangeParam, ParamScalarValue
+from simpad_qt.core.telemetry.reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
     AnnotationType,
     clean_name_identifier,
 )
-from ...telemetry.lmu_parser import LMUParser
-from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.core.telemetry.lmu_parser import LMUParser
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
@@ -367,3 +367,7 @@ class PaceNotesRole(BaseRole):
             self.min_lead_distance_m = float(config["min_lead_distance_m"])
         if "max_lead_distance_m" in config:
             self.max_lead_distance_m = float(config["max_lead_distance_m"])
+
+
+# Sub-plugin alias
+PaceNotesSubplugin = PaceNotesRole

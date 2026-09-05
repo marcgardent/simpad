@@ -13,11 +13,11 @@ import logging
 from enum import Enum
 from typing import Optional, Dict, List, Tuple, Union
 from isimotor_rawudp_client import VehicleScoring
-from ..base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
-from ..context import EngineerContext
-from ..registry import RoleRegistry
-from ..params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
-from ...telemetry.state_store import TelemetryStateStore
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.registry import RoleRegistry
+from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
+from simpad_qt.core.telemetry.state_store import TelemetryStateStore
 from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
 logger = logging.getLogger(__name__)
@@ -526,3 +526,7 @@ class PitlaneSpotterRole(BaseRole):
             "is_busy": self.is_busy(),
         })
         return summary
+
+
+# Sub-plugin alias
+PitlaneSpotterSubplugin = PitlaneSpotterRole

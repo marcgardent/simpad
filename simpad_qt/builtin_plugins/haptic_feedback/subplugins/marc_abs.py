@@ -1,31 +1,31 @@
 """
-SimPad Haptics Subplugin — TC & Wheelspin (Marc Profile).
-Extracts official ECU Traction Control / rear wheel spin telemetry, applies non-linear response curves,
-and synthesizes high-frequency 144 Hz sinusoidal buzz to the High Frequency (Right) XInput motor.
+SimPad Haptics Subplugin — ABS & Wheel Lockup (Marc Profile).
+Extracts official ECU ABS / front wheel lockup telemetry, applies non-linear response curves,
+and synthesizes high-frequency 144 Hz sinusoidal rumble to the Low Frequency (Left) XInput motor.
 """
 
 from __future__ import annotations
 from typing import List
-from ...engineer.params import RoleParam, FloatRangeParam, ChoiceParam, BoolParam
+from simpad_qt.core.params import RoleParam, FloatRangeParam, ChoiceParam, BoolParam
 from ..models import HapticMotorOutput
 from ..math_engine import apply_response_curve, generate_waveform, WaveformShape
-from ..telemetry_math import calc_tc_wheelspin
+from ..telemetry_math import calc_abs_lockup
 from .base import BaseHapticSubplugin
-from ...telemetry.sensors import VehicleSensors
+from simpad_qt.core.telemetry.sensors import VehicleSensors
 
 
-class MarcTcSubplugin(BaseHapticSubplugin):
+class MarcAbsSubplugin(BaseHapticSubplugin):
     """
-    Traction Control & Wheelspin Haptic Feedback subplugin derived from 'Marc Profile'.
-    Applies a 1.81 gain, 0.7 gamma curve and 144 Hz sine pulse on wheelspin / TC activation.
+    ABS & Wheel Lockup Haptic Feedback subplugin derived from 'Marc Profile'.
+    Applies a 1.8 gain, 0.7 gamma curve and 144 Hz sine pulse on braking lock / ABS activation.
     """
 
     def __init__(self, enabled: bool = True):
         super().__init__(
-            subplugin_id="marc_tc",
-            name="TC & Wheelspin (Marc Profile)",
-            description="High-definition 144 Hz sinusoidal buzz on Traction Control activation and power wheelspin.",
-            icon="⚡",
+            subplugin_id="marc_abs",
+            name="ABS & Wheel Lockup (Marc Profile)",
+            description="High-definition 144 Hz sinusoidal pulsing on ABS activation and front wheel lockups.",
+            icon="🛑",
             enabled=enabled,
             master_gain=1.0,
         )
@@ -35,17 +35,17 @@ class MarcTcSubplugin(BaseHapticSubplugin):
             FloatRangeParam(
                 name="gain",
                 label="Effect Gain",
-                description="Linear amplification factor for TC vibration",
+                description="Linear amplification factor for ABS vibration",
                 min_val=0.1,
                 max_val=3.0,
                 step=0.05,
                 unit="x",
-                default=1.81,
+                default=1.80,
             ),
             FloatRangeParam(
                 name="gamma",
                 label="Response Gamma",
-                description="Response curve exponent (<1.0 boosts subtle wheelspin, >1.0 makes it progressive)",
+                description="Response curve exponent (<1.0 boosts subtle lockups, >1.0 makes it progressive)",
                 min_val=0.1,
                 max_val=2.0,
                 step=0.05,
@@ -54,7 +54,7 @@ class MarcTcSubplugin(BaseHapticSubplugin):
             FloatRangeParam(
                 name="threshold",
                 label="Cutoff Threshold",
-                description="Minimum wheelspin level before vibration triggers",
+                description="Minimum lockup level before vibration triggers",
                 min_val=0.0,
                 max_val=0.50,
                 step=0.01,
@@ -64,7 +64,7 @@ class MarcTcSubplugin(BaseHapticSubplugin):
             FloatRangeParam(
                 name="frequency",
                 label="Waveform Frequency",
-                description="Frequency of the vibration pulsation in Hertz",
+                description="Frequency of the sinusoidal vibration pulsation in Hertz",
                 min_val=10.0,
                 max_val=300.0,
                 step=1.0,
@@ -89,8 +89,8 @@ class MarcTcSubplugin(BaseHapticSubplugin):
             ),
             BoolParam(
                 name="prefer_ecu",
-                label="Prioritize ECU TC Flag",
-                description="Detect native ECU Traction Control active signal from car electronics",
+                label="Prioritize ECU ABS Flag",
+                description="Detect native ECU ABS active signal from car electronics",
                 default=True,
             ),
         ]
@@ -99,7 +99,7 @@ class MarcTcSubplugin(BaseHapticSubplugin):
         if not self.enabled or self.master_gain <= 0.001:
             return HapticMotorOutput()
 
-        gain = float(self.get_param("gain", 1.81))
+        gain = float(self.get_param("gain", 1.80))
         gamma = float(self.get_param("gamma", 0.70))
         thresh = float(self.get_param("threshold", 0.0))
         freq = float(self.get_param("frequency", 144.0))
@@ -107,8 +107,8 @@ class MarcTcSubplugin(BaseHapticSubplugin):
         duty = float(self.get_param("duty", 1.0))
         prefer_ecu = bool(self.get_param("prefer_ecu", True))
 
-        # 1. Calculate raw telemetry TC signal
-        left_raw, right_raw, comb_raw = calc_tc_wheelspin(sensors, prefer_ecu=prefer_ecu)
+        # 1. Calculate raw telemetry ABS signal
+        left_raw, right_raw, comb_raw = calc_abs_lockup(sensors, prefer_ecu=prefer_ecu)
 
         # 2. Apply parametric curve
         curved_intensity = apply_response_curve(comb_raw, gamma=gamma, gain=gain, min_cutoff=thresh)
@@ -122,6 +122,6 @@ class MarcTcSubplugin(BaseHapticSubplugin):
             amplitude=curved_intensity
         )
 
-        # 4. Route to Right Motor (High Frequency Buzz on XInput)
+        # 4. Route to Left Motor (Low Frequency Rumble on XInput)
         scaled_vibe = vibe * self.master_gain
-        return HapticMotorOutput(right_high=scaled_vibe)
+        return HapticMotorOutput(left_low=scaled_vibe)

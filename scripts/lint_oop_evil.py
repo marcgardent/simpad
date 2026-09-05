@@ -90,22 +90,22 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         if func_name == "getattr":
             self.issues.append((
                 node.lineno, node.col_offset,
-                "Appel à `getattr()` — introspection dynamique interdite, ça dégage sans ambiguïté (casse le contrat d'interface, le typage statique et l'encapsulation)."
+                "Call to `getattr()` — dynamic introspection forbidden, remove without ambiguity (breaks interface contracts, static typing, and encapsulation)."
             ))
         elif func_name in {"hasattr", "setattr"}:
             self.issues.append((
                 node.lineno, node.col_offset,
-                f"Appel à `{func_name}()` — introspection/mutation dynamique interdite (casse le polymorphisme et l'encapsulation)."
+                f"Call to `{func_name}()` — dynamic introspection/mutation forbidden (breaks polymorphism and encapsulation)."
             ))
         elif func_name == "isinstance":
             if not self._is_inside_factory():
                 self.issues.append((
                     node.lineno, node.col_offset,
-                    "Appel à `isinstance()` hors Factory — acceptable uniquement dans une Factory. Dans le reste du code, on utilise le polymorphisme ou on crée un abstract."
+                    "Call to `isinstance()` outside Factory — only acceptable inside a Factory. In the rest of the code, use polymorphism or create an abstraction."
                 ))
         self.generic_visit(node)
 
-    # --- DICTIONNAIRES GÉNÉRIQUES : Dict[str, Any] / dict[str, Any] / Dict[str, object] ---
+    # --- GENERIC DICTIONARIES: Dict[str, Any] / dict[str, Any] / Dict[str, object] ---
     def visit_Subscript(self, node: ast.Subscript):
         base_name = get_full_name(node.value)
         if base_name in {"dict", "Dict", "typing.Dict"}:
@@ -122,18 +122,18 @@ class FullOOPLintVisitor(ast.NodeVisitor):
                 if key_type == "str" and val_type in {"Any", "typing.Any", "object"}:
                     self.issues.append((
                         node.lineno, node.col_offset,
-                        f"Usage de `{base_name}[str, {val_type}]` — primitive obsession : typer explicitement et ne pas utiliser de type générique. S'il faut manipuler une abstraction, créer le type/la classe dédiée."
+                        f"Use of `{base_name}[str, {val_type}]` — primitive obsession: type explicitly and do not use a generic type. If an abstraction is needed, create a dedicated type/class."
                     ))
-                    return  # Évite de déclencher l'alerte sur le Any interne
+                    return  # Avoid triggering alert on inner Any
 
         self.generic_visit(node)
 
-    # --- ANY : Any / typing.Any ---
+    # --- ANY: Any / typing.Any ---
     def visit_Name(self, node: ast.Name):
         if node.id == "Any":
             self.issues.append((
                 node.lineno, node.col_offset,
-                "Usage de `Any` — typer explicitement et ne pas utiliser d'autre type générique. S'il faut manipuler une abstraction, créer le type dédié."
+                "Use of `Any` — type explicitly and do not use generic types. If an abstraction is needed, create a dedicated type."
             ))
         self.generic_visit(node)
 
@@ -142,22 +142,22 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         if get_full_name(node) == "typing.Any":
             self.issues.append((
                 node.lineno, node.col_offset,
-                "Usage de `typing.Any` — typer explicitement et ne pas utiliser d'autre type générique. S'il faut manipuler une abstraction, créer le type dédié."
+                "Use of `typing.Any` — type explicitly and do not use generic types. If an abstraction is needed, create a dedicated type."
             ))
             return
 
-        # Détection d'utilisation de self
+        # Detection of self usage
         if get_full_name(node.value) == "self":
             self.method_uses_self = True
 
-        # Accès direct à __dict__
+        # Direct access to __dict__
         if node.attr == "__dict__":
             self.issues.append((
                 node.lineno, node.col_offset,
-                "Accès direct à `__dict__` — casse le modèle objet et l'encapsulation."
+                "Direct access to `__dict__` — breaks the object model and encapsulation."
             ))
 
-        # Loi de Déméter (Train Wreck) : a.b.c.d
+        # Law of Demeter (Train Wreck): a.b.c.d
         depth = 0
         curr = node
         while isinstance(curr, ast.Attribute):
@@ -166,12 +166,12 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         if depth >= 3:
             self.issues.append((
                 node.lineno, node.col_offset,
-                f"Loi de Déméter violée (profondeur {depth}) — trop forte intimité entre structures."
+                f"Law of Demeter violated (depth {depth}) — excessive coupling between structures."
             ))
 
         self.generic_visit(node)
 
-    # --- GOD CLASS & STRUCTURES DE CLASSE ---
+    # --- GOD CLASS & CLASS STRUCTURES ---
     def visit_ClassDef(self, node: ast.ClassDef):
         prev_class = self.current_class
         self.current_class = node
@@ -180,29 +180,29 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         if len(methods) > 20:
             self.issues.append((
                 node.lineno, node.col_offset,
-                f"God Class : `{node.name}` expose {len(methods)} méthodes (seuil conseillé : <= 20)."
+                f"God Class: `{node.name}` exposes {len(methods)} methods (recommended threshold: <= 20)."
             ))
 
         self.generic_visit(node)
         self.current_class = prev_class
 
-    # --- ANNOTATIONS DE VARIABLES AVEC TYPES QUOTÉS ---
+    # --- VARIABLE ANNOTATIONS WITH QUOTED TYPES ---
     def visit_AnnAssign(self, node: ast.AnnAssign):
         quoted = find_quoted_types(node.annotation)
         for q_type in quoted:
             if self.current_class and q_type == self.current_class.name:
                 self.issues.append((
                     node.lineno, node.col_offset,
-                    f"Attribut annoté avec type entre guillemets `\"{q_type}\"` — forward reference obsolète : utiliser `Self` (from typing import Self) au lieu du nom de classe entre guillemets."
+                    f"Attribute annotated with quoted type `\"{q_type}\"` — obsolete forward reference: use `Self` (from typing import Self) instead of quoted class name."
                 ))
             else:
                 self.issues.append((
                     node.lineno, node.col_offset,
-                    f"Attribut annoté avec type entre guillemets `\"{q_type}\"` — forward reference obsolète : utiliser `from __future__ import annotations` et des types non quotés."
+                    f"Attribute annotated with quoted type `\"{q_type}\"` — obsolete forward reference: use `from __future__ import annotations` and unquoted types."
                 ))
         self.generic_visit(node)
 
-    # --- FONCTIONS ET MÉTHODES ---
+    # --- FUNCTIONS AND METHODS ---
     def visit_FunctionDef(self, node: ast.FunctionDef):
         self._check_function_or_method(node)
 
@@ -210,7 +210,7 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         self._check_function_or_method(node)
 
     def _check_function_or_method(self, node: ast.FunctionDef | ast.AsyncFunctionDef):
-        # 1. Vérification des faux backdoors de dict : __getitem__, get(), to_dict()
+        # 1. Verification of fake dict backdoors: __getitem__, get(), to_dict()
         if self.current_class and node.name in {"__getitem__", "get", "to_dict"}:
             base_names = [get_full_name(b) for b in self.current_class.bases]
             is_collection = any(
@@ -220,10 +220,10 @@ class FullOOPLintVisitor(ast.NodeVisitor):
             if not is_collection:
                 self.issues.append((
                     node.lineno, node.col_offset,
-                    f"Méthode `{node.name}()` dans `{self.current_class.name}` — fake dict backdoor / primitive obsession : un objet métier ne doit pas se comporter comme un dictionnaire ni exposer son état via `get()` ou `to_dict()`."
+                    f"Method `{node.name}()` in `{self.current_class.name}` — fake dict backdoor / primitive obsession: a domain object must not behave like a dictionary nor expose its internal state via `get()` or `to_dict()`."
                 ))
 
-        # 2. Vérification des arguments Option(al)
+        # 2. Verification of Option(al) arguments
         all_args = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
         for arg in all_args:
             if arg.arg in {"self", "cls", "parent"}:
@@ -231,38 +231,38 @@ class FullOOPLintVisitor(ast.NodeVisitor):
             if is_optional_node(arg.annotation):
                 self.issues.append((
                     arg.lineno, arg.col_offset,
-                    f"Argument `{arg.arg}` typé Option(al) dans `{node.name}()` — anti-pattern : soit suppression de l'appel quand la data n'est pas disponible, soit découpage en deux méthodes (une avec la data, une sans la data)."
+                    f"Argument `{arg.arg}` typed as Option(al) in `{node.name}()` — anti-pattern: either eliminate the call when data is unavailable, or split into two methods (one with data, one without)."
                 ))
-            # Quoted type dans un argument
+            # Quoted type in argument
             quoted_arg_types = find_quoted_types(arg.annotation)
             for q_type in quoted_arg_types:
                 if self.current_class and q_type == self.current_class.name:
                     self.issues.append((
                         arg.lineno, arg.col_offset,
-                        f"Argument `{arg.arg}` annoté avec `\"{q_type}\"` — forward reference obsolète : utiliser `Self` (from typing import Self) au lieu d'une forward reference entre guillemets."
+                        f"Argument `{arg.arg}` annotated with `\"{q_type}\"` — obsolete forward reference: use `Self` (from typing import Self) instead of a quoted forward reference."
                     ))
                 else:
                     self.issues.append((
                         arg.lineno, arg.col_offset,
-                        f"Argument `{arg.arg}` annoté avec `\"{q_type}\"` — forward reference obsolète : utiliser `from __future__ import annotations` et des types non quotés."
+                        f"Argument `{arg.arg}` annotated with `\"{q_type}\"` — obsolete forward reference: use `from __future__ import annotations` and unquoted types."
                     ))
 
-        # 3. Vérification du type de retour quoté (ex: def get_instance(cls) -> "TelemetryStateStore")
+        # 3. Verification of quoted return types (e.g.: def get_instance(cls) -> "TelemetryStateStore")
         if node.returns:
             quoted_ret_types = find_quoted_types(node.returns)
             for q_type in quoted_ret_types:
                 if self.current_class and q_type == self.current_class.name:
                     self.issues.append((
                         node.lineno, node.col_offset,
-                        f"Type de retour `\"{q_type}\"` dans `{node.name}()` — forward reference obsolète : utiliser `Self` (from typing import Self) au lieu du nom de la classe entre guillemets."
+                        f"Return type `\"{q_type}\"` in `{node.name}()` — obsolete forward reference: use `Self` (from typing import Self) instead of quoted class name."
                     ))
                 else:
                     self.issues.append((
                         node.lineno, node.col_offset,
-                        f"Type de retour annoté sous forme de chaîne `\"{q_type}\"` dans `{node.name}()` — forward reference obsolète : utiliser `from __future__ import annotations` et des types non quotés."
+                        f"Return type annotated as string `\"{q_type}\"` in `{node.name}()` — obsolete forward reference: use `from __future__ import annotations` and unquoted types."
                     ))
 
-        # 4. Méthodes de classe : Feature Envy, @staticmethod, etc.
+        # 4. Class methods: Feature Envy, @staticmethod, etc.
         if not self.current_class:
             self.generic_visit(node)
             return
@@ -277,12 +277,12 @@ class FullOOPLintVisitor(ast.NodeVisitor):
         if "staticmethod" in decorators:
             self.issues.append((
                 node.lineno, node.col_offset,
-                f"`@{node.name}` est un `@staticmethod` — procédure pure isolée artificiellement dans une classe."
+                f"`@{node.name}` is a `@staticmethod` — pure procedure artificially isolated in a class."
             ))
 
         self.generic_visit(node)
 
-        # Méthode d'instance ignorant self (Feature Envy / fonction déguisée)
+        # Instance method ignoring self (Feature Envy / disguised function)
         args = [arg.arg for arg in node.args.args]
         is_instance_method = args and args[0] == "self"
         exempt_decorators = {"staticmethod", "classmethod", "property", "abstractmethod"}
@@ -290,20 +290,20 @@ class FullOOPLintVisitor(ast.NodeVisitor):
             if not (len(node.body) == 1 and isinstance(node.body[0], (ast.Pass, ast.Expr))):
                 self.issues.append((
                     node.lineno, node.col_offset,
-                    f"Méthode `{node.name}` n'utilise jamais `self` — logique externe à la classe."
+                    f"Method `{node.name}` never uses `self` — logic belongs outside the class."
                 ))
 
         self.current_method = prev_method
         self.method_uses_self = prev_uses_self
 
-    # --- MUTATION D'ÉTAT HORS __init__ ---
+    # --- STATE MUTATION OUTSIDE __init__ ---
     def visit_Assign(self, node: ast.Assign):
         if self.current_class and self.current_method and self.current_method.name != "__init__":
             for target in node.targets:
                 if isinstance(target, ast.Attribute) and get_full_name(target.value) == "self":
                     self.issues.append((
                         target.lineno, target.col_offset,
-                        f"Mutation hors `__init__` : attribut `self.{target.attr}` créé ou altéré dans `{self.current_method.name}`."
+                        f"Mutation outside `__init__`: attribute `self.{target.attr}` created or modified in `{self.current_method.name}`."
                     ))
         self.generic_visit(node)
 
@@ -315,13 +315,13 @@ class FullOOPLintVisitor(ast.NodeVisitor):
                     if isinstance(op, (ast.Eq, ast.Is)):
                         self.issues.append((
                             node.lineno, node.col_offset,
-                            "Comparaison directe avec `type()` — détruit le principe de substitution de Liskov."
+                            "Direct comparison with `type()` — breaks the Liskov Substitution Principle."
                         ))
         self.generic_visit(node)
 
 
 def categorize_issue(msg: str) -> str:
-    """Classifie le message d'anomalie dans une catégorie canonique."""
+    """Classifies the issue message into a canonical category."""
     if "dict[str," in msg or "Dict[str," in msg:
         return "Primitive Obsession (Dict[str, Any])"
     if "getattr()" in msg:
@@ -329,42 +329,42 @@ def categorize_issue(msg: str) -> str:
     if "hasattr()" in msg or "setattr()" in msg:
         return "Introspection (hasattr/setattr)"
     if "isinstance()" in msg:
-        return "isinstance() hors Factory"
-    if "Usage de `Any`" in msg or "Usage de `typing.Any`" in msg:
-        return "Bypass Typage (Any)"
-    if "typé Option(al)" in msg:
-        return "Option(al) en argument"
+        return "isinstance() outside Factory"
+    if "Use of `Any`" in msg or "Use of `typing.Any`" in msg:
+        return "Type Bypass (Any)"
+    if "typed as Option(al)" in msg:
+        return "Option(al) in argument"
     if "fake dict backdoor" in msg:
         return "Fake Dict Backdoor (__getitem__/get/to_dict)"
-    if "forward reference obsolète" in msg or "utilisez `Self`" in msg:
-        return "Forward Ref obsolète (Quoted type / Self)"
-    if "Mutation hors `__init__`" in msg:
-        return "Mutation d'état hors __init__"
-    if "n'utilise jamais `self`" in msg:
-        return "Logique hors classe (no-self)"
+    if "obsolete forward reference" in msg or "use `Self`" in msg:
+        return "Obsolete Forward Ref (Quoted type / Self)"
+    if "Mutation outside `__init__`" in msg:
+        return "State mutation outside __init__"
+    if "never uses `self`" in msg:
+        return "Logic outside class (no-self)"
     if "@staticmethod" in msg:
         return "@staticmethod"
-    if "Loi de Déméter" in msg:
-        return "Loi de Déméter"
+    if "Law of Demeter" in msg:
+        return "Law of Demeter"
     if "God Class" in msg:
-        return "God Class (>20 méthodes)"
-    if "Comparaison directe avec `type()`" in msg:
-        return "Comparaison type() (Liskov)"
-    if "Accès direct à `__dict__`" in msg:
-        return "Accès direct à __dict__ (Encapsulation)"
-    return "Autre"
+        return "God Class (>20 methods)"
+    if "Direct comparison with `type()`" in msg:
+        return "type() comparison (Liskov)"
+    if "Direct access to `__dict__`" in msg:
+        return "Direct access to __dict__ (Encapsulation)"
+    return "Other"
 
 
 def get_module_name(file_path: Path, root_path: Path) -> str:
-    """Détermine le nom du module Python / package d'appartenance."""
+    """Determines the Python module / enclosing package name."""
     try:
         rel = file_path.resolve().relative_to(root_path.resolve())
         parent = rel.parent
         if str(parent) == ".":
-            return "(racine)"
+            return "(root)"
         return ".".join(parent.parts)
     except ValueError:
-        return file_path.parent.name or "(racine)"
+        return file_path.parent.name or "(root)"
 
 
 def format_bar(val: int, max_val: int, length: int = 20) -> str:
@@ -385,7 +385,7 @@ def scan(
     path = Path(target_path).resolve()
     files = sorted(list(path.rglob("*.py")) if path.is_dir() else [path])
 
-    # Couleurs ANSI
+    # ANSI colors
     if no_color or not sys.stdout.isatty():
         C_RESET = ""
         C_BOLD = ""
@@ -443,28 +443,28 @@ def scan(
             clean_files_count += 1
 
     # =========================================================================
-    # AFFICHAGE DES STATISTIQUES
+    # STATISTICS DISPLAY
     # =========================================================================
     total_files = len(files)
     impacted_files = total_files - clean_files_count
     clean_pct = (clean_files_count / total_files * 100) if total_files > 0 else 100.0
 
     print(f"\n{C_BOLD}{'=' * 80}{C_RESET}")
-    print(f"{C_BOLD}{C_CYAN} SIMPAD OOP & CRIPY CODE LINTER — RAPPORT STATISTIQUE{C_RESET}")
+    print(f"{C_BOLD}{C_CYAN} SIMPAD OOP & CLEAN CODE LINTER — STATISTICAL REPORT{C_RESET}")
     print(f"{C_BOLD}{'=' * 80}{C_RESET}\n")
 
-    # 1. Résumé Global
+    # 1. Global Summary
     status_color = C_GREEN if total_issues == 0 else (C_YELLOW if total_issues < 50 else C_RED)
-    print(f"{C_BOLD}► SYNTHÈSE GLOBALE{C_RESET}")
-    print(f"  • Cible analysée       : {C_BOLD}{path}{C_RESET}")
-    print(f"  • Fichiers scannés     : {C_BOLD}{total_files}{C_RESET}")
-    print(f"  • Fichiers sains (0 bug): {C_GREEN}{clean_files_count}{C_RESET} ({clean_pct:.1f}%)")
-    print(f"  • Fichiers impactés    : {C_YELLOW if impacted_files else C_GREEN}{impacted_files}{C_RESET}")
-    print(f"  • Total anomalies      : {status_color}{C_BOLD}{total_issues}{C_RESET}\n")
+    print(f"{C_BOLD}► GLOBAL SUMMARY{C_RESET}")
+    print(f"  • Analyzed target     : {C_BOLD}{path}{C_RESET}")
+    print(f"  • Scanned files       : {C_BOLD}{total_files}{C_RESET}")
+    print(f"  • Clean files (0 bugs): {C_GREEN}{clean_files_count}{C_RESET} ({clean_pct:.1f}%)")
+    print(f"  • Impacted files      : {C_YELLOW if impacted_files else C_GREEN}{impacted_files}{C_RESET}")
+    print(f"  • Total issues        : {status_color}{C_BOLD}{total_issues}{C_RESET}\n")
 
-    # 2. Statistiques par Catégorie de Règle
+    # 2. Statistics by Rule Category
     if category_counts:
-        print(f"{C_BOLD}► ANOMALIES PAR CATÉGORIE / RÈGLE ({len(category_counts)} actives){C_RESET}")
+        print(f"{C_BOLD}► ISSUES BY CATEGORY / RULE ({len(category_counts)} active){C_RESET}")
         sorted_cats = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
         max_cat_len = max(len(cat) for cat, _ in sorted_cats)
         max_count = max(count for _, count in sorted_cats)
@@ -475,9 +475,9 @@ def scan(
             print(f"  {cat:<{max_cat_len}} : {C_BOLD}{count:>5}{C_RESET} ({pct:>5.1f}%) {C_MAGENTA}{bar}{C_RESET}")
         print()
 
-    # 3. Statistiques par Module / Package
+    # 3. Statistics by Module / Package
     if module_issues:
-        print(f"{C_BOLD}► ANOMALIES PAR MODULE / PACKAGE ({len(module_issues)} modules){C_RESET}")
+        print(f"{C_BOLD}► ISSUES BY MODULE / PACKAGE ({len(module_issues)} modules){C_RESET}")
         sorted_mods = sorted(
             module_issues.items(),
             key=lambda item: len(item[1]),
@@ -486,7 +486,7 @@ def scan(
 
         mod_table_data = []
         for mod, m_issues in sorted_mods:
-            # Nombre de fichiers uniques impactés dans ce module
+            # Number of unique files impacted in this module
             mod_files = {iss[0] for iss in m_issues}
             mod_table_data.append((mod, len(m_issues), len(mod_files)))
 
@@ -496,22 +496,22 @@ def scan(
         max_mod_len = max((len(m[0]) for m in active_mods), default=len("Module"))
         max_mod_len = max(max_mod_len, len("Module"))
 
-        print(f"  {C_GRAY}{'Module':<{max_mod_len}}  {'Anomalies':>9}  {'Fichiers':>8}{C_RESET}")
+        print(f"  {C_GRAY}{'Module':<{max_mod_len}}  {'Issues':>9}  {'Files':>8}{C_RESET}")
         print(f"  {'-' * max_mod_len}  {'-' * 9}  {'-' * 8}")
         for mod, count, f_count in active_mods:
             c_color = C_YELLOW if count < 20 else C_RED
             print(f"  {mod:<{max_mod_len}}  {c_color}{count:>9}{C_RESET}  {f_count:>8}")
         if clean_mods:
-            print(f"\n  {C_GREEN}✓ {len(clean_mods)} module(s) 100% sains (0 anomalie) :{C_RESET} {', '.join(m[0] for m in clean_mods)}")
+            print(f"\n  {C_GREEN}✓ {len(clean_mods)} module(s) 100% clean (0 issues):{C_RESET} {', '.join(m[0] for m in clean_mods)}")
         print()
 
-    # 4. Top Fichiers les plus impactés
+    # 4. Top Impacted Files
     files_with_issues = [(f, len(iss)) for f, iss in file_issues.items() if len(iss) > 0]
     files_with_issues.sort(key=lambda x: x[1], reverse=True)
 
     if files_with_issues:
         display_count = len(files_with_issues) if top_n <= 0 else min(top_n, len(files_with_issues))
-        print(f"{C_BOLD}► TOP {display_count} FICHIERS LES PLUS IMPACTÉS (sur {len(files_with_issues)}){C_RESET}")
+        print(f"{C_BOLD}► TOP {display_count} MOST IMPACTED FILES (out of {len(files_with_issues)}){C_RESET}")
 
         try:
             display_files = [
@@ -522,9 +522,9 @@ def scan(
             display_files = [(f.name, count) for f, count in files_with_issues[:display_count]]
 
         max_fname_len = max(len(f) for f, _ in display_files)
-        max_fname_len = max(max_fname_len, len("Fichier"))
+        max_fname_len = max(max_fname_len, len("File"))
 
-        print(f"  {C_GRAY}{'Fichier':<{max_fname_len}}  {'Anomalies':>9}{C_RESET}")
+        print(f"  {C_GRAY}{'File':<{max_fname_len}}  {'Issues':>9}{C_RESET}")
         print(f"  {'-' * max_fname_len}  {'-' * 9}")
         for fname, count in display_files:
             c_color = C_YELLOW if count < 20 else C_RED
@@ -538,30 +538,30 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="SimPad OOP & Cripy Code Linter — Analyse statique et métriques de propreté OOP."
+        description="SimPad OOP & Clean Code Linter — Static analysis and OOP design cleanliness metrics."
     )
-    parser.add_argument("target", help="Chemin du fichier ou dossier à analyser")
+    parser.add_argument("target", help="Path to the file or directory to analyze")
     parser.add_argument(
         "--summary-only", "-s",
         action="store_true",
-        help="Afficher uniquement les tableaux statistiques récapitulatifs (sans le détail ligne par ligne)",
+        help="Display summary statistical tables only (without line-by-line details)",
     )
     parser.add_argument(
         "--top", "-t",
         type=int,
         default=15,
-        help="Nombre de fichiers à inclure dans le top des anomalies (0 = tous, défaut : 15)",
+        help="Number of files to include in top issues (0 = all, default: 15)",
     )
     parser.add_argument(
         "--category", "-c",
         type=str,
         default=None,
-        help="Filtrer les anomalies sur une catégorie spécifique (ex: Any, Option, Dict, etc.)",
+        help="Filter issues by a specific category (e.g., Any, Option, Dict, etc.)",
     )
     parser.add_argument(
         "--no-color",
         action="store_true",
-        help="Désactiver les codes couleur ANSI dans le terminal",
+        help="Disable ANSI color codes in terminal",
     )
 
     args = parser.parse_args()

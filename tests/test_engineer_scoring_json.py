@@ -4,10 +4,10 @@ Test d'intégration du Race Engineer avec les paquets de scoring typés (isimoto
 
 import pytest
 from isimotor_rawudp_client import VehicleScoring, FullScoringSession, TelemVect3
-from simpad_qt.core.engineer.manager import RaceEngineer
-from simpad_qt.core.engineer.context import EngineerContext
-from simpad_qt.core.engineer.roles.traffic_spotter import TrafficSpotterRole
-from simpad_qt.core.engineer.roles.lap_validity import LapValidityRole
+from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole
+from simpad_qt.builtin_plugins.race_engineer.subplugins.lap_validity import LapValidityRole
 
 
 def test_engineer_context_pit_and_track_separation_typed():

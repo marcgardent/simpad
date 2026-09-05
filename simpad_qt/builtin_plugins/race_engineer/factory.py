@@ -75,8 +75,12 @@ class RoleFactory:
 
     @classmethod
     def _ensure_builtin_roles_loaded(cls) -> None:
-        """Forces import of built-in roles to trigger @register decorators."""
+        """Forces import of built-in sub-plugins from race_engineer plugin to trigger registration."""
         try:
-            from . import roles
+            from . import subplugins
         except ImportError as e:
-            logger.debug(f"[RoleFactory] Builtin roles import: {e}")
+            logger.debug(f"[RoleFactory] Builtin subplugins import: {e}")
+
+
+# Sub-plugin factory alias
+SubpluginFactory = RoleFactory
