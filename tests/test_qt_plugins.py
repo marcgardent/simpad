@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext, PluginState,
     HudSlot, HudLayoutSpec, PluginErrorReport,
-    ITabProvider, ITelemetrySubscriber, IPacketSubscriber, IHudWidgetProvider,
+    ITabProvider, ITelemetrySubscriber, ITelemetryStateSubscriber, IHudWidgetProvider,
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
     VehicleSensors,
 )
@@ -242,14 +242,17 @@ def test_official_stream_diagnostics_plugin(qapp, tmp_path):
     assert len(reqs) >= 4
     assert any(r.channel == TelemetryChannel.TELEMETRY for r in reqs)
 
-    # Send 10 packets of Telemetry (640 bytes)
+    pm = PluginManager(cfg_mgr)
+    pm.register_plugin(diag_plugin)
+
+    # Send 10 packets of Telemetry (640 bytes) via dispatch_packet -> on_physics_tick
     for _ in range(10):
         packet = TelemetryRawPacket(
             channel=TelemetryChannel.TELEMETRY,
             data=VehicleSensors(),
             raw_bytes_len=640
         )
-        diag_plugin.on_telemetry_packet(packet)
+        pm.dispatch_packet(packet)
 
     stats = diag_plugin.get_channel_statistics()
     telem_stat = stats[TelemetryChannel.TELEMETRY]
@@ -942,6 +945,106 @@ def test_game_plugin_config_widget_compact_layout(qapp, tmp_path):
     widget = GamePluginConfigWidget(game_plugin_mgr=gpm, plugin_mgr=pm)
     assert widget.desiderata_table.height() <= 160
     assert widget.inst_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
+
+
+def test_all_eleven_channels_have_on_hooks_and_zero_none(qapp, tmp_path):
+    """Test that all 11 TelemetryChannel entries have a dedicated on_* hook and no None in routing."""
+    from simpulse_sdk import (
+        SimPulsePlugin, PluginMetadata, PluginContext,
+        TelemetryChannel, TelemetryRawPacket, TelemetryStateStore,
+        ITelemetryStateSubscriber,
+    )
+    from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession, WeatherControl, SystemEvent, ExtendedState, ForceFeedback, Graphics
+
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
+
+    # 1. Assert all 11 channels are in CHANNEL_ROUTING and none are None
+    assert len(pm.CHANNEL_ROUTING) == 11
+    for ch in TelemetryChannel:
+        assert ch in pm.CHANNEL_ROUTING
+        store_method, hook_name = pm.CHANNEL_ROUTING[ch]
+        assert store_method is not None
+        assert hook_name is not None
+        assert hook_name.startswith("on_")
+
+    # 2. Create a test plugin implementing all 11 on_* hooks
+    received_hooks = set()
+
+    class AllChannelsObserverPlugin(SimPulsePlugin, ITelemetryStateSubscriber):
+        def __init__(self):
+            super().__init__(PluginMetadata(id="test.all_channels", name="All Channels Observer", version="1.0.0"))
+
+        def on_physics_tick(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_physics_tick")
+
+        def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_opponents_tick")
+
+        def on_scoring_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_scoring_update")
+
+        def on_grid_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_grid_update")
+
+        def on_weather_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_weather_update")
+
+        def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_extended_state_update")
+
+        def on_session_event(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_session_event")
+
+        def on_ffb_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_ffb_update")
+
+        def on_graphics_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_graphics_update")
+
+        def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_track_rules_update")
+
+        def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+            received_hooks.add("on_pit_menu_update")
+
+    plugin = AllChannelsObserverPlugin()
+    pm.register_plugin(plugin)
+    plugin.on_load(PluginContext(plugin.metadata.id, cfg_mgr))
+    plugin.on_enable()
+
+    # 3. Dispatch one packet for each channel
+    packets = [
+        TelemetryRawPacket(channel=TelemetryChannel.TELEMETRY, data=TelemInfo(), raw_bytes_len=640),
+        TelemetryRawPacket(channel=TelemetryChannel.OPPONENT_TELEMETRY, data=TelemInfo(), raw_bytes_len=640),
+        TelemetryRawPacket(channel=TelemetryChannel.COMPACT_SCORING, data=CompactScoring(), raw_bytes_len=184),
+        TelemetryRawPacket(channel=TelemetryChannel.FULL_SCORING, data=FullScoringSession(), raw_bytes_len=2480),
+        TelemetryRawPacket(channel=TelemetryChannel.WEATHER, data=WeatherControl(), raw_bytes_len=120),
+        TelemetryRawPacket(channel=TelemetryChannel.EXTENDED_STATE, data=ExtendedState(), raw_bytes_len=80),
+        TelemetryRawPacket(channel=TelemetryChannel.SYSTEM_EVENTS, data=SystemEvent(), raw_bytes_len=64),
+        TelemetryRawPacket(channel=TelemetryChannel.FORCE_FEEDBACK, data=ForceFeedback(), raw_bytes_len=48),
+        TelemetryRawPacket(channel=TelemetryChannel.GRAPHICS, data=Graphics(), raw_bytes_len=96),
+        TelemetryRawPacket(channel=TelemetryChannel.TRACK_RULES, data={"rules": "ok"}, raw_bytes_len=32),
+        TelemetryRawPacket(channel=TelemetryChannel.PIT_MENU, data={"menu": 1}, raw_bytes_len=32),
+    ]
+
+    for pkt in packets:
+        pm.dispatch_packet(pkt)
+
+    # 4. Verify all 11 hooks fired
+    assert len(received_hooks) == 11
+    assert "on_physics_tick" in received_hooks
+    assert "on_opponents_tick" in received_hooks
+    assert "on_scoring_update" in received_hooks
+    assert "on_grid_update" in received_hooks
+    assert "on_weather_update" in received_hooks
+    assert "on_extended_state_update" in received_hooks
+    assert "on_session_event" in received_hooks
+    assert "on_ffb_update" in received_hooks
+    assert "on_graphics_update" in received_hooks
+    assert "on_track_rules_update" in received_hooks
+    assert "on_pit_menu_update" in received_hooks
+
 
 
 

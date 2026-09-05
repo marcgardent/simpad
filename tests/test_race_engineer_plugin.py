@@ -148,7 +148,9 @@ def test_subplugin_sound_requirements_aggregation_and_missing_check(qapp, tmp_pa
 def test_race_engineer_packet_dispatch_and_radio_feed(qapp, tmp_path):
     """Test that incoming telemetry and scoring packets trigger evaluation and dispatch to sub-plugins."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
     plugin = RaceEngineerPlugin()
+    pm.register_plugin(plugin)
     ctx = PluginContext(plugin.metadata.id, cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
@@ -157,7 +159,7 @@ def test_race_engineer_packet_dispatch_and_radio_feed(qapp, tmp_path):
     tab = plugin.create_tab_widget()
     assert isinstance(tab, RaceEngineerWidget)
 
-    # 1. Send Telemetry Packet
+    # 1. Send Telemetry Packet via on_physics_tick dispatch
     telem = TelemInfo(
         local_vel=TelemVect3(0.0, 0.0, 50.0),
         gear=3,
@@ -168,9 +170,9 @@ def test_race_engineer_packet_dispatch_and_radio_feed(qapp, tmp_path):
         data=telem,
         raw_bytes_len=640
     )
-    plugin.on_telemetry_packet(pkt_telem)
+    pm.dispatch_packet(pkt_telem)
 
-    # 2. Send FullScoring Packet with player and opponent behind (Fight Spotter / Traffic Spotter candidate)
+    # 2. Send FullScoring Packet via on_grid_update dispatch with player and opponent behind (Fight Spotter / Traffic Spotter candidate)
     player = VehicleScoring(
         id=1,
         is_player=True,
@@ -203,7 +205,7 @@ def test_race_engineer_packet_dispatch_and_radio_feed(qapp, tmp_path):
         data=scoring,
         raw_bytes_len=2480
     )
-    plugin.on_telemetry_packet(pkt_scoring)
+    pm.dispatch_packet(pkt_scoring)
 
     # Verify tab updates and radio feed
     tab.update_live_views()

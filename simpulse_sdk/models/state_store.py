@@ -37,12 +37,32 @@ class TelemetryWakeReason(Enum):
     MANUAL_EVALUATION = "manual_evaluation"    # Triggered manually / in tests
 
 
+class TimingStatus(str, Enum):
+    """Authoritative lap timing validity status according to game flag."""
+    TIMING_IN_PROGRESS = "timing_in_progress"
+    TIME_DELETED = "time_deleted"
+
+
+class ValidityEvent(str, Enum):
+    """High-level lap validity state event."""
+    IDLE = "IDLE"
+    TIMING_IN_PROGRESS = "TIMING_IN_PROGRESS"
+    TIME_DELETED = "TIME_DELETED"
+
+
+class LapStatus(str, Enum):
+    """Clean vs dirty lap status."""
+    CLEAN = "clean"
+    DIRTY = "dirty"
+
+
 @dataclass
 class PacketSlot(Generic[T]):
     """A slot holding the latest received raw data packet and its arrival timestamp."""
     data: Optional[T] = None
     timestamp: float = 0.0
     sequence_id: int = 0
+    raw_bytes_len: int = 0
 
     @property
     def age_sec(self) -> float:
@@ -55,10 +75,11 @@ class PacketSlot(Generic[T]):
         """Returns True if the cached packet was received within max_age_sec."""
         return self.data is not None and self.age_sec <= max_age_sec
 
-    def update(self, data: T, timestamp: float) -> None:
+    def update(self, data: T, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Updates slot with new packet data."""
         self.data = data
         self.timestamp = timestamp
+        self.raw_bytes_len = raw_bytes_len
         self.sequence_id += 1
 
 
@@ -97,10 +118,10 @@ class TelemetryStateStore:
         self._last_lap_flag: Optional[int] = None
         self._is_lap_valid: bool = True
         self._is_lap_invalid: bool = False
-        self._lap_timing_status: str = "timing_in_progress" # TODO MGT class TimingStatus(Enum):
-        self._last_validity_event: str = "IDLE"  # TODO MGT class MyEnum(Enum):
+        self._lap_timing_status: TimingStatus = TimingStatus.TIMING_IN_PROGRESS
+        self._last_validity_event: ValidityEvent = ValidityEvent.IDLE
         self._last_validity_event_time: float = 0.0
-        self._validity_transition: Optional[str] = None # TODO MGT class MyEnum(Enum):
+        self._validity_transition: Optional[TimingStatus] = None
         self._was_in_garage: bool = False
         self._last_current_sector: int = 1
         self._last_total_laps: int = 0
@@ -122,7 +143,7 @@ class TelemetryStateStore:
         self._last_impact_et: float = 0.0       # last_impact_et from TelemInfo UDP
         self._hit_lap_reference: Optional[int] = None  # lap number used to detect lap changes
         self._cache_is_clean_lap: bool = True
-        self._cache_clean_lap_status: str = "clean" # TODO MGT class LapStatus(Enum):
+        self._cache_clean_lap_status: LapStatus = LapStatus.CLEAN
         self._cache_hit_count: int = 0
 
     @classmethod
@@ -138,7 +159,7 @@ class TelemetryStateStore:
         self._cache_hit_count = self._hit_count_current_lap
         # Clean Lap = timed lap (timing in progress <=> flag == 2) && 0 Hits
         self._cache_is_clean_lap = (self._is_lap_valid and self._hit_count_current_lap == 0)
-        self._cache_clean_lap_status = "clean" if self._cache_is_clean_lap else "dirty"
+        self._cache_clean_lap_status = LapStatus.CLEAN if self._cache_is_clean_lap else LapStatus.DIRTY
 
     def _on_lap_changed(self) -> None:
         """Called on lap transition: resets hit counter and cache for the new lap."""
@@ -171,8 +192,8 @@ class TelemetryStateStore:
             self._last_lap_flag = None
             self._is_lap_valid = True
             self._is_lap_invalid = False
-            self._lap_timing_status = "timing_in_progress"
-            self._last_validity_event = "IDLE"
+            self._lap_timing_status = TimingStatus.TIMING_IN_PROGRESS
+            self._last_validity_event = ValidityEvent.IDLE
             self._last_validity_event_time = 0.0
             self._validity_transition = None
             self._was_in_garage = False
@@ -193,25 +214,17 @@ class TelemetryStateStore:
             self._hit_count_current_lap = 0
             self._last_impact_et = 0.0
             self._hit_lap_reference = None
+            self._cache_is_clean_lap = True
+            self._cache_clean_lap_status = LapStatus.CLEAN
+            self._cache_hit_count = 0
             self._recalculate_cache()
 
-    def _process_lap_validity(self, raw_flag: Union[int, float, str], timestamp: float) -> None:
+    def _process_lap_validity(self, current_flag: int, timestamp: Optional[float] = None) -> None:
         """
-        Authoritative 100% stateless lap validity & timing transition processor:
-        - Maintains is_lap_valid (flag == 2) and is_lap_invalid (flag in (0, 1))
-        - Maintains lap_timing_status ("timing_in_progress" vs "time_deleted")
-        - Detects transitions:
-            (0, 1) -> 2 => "timing_in_progress"
-            2 -> (0, 1) => "time_deleted"
-        - Handles garage / pause silence
+        Internal transition detector for lap validity flag.
+        Dispatches edge triggers and updates internal timing status.
         """
-
-        try:
-            current_flag = int(raw_flag)
-        except (ValueError, TypeError):
-            return
-
-        is_in_garage_or_pause = (self._last_in_garage or not self._last_in_realtime)
+        is_in_garage_or_pause = self._last_in_garage or not self._last_in_realtime
 
         # In garage / pause: stay silent, update flag without triggering transitions
         if is_in_garage_or_pause:
@@ -219,7 +232,7 @@ class TelemetryStateStore:
             self._last_lap_flag = current_flag
             self._is_lap_valid = (current_flag == 2)
             self._is_lap_invalid = (current_flag in (0, 1))
-            self._lap_timing_status = "timing_in_progress" if current_flag == 2 else "time_deleted"
+            self._lap_timing_status = TimingStatus.TIMING_IN_PROGRESS if current_flag == 2 else TimingStatus.TIME_DELETED
             self._validity_transition = None
             return
 
@@ -229,7 +242,7 @@ class TelemetryStateStore:
             self._last_lap_flag = current_flag
             self._is_lap_valid = (current_flag == 2)
             self._is_lap_invalid = (current_flag in (0, 1))
-            self._lap_timing_status = "timing_in_progress" if current_flag == 2 else "time_deleted"
+            self._lap_timing_status = TimingStatus.TIMING_IN_PROGRESS if current_flag == 2 else TimingStatus.TIME_DELETED
             self._validity_transition = None
             return
 
@@ -238,7 +251,7 @@ class TelemetryStateStore:
             self._last_lap_flag = current_flag
             self._is_lap_valid = (current_flag == 2)
             self._is_lap_invalid = (current_flag in (0, 1))
-            self._lap_timing_status = "timing_in_progress" if current_flag == 2 else "time_deleted"
+            self._lap_timing_status = TimingStatus.TIMING_IN_PROGRESS if current_flag == 2 else TimingStatus.TIME_DELETED
             self._validity_transition = None
             self._recalculate_cache()
             return
@@ -248,17 +261,17 @@ class TelemetryStateStore:
         # On-track transition detection
         if self._last_lap_flag != current_flag:
             if self._last_lap_flag in (0, 1) and current_flag == 2:
-                self._last_validity_event = "TIMING_IN_PROGRESS"
-                self._lap_timing_status = "timing_in_progress"
+                self._last_validity_event = ValidityEvent.TIMING_IN_PROGRESS
+                self._lap_timing_status = TimingStatus.TIMING_IN_PROGRESS
                 self._last_validity_event_time = now
-                self._validity_transition = "timing_in_progress"
+                self._validity_transition = TimingStatus.TIMING_IN_PROGRESS
                 self._is_lap_valid = True
                 self._is_lap_invalid = False
             elif self._last_lap_flag == 2 and current_flag in (0, 1):
-                self._last_validity_event = "TIME_DELETED"
-                self._lap_timing_status = "time_deleted"
+                self._last_validity_event = ValidityEvent.TIME_DELETED
+                self._lap_timing_status = TimingStatus.TIME_DELETED
                 self._last_validity_event_time = now
-                self._validity_transition = "time_deleted"
+                self._validity_transition = TimingStatus.TIME_DELETED
                 self._is_lap_valid = False
                 self._is_lap_invalid = True
 
@@ -267,13 +280,13 @@ class TelemetryStateStore:
 
     # ── Ingestion Handlers ───────────────────────────────────────────────────
 
-    def update_telemetry(self, data: TelemInfo, timestamp: float) -> None:
+    def update_telemetry(self, data: TelemInfo, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests a 120Hz TelemInfo frame and updates physics state."""
         with self._mutex:
-            self.telemetry.update(data, timestamp)
+            self.telemetry.update(data, timestamp, raw_bytes_len)
 
             # Extract wheels and surface types
-            wheels = data.wheels
+            wheels = getattr(data, "wheels", None)
             if wheels and len(wheels) >= 4:
                 surface_types = tuple(w.surface_type for w in wheels[:4])
                 terrain_names = tuple(w.terrain_name.strip() for w in wheels[:4])
@@ -285,34 +298,35 @@ class TelemetryStateStore:
                 self._last_is_on_track = (wheels_on_track >= 3)
 
             # Speed, pedals
-            self._last_speed_kmh = data.speed_kmh
-            self._last_throttle_pct = data.unfiltered_throttle * 100.0
-            self._last_brake_pct = data.unfiltered_brake * 100.0
-            self._last_gear = data.gear
-            self._last_engine_rpm = data.engine_rpm
-            if data.engine_max_rpm > 1000.0:
-                self._last_engine_max_rpm = data.engine_max_rpm
-            self._last_fuel = data.fuel
+            self._last_speed_kmh = getattr(data, "speed_kmh", getattr(data, "vehicle_speed", 0.0))
+            self._last_throttle_pct = getattr(data, "unfiltered_throttle", getattr(data, "throttle", 0.0)) * 100.0
+            self._last_brake_pct = getattr(data, "unfiltered_brake", getattr(data, "brake", 0.0)) * 100.0
+            self._last_gear = getattr(data, "gear", 0)
+            self._last_engine_rpm = getattr(data, "engine_rpm", 0.0)
+            max_rpm = getattr(data, "engine_max_rpm", 7500.0)
+            if max_rpm > 1000.0:
+                self._last_engine_max_rpm = max_rpm
+            self._last_fuel = getattr(data, "fuel", 0.0)
 
             # ── Hit (collision/contact) detection from TelemInfo UDP ──────
             # Detect lap change: reset hit counter when lap_number changes
-            current_lap_number = data.lap_number
+            current_lap_number = getattr(data, "lap_number", 0)
             if self._hit_lap_reference is not None and current_lap_number != self._hit_lap_reference:
                 self._on_lap_changed()
             self._hit_lap_reference = current_lap_number
 
             # Detect new impact: last_impact_et changes = new collision event
-            impact_et = data.last_impact_et
+            impact_et = getattr(data, "last_impact_et", 0.0)
             if impact_et > 0.0 and impact_et != self._last_impact_et:
                 self._hit_count_current_lap += 1
                 self._last_impact_et = impact_et
 
             self._recalculate_cache()
 
-    def update_compact_scoring(self, data: CompactScoring, timestamp: float) -> None:
+    def update_compact_scoring(self, data: CompactScoring, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests a 10Hz CompactScoring frame and updates timing & lap flag state."""
         with self._mutex:
-            self.compact_scoring.update(data, timestamp)
+            self.compact_scoring.update(data, timestamp, raw_bytes_len)
 
             self._last_in_realtime = data.in_realtime
             self._last_in_garage = data.in_garage_stall
@@ -329,10 +343,10 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_full_scoring(self, data: FullScoringSession, timestamp: float) -> None:
+    def update_full_scoring(self, data: FullScoringSession, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests a 2-5Hz FullScoringSession frame and updates grid, penalties & rule parameters."""
         with self._mutex:
-            self.full_scoring.update(data, timestamp)
+            self.full_scoring.update(data, timestamp, raw_bytes_len)
 
             # Rules parameters LMU
             if data.lmu:
@@ -357,64 +371,66 @@ class TelemetryStateStore:
 
             self._recalculate_cache()
 
-    def update_weather(self, data: WeatherControl, timestamp: float) -> None:
+    def update_weather(self, data: WeatherControl, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests weather packet."""
         with self._mutex:
-            self.weather.update(data, timestamp)
+            self.weather.update(data, timestamp, raw_bytes_len)
 
-    def update_system_event(self, data: SystemEvent, timestamp: float) -> None:
+    def update_system_event(self, data: SystemEvent, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests system session / cockpit event."""
         with self._mutex:
-            self.system.update(data, timestamp)
+            self.system.update(data, timestamp, raw_bytes_len)
 
-    def update_system_events(self, data: SystemEvent, timestamp: float) -> None:
+    def update_system_events(self, data: SystemEvent, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests system session / cockpit event (plural alias)."""
-        self.update_system_event(data, timestamp)
+        self.update_system_event(data, timestamp, raw_bytes_len)
 
-    def update_opponent_telemetry(self, data: TelemInfo, timestamp: float) -> None:
+    def update_opponent_telemetry(self, data: TelemInfo, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests opponent vehicle dynamics."""
         with self._mutex:
-            self.opponent_telemetry.update(data, timestamp)
+            self.opponent_telemetry.update(data, timestamp, raw_bytes_len)
 
-    def update_extended_state(self, data: ExtendedState, timestamp: float) -> None:
+    def update_extended_state(self, data: ExtendedState, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests extended vehicle state (lights, wipers, ignition, flags)."""
         with self._mutex:
-            self.extended_state.update(data, timestamp)
+            self.extended_state.update(data, timestamp, raw_bytes_len)
 
-    def update_force_feedback(self, data: ForceFeedback, timestamp: float) -> None:
+    def update_force_feedback(self, data: ForceFeedback, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests force feedback packet."""
         with self._mutex:
-            self.force_feedback.update(data, timestamp)
+            self.force_feedback.update(data, timestamp, raw_bytes_len)
 
-    def update_graphics(self, data: Graphics, timestamp: float) -> None:
+    def update_graphics(self, data: Graphics, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests camera / graphics telemetry frame."""
         with self._mutex:
-            self.graphics.update(data, timestamp)
+            self.graphics.update(data, timestamp, raw_bytes_len)
 
     def update_track_rules(
         self,
         data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
         timestamp: float,
+        raw_bytes_len: int = 0,
     ) -> None:
         """Ingests track rules / flag conditions."""
         with self._mutex:
-            self.track_rules.update(data, timestamp)
+            self.track_rules.update(data, timestamp, raw_bytes_len)
 
     def update_pit_menu(
         self,
         data: Union[bytes, Dict[str, Union[str, int, float, bool, None]]],
         timestamp: float,
+        raw_bytes_len: int = 0,
     ) -> None:
         """Ingests pit strategy menu state."""
         with self._mutex:
-            self.pit_menu.update(data, timestamp)
+            self.pit_menu.update(data, timestamp, raw_bytes_len)
 
     def update_lap_validity(self, flag: int, timestamp: float) -> None:
         """Explicit update of authoritative lap validity flag."""
         with self._mutex:
             self._process_lap_validity(flag, timestamp)
 
-    def consume_validity_transition(self) -> Optional[str]:
+    def consume_validity_transition(self) -> Optional[TimingStatus]:
         """Returns and clears the latest pending validity transition ('timing_in_progress' or 'time_deleted')."""
         with self._mutex:
             trans = self._validity_transition
@@ -471,10 +487,10 @@ class TelemetryStateStore:
             return self.lap_flag in (0, 1)
 
     @property
-    def lap_timing_status(self) -> str:
+    def lap_timing_status(self) -> TimingStatus:
         """Authoritative lap timing status ('timing_in_progress' or 'time_deleted')."""
         with self._mutex:
-            return "timing_in_progress" if self.lap_flag == 2 else "time_deleted"
+            return TimingStatus.TIMING_IN_PROGRESS if self.lap_flag == 2 else TimingStatus.TIME_DELETED
 
     @property
     def lap_status_text(self) -> str:
@@ -483,7 +499,7 @@ class TelemetryStateStore:
             return "Valid" if self.lap_flag == 2 else "Invalid"
 
     @property
-    def last_validity_event(self) -> str:
+    def last_validity_event(self) -> ValidityEvent:
         """Name of last validity transition event ('TIMING_IN_PROGRESS', 'TIME_DELETED', 'IDLE')."""
         with self._mutex:
             return self._last_validity_event
@@ -495,7 +511,7 @@ class TelemetryStateStore:
             return self._last_validity_event_time
 
     @property
-    def validity_transition(self) -> Optional[str]:
+    def validity_transition(self) -> Optional[TimingStatus]:
         """Pending unconsumed validity transition string, if any."""
         with self._mutex:
             return self._validity_transition
@@ -619,8 +635,8 @@ class TelemetryStateStore:
             return self._cache_is_clean_lap
 
     @property
-    def clean_lap_status(self) -> str:
-        """Clean lap status text: 'clean' or 'dirty'."""
+    def clean_lap_status(self) -> LapStatus:
+        """Clean lap status: LapStatus.CLEAN or LapStatus.DIRTY."""
         with self._mutex:
             self._recalculate_cache()
             return self._cache_clean_lap_status

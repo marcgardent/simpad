@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, List, Callable, Generic, TypeVar, Union, TYPE_CHECKING
+from typing import Optional, List, Callable, Generic, TypeVar, Union, TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -21,10 +21,26 @@ T = TypeVar("T")
 ParamScalarValue = Union[bool, int, float, str]
 
 
-@dataclass
-class RoleParam(ABC, Generic[T]):
+@runtime_checkable
+class IParamDescriptor(Protocol[T]):
     """
-    Abstract descriptor of a configurable role parameter.
+    Abstract interface descriptor of a configurable parameter (PEP 544).
+    Provides type validation and metadata contract without UI dependencies.
+    """
+    name: str
+    label: str
+    description: str
+    default: Optional[T]
+
+    def cast_and_validate(self, value: ParamScalarValue) -> T:
+        """Converts and clamps value according to descriptor constraints."""
+        ...
+
+
+@dataclass
+class ConfigParam(ABC, Generic[T]):
+    """
+    Abstract descriptor of a configurable parameter for plugins and subplugins.
     Each parameter has a unique identifier (name), a display label (label),
     a description (description), and a default value.
     """
@@ -48,8 +64,12 @@ class RoleParam(ABC, Generic[T]):
         return None
 
 
+# Backward-compatible alias for RoleParam
+RoleParam = ConfigParam
+
+
 @dataclass
-class BoolParam(RoleParam[bool]):
+class BoolParam(ConfigParam[bool]):
     """Boolean parameter (rendered as a Checkbox in UI)."""
     default: bool = True
 
@@ -75,7 +95,7 @@ class BoolParam(RoleParam[bool]):
 
 
 @dataclass
-class IntRangeParam(RoleParam[int]):
+class IntRangeParam(ConfigParam[int]):
     """Integer parameter with bounded range (min, max, step, unit) for slider/stepper."""
     min_val: int = 0
     max_val: int = 100
@@ -109,7 +129,7 @@ class IntRangeParam(RoleParam[int]):
 
 
 @dataclass
-class FloatRangeParam(RoleParam[float]):
+class FloatRangeParam(ConfigParam[float]):
     """Float parameter with bounded range (min, max, step, unit) for slider/stepper."""
     min_val: float = 0.0
     max_val: float = 100.0
@@ -144,7 +164,7 @@ class FloatRangeParam(RoleParam[float]):
 
 
 @dataclass
-class ChoiceParam(RoleParam[str]):
+class ChoiceParam(ConfigParam[str]):
     """Selection parameter among a fixed list of choices (rendered as a QComboBox)."""
     choices: Optional[List[str]] = None
     default: str = ""
@@ -181,10 +201,12 @@ class ChoiceParam(RoleParam[str]):
 
 
 # Aliases
-SubpluginParam = RoleParam
-ParamDescriptor = RoleParam
+SubpluginParam = ConfigParam
+ParamDescriptor = ConfigParam
 
 __all__ = [
+    "IParamDescriptor",
+    "ConfigParam",
     "RoleParam",
     "SubpluginParam",
     "ParamDescriptor",

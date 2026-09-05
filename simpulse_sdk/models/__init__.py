@@ -19,6 +19,9 @@ from simpulse_sdk.models.delta import (
 from simpulse_sdk.models.state_store import (
     TelemetryStateStore,
     PacketSlot,
+    TimingStatus,
+    ValidityEvent,
+    LapStatus,
 )
 from simpulse_sdk.models.plugin_metadata import (
     PluginMetadata,
@@ -26,6 +29,10 @@ from simpulse_sdk.models.plugin_metadata import (
     PluginErrorReport,
     HudSlot,
     HudLayoutSpec,
+    ISize,
+    IRect,
+    Size2D,
+    Rect2D,
 )
 from simpulse_sdk.models.math import (
     clamp,
@@ -46,11 +53,18 @@ __all__ = [
     "DeltaReferenceMode",
     "TelemetryStateStore",
     "PacketSlot",
+    "TimingStatus",
+    "ValidityEvent",
+    "LapStatus",
     "PluginMetadata",
     "PluginState",
     "PluginErrorReport",
     "HudSlot",
     "HudLayoutSpec",
+    "ISize",
+    "IRect",
+    "Size2D",
+    "Rect2D",
     "clamp",
     "apply_response_curve",
     "format_lap_time",

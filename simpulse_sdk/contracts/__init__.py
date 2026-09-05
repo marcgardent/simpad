@@ -5,13 +5,14 @@ from .plugin import SimPulsePlugin, PluginContext
 from .protocols import (
     ITelemetrySubscriber,
     IDeltaSubscriber,
-    IPacketSubscriber,
     ITelemetryStateSubscriber,
     ITabProvider,
     IHudWidgetProvider,
 )
 from .config import IPluginConfigProvider
 from .params import (
+    IParamDescriptor,
+    ConfigParam,
     RoleParam,
     SubpluginParam,
     ParamDescriptor,
@@ -27,11 +28,12 @@ __all__ = [
     "PluginContext",
     "ITelemetrySubscriber",
     "IDeltaSubscriber",
-    "IPacketSubscriber",
     "ITelemetryStateSubscriber",
     "ITabProvider",
     "IHudWidgetProvider",
     "IPluginConfigProvider",
+    "IParamDescriptor",
+    "ConfigParam",
     "RoleParam",
     "SubpluginParam",
     "ParamDescriptor",

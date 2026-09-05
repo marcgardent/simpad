@@ -75,16 +75,45 @@ class SimPulsePlugin(ABC):
 
     # Polymorphic Telemetry State Event Hooks
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency player physics tick (100-120Hz)."""
+        pass
+
+    def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on opponent vehicle dynamics tick (10-20Hz)."""
         pass
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on compact scoring and timing update (10Hz)."""
         pass
 
     def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on full grid positions and session update (2-5Hz)."""
         pass
 
     def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on ambient and track weather condition update (~1Hz)."""
+        pass
+
+    def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on vehicle electronics, cockpit switches and flags update (5Hz)."""
         pass
 
     def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called directly on session / system event (green flag, penalty, sector records)."""
+        pass
+
+    def on_ffb_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on force feedback telemetry frame."""
+        pass
+
+    def on_graphics_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on camera / graphics telemetry frame."""
+        pass
+
+    def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on track rules, local yellows and safety car state."""
+        pass
+
+    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on pit strategy menu selection and adjustments."""
         pass

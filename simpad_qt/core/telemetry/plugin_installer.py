@@ -20,19 +20,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_PLUGIN_RELEASE_URL = "https://github.com/marcgardent/isiMotor-RawUDP-Plugin/releases/download/v0.3.0/isiMotor-RawUDP-Plugin-v0.3.0-Windows-x64-MinGW-w64.zip"
 PLUGIN_DLL_NAME = "isiMotor_RawUDP.dll"
 
-SUPPORTED_GAMES: Dict[str, Dict[str, str]] = { # TODO MGT on créer un type
-    "LMU": {
-        "name": "Le Mans Ultimate",
-        "appid": "2399420",
-        "subpath": "Le Mans Ultimate",
-        "exe": "Le Mans Ultimate.exe",
-    },
-    "rF2": {
-        "name": "rFactor 2",
-        "appid": "365960",
-        "subpath": "rFactor 2",
-        "exe": "rFactor2.exe",
-    },
+@dataclass(frozen=True)
+class SupportedGame:
+    """Strongly-typed metadata definition for a supported simulator."""
+    name: str
+    appid: str
+    subpath: str
+    exe: str
+
+    def __getitem__(self, item: str) -> str:
+        """Dict-like indexing for backward compatibility."""
+        return getattr(self, item)
+
+    def get(self, item: str, default: Optional[str] = None) -> Optional[str]:
+        """Dict-like get for backward compatibility."""
+        return getattr(self, item, default)
+
+
+SUPPORTED_GAMES: Dict[str, SupportedGame] = {
+    "LMU": SupportedGame(
+        name="Le Mans Ultimate",
+        appid="2399420",
+        subpath="Le Mans Ultimate",
+        exe="Le Mans Ultimate.exe",
+    ),
+    "rF2": SupportedGame(
+        name="rFactor 2",
+        appid="365960",
+        subpath="rFactor 2",
+        exe="rFactor2.exe",
+    ),
 }
 
 

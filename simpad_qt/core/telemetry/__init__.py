@@ -6,7 +6,7 @@ from .lmu_parser import LMUParser, TelemetryData, format_time_sec
 from .delta_engine import DeltaEngine, DeltaReferenceMode, format_lap_time
 from .udp_server import UDPServer
 from .reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
-from .plugin_installer import LMUPluginManager, SUPPORTED_GAMES, SimulatorInstallInfo
+from .plugin_installer import LMUPluginManager, SUPPORTED_GAMES, SupportedGame, SimulatorInstallInfo
 
 from isimotor_rawudp_client import (
     IsiMotorClient,
@@ -39,6 +39,7 @@ __all__ = [
     "AnnotationType",
     "LMUPluginManager",
     "SUPPORTED_GAMES",
+    "SupportedGame",
     "SimulatorInstallInfo",
     "format_time_sec",
     "format_lap_time",

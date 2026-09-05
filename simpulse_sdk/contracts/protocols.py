@@ -6,7 +6,7 @@ Plugins implement only the protocols they require.
 from __future__ import annotations
 from typing import Optional, Protocol, runtime_checkable, Any
 
-from simpulse_sdk.models.telemetry import VehicleSensors, TelemetryRawPacket
+from simpulse_sdk.models.telemetry import VehicleSensors
 from simpulse_sdk.models.delta import LapDeltaPacket
 from simpulse_sdk.models.state_store import TelemetryStateStore
 from simpulse_sdk.models.plugin_metadata import HudSlot
@@ -38,38 +38,57 @@ class IDeltaSubscriber(Protocol):
         ...
 
 
-@runtime_checkable
-class IPacketSubscriber(Protocol):
-    """
-    Capability: The plugin receives individual raw decoded packets for specific channels.
-    """
-
-    def on_telemetry_packet(self, packet: TelemetryRawPacket) -> None:
-        """
-        Called whenever a specific raw channel packet arrives.
-        """
-        ...
 
 
 @runtime_checkable
 class ITelemetryStateSubscriber(Protocol):
     """
     Capability: The plugin receives unified TelemetryStateStore updates via polymorphic event hooks.
+    Every telemetry channel has a 1-to-1 dedicated strongly-typed on_* hook.
     """
 
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency player physics tick (100-120Hz)."""
+        ...
+
+    def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on opponent vehicle dynamics tick (10-20Hz)."""
         ...
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on compact scoring and timing update (10Hz)."""
         ...
 
     def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on full grid positions and session update (2-5Hz)."""
         ...
 
     def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on ambient and track weather condition update (~1Hz)."""
+        ...
+
+    def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on vehicle electronics, cockpit switches and flags update (5Hz)."""
         ...
 
     def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called directly on session / system event (green flag, penalty, sector records)."""
+        ...
+
+    def on_ffb_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on force feedback telemetry frame."""
+        ...
+
+    def on_graphics_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on camera / graphics telemetry frame."""
+        ...
+
+    def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on track rules, local yellows and safety car state."""
+        ...
+
+    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on pit strategy menu selection and adjustments."""
         ...
 
 

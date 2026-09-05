@@ -16,7 +16,7 @@ from simpulse_sdk import (
     ITelemetrySubscriber,
     IHudWidgetProvider,
     IDeltaSubscriber,
-    IPacketSubscriber,
+    ITelemetryStateSubscriber,
     HudSlot,
     ChannelRequirement,
 )

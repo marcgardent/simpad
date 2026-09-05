@@ -27,6 +27,17 @@ class SectorInfo:
     delta_str: str = "--"
     is_current: bool = False
 
+    def get(self, key: str, default: object = None) -> object:
+        """Dict-like accessor for backward compatibility."""
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> object:
+        """Dict-like accessor for backward compatibility."""
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key)
+
 
 @dataclass(frozen=True)
 class LapDeltaPacket:

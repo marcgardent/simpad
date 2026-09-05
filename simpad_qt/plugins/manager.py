@@ -24,7 +24,6 @@ from simpulse_sdk import (
     ITabProvider,
     ITelemetrySubscriber,
     IDeltaSubscriber,
-    IPacketSubscriber,
     ITelemetryStateSubscriber,
     IHudWidgetProvider,
     ChannelRequirement,
@@ -355,93 +354,65 @@ class PluginManager(QObject):
             except Exception as e:
                 self._handle_plugin_error(pid, "on_delta_frame", e)
 
+    # Declarative channel dispatch routing: (store_update_method, plugin_hook_name)
+    CHANNEL_ROUTING: Dict[TelemetryChannel, Tuple[str, str]] = {
+        TelemetryChannel.TELEMETRY: ("update_telemetry", "on_physics_tick"),
+        TelemetryChannel.OPPONENT_TELEMETRY: ("update_opponent_telemetry", "on_opponents_tick"),
+        TelemetryChannel.COMPACT_SCORING: ("update_compact_scoring", "on_scoring_update"),
+        TelemetryChannel.FULL_SCORING: ("update_full_scoring", "on_grid_update"),
+        TelemetryChannel.WEATHER: ("update_weather", "on_weather_update"),
+        TelemetryChannel.EXTENDED_STATE: ("update_extended_state", "on_extended_state_update"),
+        TelemetryChannel.SYSTEM_EVENTS: ("update_system_events", "on_session_event"),
+        TelemetryChannel.FORCE_FEEDBACK: ("update_force_feedback", "on_ffb_update"),
+        TelemetryChannel.GRAPHICS: ("update_graphics", "on_graphics_update"),
+        TelemetryChannel.TRACK_RULES: ("update_track_rules", "on_track_rules_update"),
+        TelemetryChannel.PIT_MENU: ("update_pit_menu", "on_pit_menu_update"),
+    }
+
+    # Declarative wake reason routing: wake_reason -> plugin_hook_name
+    WAKE_REASON_ROUTING: Dict[TelemetryWakeReason, str] = {
+        TelemetryWakeReason.PHYSICS_TICK: "on_physics_tick",
+        TelemetryWakeReason.OPPONENTS_TICK: "on_opponents_tick",
+        TelemetryWakeReason.SCORING_UPDATE: "on_scoring_update",
+        TelemetryWakeReason.GRID_UPDATE: "on_grid_update",
+        TelemetryWakeReason.WEATHER_UPDATE: "on_weather_update",
+        TelemetryWakeReason.SYSTEM_EVENT: "on_session_event",
+        TelemetryWakeReason.STATE_CHANGE: "on_extended_state_update",
+    }
+
     def dispatch_packet(self, packet: TelemetryRawPacket) -> None:
         """
         Ingests a specific channel raw packet into the central TelemetryStateStore
-        and dispatches polymorphic event hooks as well as legacy IPacketSubscriber callbacks.
+        and dispatches polymorphic typed on_* event hooks.
+        Pure O(1) table-driven dispatch: zero if/elif ladder.
         """
-        store = TelemetryStateStore.get_instance()
-        ch = packet.channel
-        data = packet.data
-        t = packet.timestamp
-
-        if data is None:
+        if packet.data is None:
             return
 
-        # 1. Update timestamped slot in state store
-        wake_reason: Optional[TelemetryWakeReason] = None
-        if ch == TelemetryChannel.TELEMETRY:
-            store.update_telemetry(data, t)
-            wake_reason = TelemetryWakeReason.PHYSICS_TICK
-        elif ch == TelemetryChannel.OPPONENT_TELEMETRY:
-            store.update_opponent_telemetry(data, t)
-        elif ch == TelemetryChannel.COMPACT_SCORING:
-            store.update_compact_scoring(data, t)
-            wake_reason = TelemetryWakeReason.SCORING_UPDATE
-        elif ch == TelemetryChannel.FULL_SCORING:
-            store.update_full_scoring(data, t)
-            wake_reason = TelemetryWakeReason.GRID_UPDATE
-        elif ch == TelemetryChannel.WEATHER:
-            store.update_weather(data, t)
-            wake_reason = TelemetryWakeReason.WEATHER_UPDATE
-        elif ch == TelemetryChannel.EXTENDED_STATE:
-            store.update_extended_state(data, t)
-        elif ch == TelemetryChannel.SYSTEM_EVENTS:
-            store.update_system_events(data, t)
-            wake_reason = TelemetryWakeReason.SYSTEM_EVENT
-        elif ch == TelemetryChannel.FORCE_FEEDBACK:
-            store.update_force_feedback(data, t)
-        elif ch == TelemetryChannel.GRAPHICS:
-            store.update_graphics(data, t)
-        elif ch == TelemetryChannel.TRACK_RULES:
-            store.update_track_rules(data, t)
-        elif ch == TelemetryChannel.PIT_MENU:
-            store.update_pit_menu(data, t)
+        route = self.CHANNEL_ROUTING.get(packet.channel)
+        if route is None:
+            return
 
-        # 2. Dispatch polymorphic hook and IPacketSubscriber callback
+        store = TelemetryStateStore.get_instance()
+        store_method_name, plugin_hook_name = route
+
+        # 1. Update State Store via direct method lookup
+        store_method = getattr(store, store_method_name, None)
+        if store_method is not None:
+            store_method(packet.data, packet.timestamp, packet.raw_bytes_len)
+
+        # 2. Dispatch polymorphic on_* hook to enabled plugins
         for pid, p in list(self._plugins.items()):
             if p.state != PluginState.ENABLED:
                 continue
 
-            # A. Polymorphic event hook (e.g. on_physics_tick, on_scoring_update)
-            if wake_reason == TelemetryWakeReason.PHYSICS_TICK:
+            hook = getattr(p, plugin_hook_name, None)
+            if hook is not None:
                 try:
-                    p.on_physics_tick(store)
+                    hook(store)
                     self._error_counts[pid] = 0
                 except Exception as e:
-                    self._handle_plugin_error(pid, "on_physics_tick", e)
-            elif wake_reason == TelemetryWakeReason.SCORING_UPDATE:
-                try:
-                    p.on_scoring_update(store)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, "on_scoring_update", e)
-            elif wake_reason == TelemetryWakeReason.GRID_UPDATE:
-                try:
-                    p.on_grid_update(store)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, "on_grid_update", e)
-            elif wake_reason == TelemetryWakeReason.WEATHER_UPDATE:
-                try:
-                    p.on_weather_update(store)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, "on_weather_update", e)
-            elif wake_reason == TelemetryWakeReason.SYSTEM_EVENT:
-                try:
-                    p.on_session_event(store)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, "on_session_event", e)
-
-            # B. Legacy IPacketSubscriber
-            if isinstance(p, IPacketSubscriber):
-                try:
-                    p.on_telemetry_packet(packet)
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, "on_telemetry_packet", e)
+                    self._handle_plugin_error(pid, plugin_hook_name, e)
 
     def dispatch_telemetry_event(
         self,
@@ -449,28 +420,25 @@ class PluginManager(QObject):
         state: Optional[TelemetryStateStore] = None,
     ) -> None:
         """
-        Directly dispatch a typed telemetry event to all active plugins.
+        Directly dispatch a typed telemetry event to all active plugins using O(1) table routing.
         """
+        plugin_hook_name = self.WAKE_REASON_ROUTING.get(wake_reason)
+        if not plugin_hook_name:
+            return
+
         active_store = state or TelemetryStateStore.get_instance()
 
         for pid, p in list(self._plugins.items()):
             if p.state != PluginState.ENABLED:
                 continue
 
-            try:
-                if wake_reason == TelemetryWakeReason.PHYSICS_TICK:
-                    p.on_physics_tick(active_store)
-                elif wake_reason == TelemetryWakeReason.SCORING_UPDATE:
-                    p.on_scoring_update(active_store)
-                elif wake_reason == TelemetryWakeReason.GRID_UPDATE:
-                    p.on_grid_update(active_store)
-                elif wake_reason == TelemetryWakeReason.WEATHER_UPDATE:
-                    p.on_weather_update(active_store)
-                elif wake_reason == TelemetryWakeReason.SYSTEM_EVENT:
-                    p.on_session_event(active_store)
-                self._error_counts[pid] = 0
-            except Exception as e:
-                self._handle_plugin_error(pid, wake_reason.value, e)
+            hook = getattr(p, plugin_hook_name, None)
+            if hook is not None:
+                try:
+                    hook(active_store)
+                    self._error_counts[pid] = 0
+                except Exception as e:
+                    self._handle_plugin_error(pid, plugin_hook_name, e)
 
     def _handle_plugin_error(self, plugin_id: str, action: str, error: Exception) -> None:
         """Record error and trip the circuit breaker if threshold is exceeded."""

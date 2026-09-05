@@ -6,25 +6,64 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Tuple, Any
+from typing import Tuple, Any, Protocol, runtime_checkable, Union
 
 
-# TODO MGT jai bien l'impression que nous sommes sur un cas d'ecole pour utiliser: typing.Protocol (introduit via la PEP 544).
+@runtime_checkable
+class ISize(Protocol):
+    """Protocol for 2D size specifications (PEP 544). Compatible with QSize."""
+    def width(self) -> float: ...
+    def height(self) -> float: ...
 
+
+@runtime_checkable
+class IRect(Protocol):
+    """Protocol for 2D rectangle geometry specifications (PEP 544). Compatible with QRectF."""
+    def x(self) -> float: ...
+    def y(self) -> float: ...
+    def width(self) -> float: ...
+    def height(self) -> float: ...
+
+
+@dataclass(frozen=True)
+class Size2D:
+    """Pure Python fallback implementing ISize protocol."""
+    _width: float = 0.0
+    _height: float = 0.0
+
+    def width(self) -> float:
+        return self._width
+
+    def height(self) -> float:
+        return self._height
+
+
+@dataclass(frozen=True)
+class Rect2D:
+    """Pure Python fallback implementing IRect protocol."""
+    _x: float = 0.0
+    _y: float = 0.0
+    _width: float = 0.0
+    _height: float = 0.0
+
+    def x(self) -> float:
+        return self._x
+
+    def y(self) -> float:
+        return self._y
+
+    def width(self) -> float:
+        return self._width
+
+    def height(self) -> float:
+        return self._height
+
+# TODO MGT Mais on peut carrement supprimer QtCore on non
 try:
     from PySide6.QtCore import QSize, QRectF
 except ImportError:
-    @dataclass(frozen=True)
-    class QSize:  # type: ignore[no-redef]
-        width: int = 0
-        height: int = 0
-
-    @dataclass(frozen=True)
-    class QRectF:  # type: ignore[no-redef]
-        x: float = 0.0
-        y: float = 0.0
-        width: float = 0.0
-        height: float = 0.0
+    QSize = Size2D  # type: ignore[assignment,misc]
+    QRectF = Rect2D  # type: ignore[assignment,misc]
 
 
 class HudSlot(str, Enum):
@@ -65,8 +104,8 @@ class PluginMetadata:
 class HudLayoutSpec:
     """Strongly-typed layout geometry allocated by the HUD Compositor."""
     slot: HudSlot
-    target_size: Any  # QSize
-    allocated_rect: Any  # QRectF
+    target_size: Union[ISize, Any]
+    allocated_rect: Union[IRect, Any]
     z_index: int = 0
 
 

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IPacketSubscriber,
+    ITabProvider, ITelemetrySubscriber, ITelemetryStateSubscriber,
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
     VehicleSensors, TelemetryStateStore
 )
@@ -243,10 +243,10 @@ class StreamDiagnosticsWidget(QWidget):
                 stat_item.setForeground(QColor(100, 116, 139))
 
 
-class TelemetryDiagnosticsPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IPacketSubscriber):
+class TelemetryDiagnosticsPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, ITelemetryStateSubscriber):
     """
     Official SimPad Stream Diagnostics & Packet Analyzer plugin.
-    Inspects all raw UDP packets, measures live frequencies and bandwidth consumption.
+    Inspects all telemetry channel events, measures live frequencies and bandwidth consumption.
     """
 
     def __init__(self):
@@ -317,43 +317,17 @@ class TelemetryDiagnosticsPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscri
         self._active_widget = StreamDiagnosticsWidget(self, parent)
         return self._active_widget
 
-    # Polymorphic Telemetry State Event Hooks
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on high-frequency physics tick (100-120Hz)."""
-        pass
-
-    def on_scoring_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on scoring update (10Hz)."""
-        pass
-
-    def on_grid_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on grid update (2-5Hz)."""
-        pass
-
-    def on_weather_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on weather update (~1Hz)."""
-        pass
-
-    def on_session_event(self, state: TelemetryStateStore) -> None:
-        """Called directly on session / system event."""
-        pass
-
-    def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
-        """Fallback subscriber for normalized frames."""
-        pass
-
-    def on_telemetry_packet(self, packet: TelemetryRawPacket) -> None:
-        """Inspect each individual packet arriving from the UDP receiver."""
-        now = packet.timestamp
-        ch = packet.channel
+    def _record_channel_event(self, ch: TelemetryChannel, timestamp: float, raw_bytes_len: int) -> None:
+        """Internal accumulator for per-channel event frequency and throughput."""
+        now = timestamp if timestamp > 0 else time.time()
         rec = self._stats[ch]
         rec.packet_count += 1
-        rec.total_bytes += packet.raw_bytes_len
+        rec.total_bytes += raw_bytes_len
         rec.last_timestamp = now
 
         # Append to sliding window for exact Hz/Kbps
         self._sliding_timestamps[ch].append(now)
-        self._sliding_bytes[ch].append((now, packet.raw_bytes_len))
+        self._sliding_bytes[ch].append((now, raw_bytes_len))
 
         # Prune older than 2s
         cutoff = now - 2.0
@@ -363,6 +337,66 @@ class TelemetryDiagnosticsPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscri
         rec.hz_estimate = len(self._sliding_timestamps[ch]) / 2.0
         total_b = sum(b for _, b in self._sliding_bytes[ch])
         rec.kbs_estimate = (total_b * 8.0) / (2.0 * 1000.0)
+
+    # Polymorphic Telemetry State Event Hooks (Every channel has a dedicated on_ hook)
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz)."""
+        slot = state.telemetry
+        self._record_channel_event(TelemetryChannel.TELEMETRY, slot.timestamp, slot.raw_bytes_len)
+
+    def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on opponent vehicle dynamics tick (10-20Hz)."""
+        slot = state.opponent_telemetry
+        self._record_channel_event(TelemetryChannel.OPPONENT_TELEMETRY, slot.timestamp, slot.raw_bytes_len)
+
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on compact scoring update (10Hz)."""
+        slot = state.compact_scoring
+        self._record_channel_event(TelemetryChannel.COMPACT_SCORING, slot.timestamp, slot.raw_bytes_len)
+
+    def on_grid_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on grid update (2-5Hz)."""
+        slot = state.full_scoring
+        self._record_channel_event(TelemetryChannel.FULL_SCORING, slot.timestamp, slot.raw_bytes_len)
+
+    def on_weather_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on weather update (~1Hz)."""
+        slot = state.weather
+        self._record_channel_event(TelemetryChannel.WEATHER, slot.timestamp, slot.raw_bytes_len)
+
+    def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on vehicle electronics and flag update (5Hz)."""
+        slot = state.extended_state
+        self._record_channel_event(TelemetryChannel.EXTENDED_STATE, slot.timestamp, slot.raw_bytes_len)
+
+    def on_session_event(self, state: TelemetryStateStore) -> None:
+        """Called directly on session / system event."""
+        slot = state.system
+        self._record_channel_event(TelemetryChannel.SYSTEM_EVENTS, slot.timestamp, slot.raw_bytes_len)
+
+    def on_ffb_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on force feedback frame."""
+        slot = state.force_feedback
+        self._record_channel_event(TelemetryChannel.FORCE_FEEDBACK, slot.timestamp, slot.raw_bytes_len)
+
+    def on_graphics_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on graphics frame."""
+        slot = state.graphics
+        self._record_channel_event(TelemetryChannel.GRAPHICS, slot.timestamp, slot.raw_bytes_len)
+
+    def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on track rules update."""
+        slot = state.track_rules
+        self._record_channel_event(TelemetryChannel.TRACK_RULES, slot.timestamp, slot.raw_bytes_len)
+
+    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on pit menu update."""
+        slot = state.pit_menu
+        self._record_channel_event(TelemetryChannel.PIT_MENU, slot.timestamp, slot.raw_bytes_len)
+
+    def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
+        """Fallback subscriber for normalized frames."""
+        pass
 
     def get_channel_statistics(self) -> Dict[TelemetryChannel, ChannelStatRecord]:
         """Return a snapshot of per-channel statistics."""

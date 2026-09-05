@@ -25,6 +25,7 @@ from isimotor_rawudp_client import (
 )
 
 from simpulse_sdk.models.state_store import TelemetryWakeReason
+from simpulse_sdk.models.delta import SectorInfo
 
 
 TelemetryPayload = Union[
@@ -37,7 +38,6 @@ TelemetryPayload = Union[
     Graphics,
     SystemEvent,
     bytes,
-    Dict[str, Union[str, int, float, bool, None]], # TODO MGT au bout d'un momment il faut créer une structure lisible
     None,
 ]
 
@@ -256,7 +256,7 @@ class VehicleSensors:
     ecu_lift_and_coast: float = 0.0
 
     @classmethod
-    def from_wheel_velocities( # TODO MGT QUESTION??? pourquoi il y a des sector* engine* & co, c'est quoi le raport avec wheel velocities???
+    def from_wheel_velocities(
         cls,
         long_patch_vels: Tuple[float, float, float, float],
         long_ground_vels: Tuple[float, float, float, float],
@@ -323,7 +323,11 @@ class VehicleSensors:
         surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0),
         terrain_names: Tuple[str, str, str, str] = ("", "", "", ""),
     ) -> Self:
-
+        """
+        Builds a normalized VehicleSensors snapshot by evaluating wheel slip dynamics
+        alongside powertrain, chassis, and session timing inputs.
+        Also accessible as `VehicleSensors.from_telemetry_snapshot(...)`.
+        """
         ut_f = max(0.0, min(1.0, float(unfiltered_throttle)))
         ub_f = max(0.0, min(1.0, float(unfiltered_brake)))
         ft_f = max(0.0, min(1.0, float(filtered_throttle))) if filtered_throttle is not None else ut_f
@@ -526,6 +530,9 @@ class VehicleSensors:
             ecu_wiper_state=ecu_wiper_state,
             ecu_lift_and_coast=ecu_lift_and_coast,
         )
+
+    # Alias with explicit naming intent (wheel slips computation + full snapshot construction)
+    from_telemetry_snapshot = from_wheel_velocities
 
     @classmethod
     def from_telem_info(
@@ -757,31 +764,30 @@ class VehicleSensors:
         return "--"
 
     @property
-    def sectors_list(self) -> list:
+    def sectors_list(self) -> List[SectorInfo]:
         """Structured list of 3 sectors for SectorTimesWidget."""
-        # TODO MGT Création de type
         return [
-            {
-                "time": self.sector1_time,
-                "status": self.sector1_status,
-                "delta": self.sector1_delta,
-                "delta_str": self.sector_delta_str(1),
-                "is_current": (self.current_sector == 1),
-            },
-            {
-                "time": self.sector2_time,
-                "status": self.sector2_status,
-                "delta": self.sector2_delta,
-                "delta_str": self.sector_delta_str(2),
-                "is_current": (self.current_sector == 2),
-            },
-            {
-                "time": self.sector3_time,
-                "status": self.sector3_status,
-                "delta": self.sector3_delta,
-                "delta_str": self.sector_delta_str(3),
-                "is_current": (self.current_sector == 3),
-            },
+            SectorInfo(
+                time=self.sector1_time,
+                status=self.sector1_status,
+                delta=self.sector1_delta,
+                delta_str=self.sector_delta_str(1),
+                is_current=(self.current_sector == 1),
+            ),
+            SectorInfo(
+                time=self.sector2_time,
+                status=self.sector2_status,
+                delta=self.sector2_delta,
+                delta_str=self.sector_delta_str(2),
+                is_current=(self.current_sector == 2),
+            ),
+            SectorInfo(
+                time=self.sector3_time,
+                status=self.sector3_status,
+                delta=self.sector3_delta,
+                delta_str=self.sector_delta_str(3),
+                is_current=(self.current_sector == 3),
+            ),
         ]
 
     # ── High-Level Haptic Sensor Aggregations ─────────────────────────────────

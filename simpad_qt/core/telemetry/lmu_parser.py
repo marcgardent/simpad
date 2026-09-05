@@ -256,10 +256,16 @@ class LMUParser:
         return cls._last_telem_info
 
 
-    # TODO MGT un peu chelou, et trouve pas d'usage je comprend pas l'intention. QUESTION parle moi de  TelemInfo et TelemetryData et VehicleSensors c'est quoi ses trois structures ?
     @classmethod
     def to_vehicle_sensors(cls, data: Union[VehicleSensors, TelemetryData, TelemInfo]) -> VehicleSensors:
-        """Convert a TelemInfo or TelemetryData instance into VehicleSensors."""
+        """
+        Convert a TelemInfo or TelemetryData instance into VehicleSensors.
+
+        Architecture Context on the 3 Telemetry Structures:
+          1. TelemInfo: Low-level C struct / raw UDP packet from isimotor_rawudp_client (hardware wire format).
+          2. TelemetryData: Intermediate parser snapshot in lmu_parser (internal buffer holding raw arrays).
+          3. VehicleSensors: High-level normalized domain model in simpulse_sdk (0.0-1.0 signals, ready for UI & plugins).
+        """
         if isinstance(data, VehicleSensors):
             return data
         if isinstance(data, TelemetryData):

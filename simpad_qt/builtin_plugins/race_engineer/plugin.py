@@ -32,7 +32,7 @@ class RadioMessageBridge(QObject):
 from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IPacketSubscriber,
+    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, ITelemetryStateSubscriber,
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
     LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 )
@@ -946,7 +946,7 @@ class RaceEngineerPlugin(
     ITabProvider,
     ITelemetrySubscriber,
     IDeltaSubscriber,
-    IPacketSubscriber,
+    ITelemetryStateSubscriber,
 ):
     """
     SimPad Main Race Engineer Plugin.
@@ -1063,12 +1063,16 @@ class RaceEngineerPlugin(
         pass
 
     # =========================================================================
-    # Polymorphic Telemetry State Event Hooks
+    # Polymorphic Telemetry State Event Hooks (Every channel has a dedicated on_ hook)
     # =========================================================================
 
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
         """Called directly on high-frequency physics tick (100-120Hz)."""
         self._dispatch_engineer_event(TelemetryWakeReason.PHYSICS_TICK, state, state.telemetry.data)
+
+    def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+        """Called directly on opponent vehicle dynamics tick (10-20Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.OPPONENTS_TICK, state, state.opponent_telemetry.data)
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
         """Called directly on compact scoring update (10Hz)."""
@@ -1082,9 +1086,29 @@ class RaceEngineerPlugin(
         """Called directly on weather update (~1Hz)."""
         self._dispatch_engineer_event(TelemetryWakeReason.WEATHER_UPDATE, state, state.weather.data)
 
+    def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on vehicle electronics and flags update (5Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.extended_state.data)
+
     def on_session_event(self, state: TelemetryStateStore) -> None:
         """Called directly on system / session event."""
         self._dispatch_engineer_event(TelemetryWakeReason.SYSTEM_EVENT, state, state.system.data)
+
+    def on_ffb_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on force feedback frame."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.force_feedback.data)
+
+    def on_graphics_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on camera / graphics frame."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.graphics.data)
+
+    def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on track rules update."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.track_rules.data)
+
+    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+        """Called directly on pit menu update."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.pit_menu.data)
 
     def _dispatch_engineer_event(
         self,
@@ -1099,45 +1123,6 @@ class RaceEngineerPlugin(
             store=state,
             wake_reason=wake_reason,
             trigger_packet=trigger_packet,
-        )
-
-        for msg in emitted_messages:
-            self._radio_bridge.radio_message.emit(msg)
-
-    def on_telemetry_packet(self, packet: TelemetryRawPacket) -> None:
-        """
-        Dispatches incoming raw UDP channel packets directly into the Race Engineer evaluation cycle.
-        """
-        if not self.engineer.enabled:
-            return
-
-        data = packet.data
-        if data is None:
-            return
-
-        ch = packet.channel
-        wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
-        if ch == TelemetryChannel.TELEMETRY:
-            self._latest_telemetry = data
-            wake_reason = TelemetryWakeReason.PHYSICS_TICK
-        elif ch == TelemetryChannel.OPPONENT_TELEMETRY:
-            wake_reason = TelemetryWakeReason.OPPONENTS_TICK
-        elif ch == TelemetryChannel.COMPACT_SCORING:
-            self._latest_scoring = data
-            wake_reason = TelemetryWakeReason.SCORING_UPDATE
-        elif ch == TelemetryChannel.FULL_SCORING:
-            self._latest_scoring = data
-            wake_reason = TelemetryWakeReason.GRID_UPDATE
-        elif ch == TelemetryChannel.WEATHER:
-            wake_reason = TelemetryWakeReason.WEATHER_UPDATE
-        elif ch == TelemetryChannel.SYSTEM_EVENTS:
-            wake_reason = TelemetryWakeReason.SYSTEM_EVENT
-
-        emitted_messages = self.engineer.update(
-            telemetry=self._latest_telemetry,
-            scoring=self._latest_scoring,
-            wake_reason=wake_reason,
-            trigger_packet=data,
         )
 
         for msg in emitted_messages:
