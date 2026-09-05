@@ -28,6 +28,7 @@ DEFAULT_PHRASES: Dict[str, str] = {
     # Lap & Spotter Announcements
     "timing_in_progress": "Timing in progress",
     "time_deleted": "Time deleted",
+    "dirty_lap": "Dirty lap",
     "give_time_back": "Cut track, give time back",
     "under_investigation": "Under investigation, lift",
     "incident_cleared": "Incident cleared",

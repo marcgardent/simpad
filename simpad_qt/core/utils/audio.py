@@ -264,6 +264,13 @@ class AudioAnnouncer:
         cls._play_file("time_deleted")
 
     @classmethod
+    def play_dirty_lap(cls) -> None:
+        """Triggers lap dirty sound: Dirty Lap (dirty_lap.wav)."""
+        logger.info("[AudioAnnouncer] Announcement: DIRTY LAP")
+        print("[AUDIO] Playing announcement: DIRTY LAP", flush=True)
+        cls._play_file("dirty_lap")
+
+    @classmethod
     def play_give_time_back(cls, interrupt: bool = True) -> None:
         """Triggers immediate action alert: Cut track, give time back (give_time_back.wav)."""
         logger.info("[AudioAnnouncer] Announcement: GIVE TIME BACK")

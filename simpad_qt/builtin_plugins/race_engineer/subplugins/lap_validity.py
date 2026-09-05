@@ -48,10 +48,12 @@ class LapValidityRole(BaseRole):
             audio_engine=audio_engine,
         )
         self._last_lap_flag: Optional[int] = None
+        self._last_is_dirty: Optional[bool] = None
         self._last_event_time: float = 0.0
         self._last_event_name: str = "IDLE"
         self._was_in_garage: bool = False
         self.busy_duration_sec = float(busy_duration_sec)
+        self.enable_time_deleted: bool = kwargs.get("enable_time_deleted", True)
 
     def get_parameters(self) -> List[RoleParam]:
         return [
@@ -87,6 +89,7 @@ class LapValidityRole(BaseRole):
         return {
             "timing_in_progress": "Timing in progress",
             "time_deleted": "Time deleted",
+            "dirty_lap": "Dirty lap",
             "give_time_back": "Cut track, give time back",
         }
 
@@ -117,24 +120,71 @@ class LapValidityRole(BaseRole):
             from simpad_qt.core.telemetry.state_store import TelemetryStateStore
             state_store = TelemetryStateStore.get_instance()
 
+        now = context.timestamp if (context and context.timestamp is not None) else time.time()
+        is_in_garage_or_pause = (state_store.in_garage or not state_store.in_realtime)
+
+        # In garage / pause: stay silent, track flags without triggering transitions
+        if is_in_garage_or_pause:
+            self._was_in_garage = True
+            self._last_lap_flag = state_store.lap_flag
+            self._last_is_dirty = state_store.is_dirty_lap
+            state_store.consume_validity_transition()
+            return None
+
+        # Exiting garage onto track: silent initialization
+        if self._was_in_garage:
+            self._was_in_garage = False
+            self._last_lap_flag = state_store.lap_flag
+            self._last_is_dirty = state_store.is_dirty_lap
+            state_store.consume_validity_transition()
+            return None
+
+        # First frame silent initialization
+        if self._last_is_dirty is None:
+            self._last_is_dirty = state_store.is_dirty_lap
+
         # Consume authoritative transition processed directly by the state store
         transition = state_store.consume_validity_transition()
         self._last_lap_flag = state_store.lap_flag
-        if not transition:
-            return None
+        current_is_dirty = state_store.is_dirty_lap
 
-        now = context.timestamp if (context and context.timestamp is not None) else time.time()
-        self._last_event_time = now
-        self._last_event_name = transition.upper()
+        # 1. Lap timing transition (timing_in_progress or time_deleted)
+        if transition:
+            phrase_key = transition
+            if transition == "time_deleted" and not getattr(self, "enable_time_deleted", True):
+                phrase_key = "dirty_lap"
 
-        message = EngineerMessage(
-            phrase_key=transition,
-            priority=self.priority,
-            interrupt=False,
-            role_id=self.role_id,
-        )
-        self.emit_sound(transition, interrupt=False)
-        return message
+            self._last_is_dirty = current_is_dirty
+            self._last_event_time = now
+            self._last_event_name = phrase_key.upper()
+
+            message = EngineerMessage(
+                phrase_key=phrase_key,
+                priority=self.priority,
+                interrupt=False,
+                role_id=self.role_id,
+            )
+            self.emit_sound(phrase_key, interrupt=False)
+            return message
+
+        # 2. Dirty lap status change (triggers when time_deleted was not triggered)
+        if not self._last_is_dirty and current_is_dirty:
+            self._last_is_dirty = True
+            phrase_key = "dirty_lap"
+            self._last_event_time = now
+            self._last_event_name = "DIRTY_LAP"
+
+            message = EngineerMessage(
+                phrase_key=phrase_key,
+                priority=self.priority,
+                interrupt=False,
+                role_id=self.role_id,
+            )
+            self.emit_sound(phrase_key, interrupt=False)
+            return message
+
+        self._last_is_dirty = current_is_dirty
+        return None
 
     def emit_sound(self, phrase_key: str, interrupt: bool = False) -> None:
         """Plays sound and logs event in track_limits_debug.log."""
@@ -151,6 +201,7 @@ class LapValidityRole(BaseRole):
 
     def reset(self) -> None:
         self._last_lap_flag = None
+        self._last_is_dirty = None
         self._last_event_time = 0.0
         self._last_event_name = "IDLE"
         self._was_in_garage = False
@@ -166,6 +217,7 @@ class LapValidityRole(BaseRole):
             "lap_status_text": st.lap_status_text,
             "is_lap_valid": st.is_lap_valid,
             "is_lap_invalid": st.is_lap_invalid,
+            "is_dirty_lap": st.is_dirty_lap,
             "last_event": self._last_event_name if self._last_event_name != "IDLE" else st.last_validity_event,
             "is_busy": self.is_busy(),
         })

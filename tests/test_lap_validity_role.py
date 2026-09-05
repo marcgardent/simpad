@@ -259,6 +259,130 @@ def test_get_sound_requirements():
     sounds = role.get_sound_requirements()
     assert "timing_in_progress" in sounds
     assert "time_deleted" in sounds
+    assert "dirty_lap" in sounds
+
+
+def test_lap_validity_dirty_lap_triggered_on_contact_impact():
+    """Vérifie le déclenchement de 'dirty_lap' lors d'un impact/collision (sans time_deleted)."""
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # 1. Initialisation sur tour propre
+    ctx1 = EngineerContext(
+        telemetry=TelemInfo(lap_number=1, last_impact_et=0.0),
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False),
+    )
+    role.update(ctx1)
+    assert len(played_sounds) == 0
+
+    # 2. Impact / collision détecté -> lap devient dirty alors que flag reste 2
+    ctx2 = EngineerContext(
+        telemetry=TelemInfo(lap_number=1, last_impact_et=5.4),
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False),
+    )
+    msg2 = role.update(ctx2)
+    assert msg2 is not None
+    assert msg2.phrase_key == "dirty_lap"
+    assert ("dirty_lap", False) in played_sounds
+
+    # 3. Frames suivants -> pas de répétition
+    for _ in range(10):
+        assert role.update(ctx2) is None
+    assert played_sounds == [("dirty_lap", False)]
+
+
+def test_lap_validity_no_competition_between_time_deleted_and_dirty_lap():
+    """Vérifie que lors d'un cut de piste, seul 'time_deleted' est joué (aucune concurrence)."""
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # 1. Initialisation tour propre
+    ctx1 = EngineerContext(
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False)
+    )
+    role.update(ctx1)
+    assert len(played_sounds) == 0
+
+    # 2. Cut de piste (flag 2 -> 0)
+    ctx2 = EngineerContext(
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=0, in_garage_stall=False)
+    )
+    msg2 = role.update(ctx2)
+    assert msg2 is not None
+    assert msg2.phrase_key == "time_deleted"
+    assert played_sounds == [("time_deleted", False)]  # dirty_lap NE doit PAS être joué
+
+
+def test_lap_validity_dirty_lap_when_time_deleted_not_activated():
+    """Vérifie que si time_deleted n'est pas activé, c'est dirty_lap qui est joué lors d'un cut."""
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio, enable_time_deleted=False)
+
+    # 1. Initialisation tour propre
+    ctx1 = EngineerContext(
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False)
+    )
+    role.update(ctx1)
+    assert len(played_sounds) == 0
+
+    # 2. Cut de piste (flag 2 -> 0)
+    ctx2 = EngineerContext(
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=0, in_garage_stall=False)
+    )
+    msg2 = role.update(ctx2)
+    assert msg2 is not None
+    assert msg2.phrase_key == "dirty_lap"
+    assert played_sounds == [("dirty_lap", False)]
+
+
+def test_lap_validity_dirty_lap_resets_on_new_lap():
+    """Vérifie qu'un nouveau tour remet le statut à propre et permet une nouvelle annonce dirty_lap."""
+    played_sounds = []
+
+    def mock_audio(phrase_key, interrupt=False):
+        played_sounds.append((phrase_key, interrupt))
+
+    role = LapValidityRole(audio_engine=mock_audio)
+
+    # Tour 1 - impact
+    ctx_l1 = EngineerContext(
+        telemetry=TelemInfo(lap_number=1, last_impact_et=1.0),
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False),
+    )
+    # init
+    role.update(EngineerContext(telemetry=TelemInfo(lap_number=1, last_impact_et=0.0), scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False)))
+    role.update(ctx_l1)
+    assert played_sounds == [("dirty_lap", False)]
+
+    # Tour 2 commence (lap_number -> 2)
+    ctx_l2_clean = EngineerContext(
+        telemetry=TelemInfo(lap_number=2, last_impact_et=1.0),
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False),
+    )
+    role.update(ctx_l2_clean)
+
+    # Tour 2 nouvel impact (last_impact_et -> 8.0)
+    ctx_l2_impact = EngineerContext(
+        telemetry=TelemInfo(lap_number=2, last_impact_et=8.0),
+        scoring=CompactScoring(in_realtime=True, count_lap_flag=2, in_garage_stall=False),
+    )
+    msg = role.update(ctx_l2_impact)
+    assert msg is not None
+    assert msg.phrase_key == "dirty_lap"
+    assert played_sounds == [("dirty_lap", False), ("dirty_lap", False)]
+
 
 
 
