@@ -4,8 +4,8 @@ Tests unitaires pour TrafficJamRole (Véhicules lents / drapeaux jaunes devant).
 
 import pytest
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
 
 
 def test_traffic_jam_detection():

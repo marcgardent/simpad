@@ -3,8 +3,8 @@ Unit tests for Qt HUD Overlay, modular Qt HUD widgets, and screen geometry calcu
 """
 
 import unittest
-from simpad_qt.core.utils.window_utils import get_hud_rect, get_screen_dimensions
-from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
+from simpulse.core.utils.window_utils import get_hud_rect, get_screen_dimensions
+from simpulse.builtin_plugins.official_cockpit_hud.widgets import (
     QtAbsGaugeWidget,
     QtBrakeGaugeWidget,
     QtThrottleGaugeWidget,
@@ -17,8 +17,8 @@ from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import (
     QtEnergyLapsWidget,
     QtSectorTimesWidget,
 )
-from simpad_qt.builtin_plugins.official_cockpit_hud.widgets.tires_gauge import get_qt_tire_colors
-from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpulse.builtin_plugins.official_cockpit_hud.widgets.tires_gauge import get_qt_tire_colors
+from simpulse.core.telemetry.sensors import VehicleSensors
 
 
 class TestQtHudOverlay(unittest.TestCase):
@@ -57,7 +57,7 @@ class TestQtHudOverlay(unittest.TestCase):
 
     def test_format_time_sec(self):
         """Verify format_time_sec formats times as [MM:]ss.mmm."""
-        from simpad_qt.core.telemetry.lmu_parser import format_time_sec
+        from simpulse.core.telemetry.lmu_parser import format_time_sec
         self.assertEqual(format_time_sec(32.41), "32.410")
         self.assertEqual(format_time_sec(92.41), "1:32.410")
         self.assertEqual(format_time_sec(125.008), "2:05.008")
@@ -133,7 +133,7 @@ class TestQtHudOverlay(unittest.TestCase):
 
     def test_format_lap_time_mm_ss_mmm(self):
         """Verify format_lap_time formats lap time strictly as MM:ss.mmm."""
-        from simpad_qt.core.telemetry.delta_engine import format_lap_time
+        from simpulse.core.telemetry.delta_engine import format_lap_time
         self.assertEqual(format_lap_time(92.45), "01:32.450")
         self.assertEqual(format_lap_time(125.008), "02:05.008")
         self.assertEqual(format_lap_time(58.123), "00:58.123")
@@ -148,7 +148,7 @@ class TestQtHudOverlay(unittest.TestCase):
         img = QImage(800, 600, QImage.Format.Format_ARGB32)
         painter = QPainter(img)
 
-        from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
         # 1. Live delta mode
         sensors_live = VehicleSensors(
             delta_time=-0.150,

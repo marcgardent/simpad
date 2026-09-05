@@ -4,8 +4,8 @@ Tests for LMU InGame detection and pit/garage menu trap prevention.
 
 import json
 from pathlib import Path
-from simpad_qt.core.telemetry.lmu_parser import LMUParser, TelemetryData
-from simpad_qt.core.utils.window_utils import is_lmu_foreground, get_foreground_window_title, get_foreground_process_name
+from simpulse.core.telemetry.lmu_parser import LMUParser, TelemetryData
+from simpulse.core.utils.window_utils import is_lmu_foreground, get_foreground_window_title, get_foreground_process_name
 
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, CompactScoring
@@ -92,7 +92,7 @@ def test_lmu_window_utils_smoke():
 
 import tempfile
 import unittest
-from simpad_qt.core.telemetry.plugin_installer import (
+from simpulse.core.telemetry.plugin_installer import (
     get_steam_vdf_candidate_paths,
     parse_vdf_library_paths,
     LMUPluginManager,
@@ -261,7 +261,7 @@ class TestLMUSteamDetection(unittest.TestCase):
 
     def test_multi_simulator_detection(self):
         """Verify detection of both Le Mans Ultimate and rFactor 2 installations."""
-        from simpad_qt.core.telemetry.plugin_installer import LMUPluginManager, SUPPORTED_GAMES
+        from simpulse.core.telemetry.plugin_installer import LMUPluginManager, SUPPORTED_GAMES
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -284,7 +284,7 @@ class TestLMUSteamDetection(unittest.TestCase):
             vdf_file = tmp_path / "libraryfolders.vdf"
             vdf_file.write_text(f'"libraryfolders" {{\n  "0" {{\n    "path" "{steam_dir}"\n  }}\n}}')
 
-            with patch("simpad_qt.core.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
+            with patch("simpulse.core.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
                 sims = LMUPluginManager.detect_all_simulators()
                 self.assertEqual(len(sims), 2)
                 sim_keys = {s.game_key: s for s in sims}
@@ -295,9 +295,9 @@ class TestLMUSteamDetection(unittest.TestCase):
 
     def test_game_plugin_manager_local_settings_and_propagation(self):
         """Verify GamePluginManager local settings persistence and multi-game propagation."""
-        from simpad_qt.core.game_plugin_manager import GamePluginManager, ChannelSettings
-        from simpad_qt.core.telemetry_channels import TelemetryChannel
-        from simpad_qt.core.config import ConfigManager
+        from simpulse.core.game_plugin_manager import GamePluginManager, ChannelSettings
+        from simpulse.core.telemetry_channels import TelemetryChannel
+        from simpulse.core.config import ConfigManager
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -316,8 +316,8 @@ class TestLMUSteamDetection(unittest.TestCase):
             vdf_file = tmp_path / "libraryfolders.vdf"
             vdf_file.write_text(f'"libraryfolders" {{\n  "0" {{\n    "path" "{tmp_path}"\n  }}\n}}')
 
-            with patch("simpad_qt.core.telemetry.plugin_installer.LMUPluginManager.get_all_lmu_install_dirs", return_value=[lmu_dir, rf2_dir]), \
-                 patch("simpad_qt.core.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
+            with patch("simpulse.core.telemetry.plugin_installer.LMUPluginManager.get_all_lmu_install_dirs", return_value=[lmu_dir, rf2_dir]), \
+                 patch("simpulse.core.telemetry.plugin_installer.get_steam_vdf_candidate_paths", return_value=[vdf_file]):
 
                 gpm = GamePluginManager(config_manager=cfg_mgr)
                 gpm.settings.rates[TelemetryChannel.TELEMETRY] = "unlimited"

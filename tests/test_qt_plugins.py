@@ -1,5 +1,5 @@
 """
-Unit and Integration Tests for the SimPad Qt6 Strongly-Typed Plugin Architecture.
+Unit and Integration Tests for the SimPulse Qt6 Strongly-Typed Plugin Architecture.
 """
 
 from dataclasses import dataclass
@@ -16,24 +16,24 @@ from simpulse_sdk import (
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
     VehicleSensors,
 )
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager, AppSettings
-from simpad_qt.core.game_plugin_manager import GamePluginManager
-from simpad_qt.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
-from simpad_qt.core.overlay_state_machine import (
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager, AppSettings
+from simpulse.core.game_plugin_manager import GamePluginManager
+from simpulse.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
+from simpulse.core.overlay_state_machine import (
     OverlayStateMachine, GameSceneState, OverlayDisplayMode, OverlayStateSnapshot
 )
-from simpad_qt.core.telemetry_bus import TelemetryBus, UdpStreamStatus
-from simpad_qt.ui.slot_compositor import HudSlotCompositor
-from simpad_qt.ui.status_bar import SimPadCoreStatusBar
-from simpad_qt.builtin_plugins.gear_speed_hud import GearSpeedHudPlugin
-from simpad_qt.builtin_plugins.gear_speed_hud.plugin import GearSpeedConfig
-from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
-from simpad_qt.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudConfig
-from simpad_qt.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
-from simpad_qt.builtin_plugins.pedal_monitor.plugin import PedalMonitorConfig
-from simpad_qt.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
-from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpulse.core.telemetry_bus import TelemetryBus, UdpStreamStatus
+from simpulse.ui.slot_compositor import HudSlotCompositor
+from simpulse.ui.status_bar import SimPulseCoreStatusBar
+from simpulse.builtin_plugins.gear_speed_hud import GearSpeedHudPlugin
+from simpulse.builtin_plugins.gear_speed_hud.plugin import GearSpeedConfig
+from simpulse.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
+from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudConfig
+from simpulse.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
+from simpulse.builtin_plugins.pedal_monitor.plugin import PedalMonitorConfig
+from simpulse.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
+from simpulse.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")
@@ -289,7 +289,7 @@ def test_gear_speed_hud_plugin_typed(qapp, tmp_path):
     """Test GearSpeedHudPlugin with GearSpeedConfig dataclass."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = GearSpeedHudPlugin()
-    ctx = PluginContext("simpad.builtin.gear_speed_hud", cfg_mgr)
+    ctx = PluginContext("simpulse.builtin.gear_speed_hud", cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
 
@@ -326,7 +326,7 @@ def test_pedal_telemetry_plugin_typed(qapp, tmp_path):
     """Test PedalTelemetryPlugin with PedalMonitorConfig dataclass."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = PedalTelemetryPlugin()
-    ctx = PluginContext("simpad.builtin.pedal_monitor", cfg_mgr)
+    ctx = PluginContext("simpulse.builtin.pedal_monitor", cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
 
@@ -417,14 +417,14 @@ def test_overlay_state_machine_contextual_transitions(qapp):
 
 
 def test_game_process_watcher_and_status_bar(qapp, tmp_path):
-    """Test GameProcessWatcher and SimPadCoreStatusBar rendering and state transitions."""
+    """Test GameProcessWatcher and SimPulseCoreStatusBar rendering and state transitions."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
     bus = TelemetryBus()
     watcher = GameProcessWatcher()
     osm = OverlayStateMachine()
 
-    status_bar = SimPadCoreStatusBar(
+    status_bar = SimPulseCoreStatusBar(
         process_watcher=watcher,
         overlay_state_machine=osm,
         telemetry_bus=bus,
@@ -453,7 +453,7 @@ def test_game_process_watcher_and_status_bar(qapp, tmp_path):
 def test_udp_server_to_telemetry_bus_integration(qapp, tmp_path):
     """Test UDPServer packet dispatching into TelemetryBus and PluginManager."""
     from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring
-    from simpad_qt.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
+    from simpulse.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
@@ -553,16 +553,16 @@ def test_telemetry_bus_full_scoring_garage_integration(qapp, tmp_path):
 
 
 def test_window_focus_studio_parent_vs_lmu_and_hud():
-    """Verify that focusing the SimPad Studio parent console marks LMU as background, not in-game."""
-    from simpad_qt.core.utils.window_utils import get_window_manager
+    """Verify that focusing the SimPulse Studio parent console marks LMU as background, not in-game."""
+    from simpulse.core.utils.window_utils import get_window_manager
 
     wm = get_window_manager()
     orig_get_pids = wm.get_lmu_pids
     try:
         wm.get_lmu_pids = lambda: {77777}
 
-        # 1. SimPad Studio Console window focused -> MUST NOT be LMU foreground!
-        wm._active_window_info = ("SimPad Studio Console (Qt6 Pure)", "simpad", 99999)
+        # 1. SimPulse Studio Console window focused -> MUST NOT be LMU foreground!
+        wm._active_window_info = ("SimPulse Studio Console (Qt6 Pure)", "simpulse", 99999)
         assert wm.is_lmu_foreground() is False
 
         # 2. Third-party app (e.g. Chrome / Discord / Desktop) -> False
@@ -570,7 +570,7 @@ def test_window_focus_studio_parent_vs_lmu_and_hud():
         assert wm.is_lmu_foreground() is False
 
         # 3. Transparent HUD Overlay floating over game -> True
-        wm._active_window_info = ("SimPad Qt6 HUD Overlay", "simpad", 99999)
+        wm._active_window_info = ("SimPulse Qt6 HUD Overlay", "simpulse", 99999)
         assert wm.is_lmu_foreground() is True
 
         # 4. Le Mans Ultimate game focused -> True
@@ -584,7 +584,7 @@ def test_official_cockpit_hud_plugin_lifecycle_and_typed_config(qapp, tmp_path):
     """Test OfficialCockpitHudPlugin lifecycle, typed configuration, and scaling."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = OfficialCockpitHudPlugin()
-    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    ctx = PluginContext("simpulse.builtin.official_cockpit_hud", cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
 
@@ -611,7 +611,7 @@ def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
     """Test telemetry ingestion and full offscreen vector rendering for all 11 modular HUD widgets."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = OfficialCockpitHudPlugin()
-    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    ctx = PluginContext("simpulse.builtin.official_cockpit_hud", cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
 
@@ -694,7 +694,7 @@ def test_official_cockpit_hud_tab_and_preview(qapp, tmp_path):
     """Test Studio Tab instantiation, interactive UI controls and live preview update."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     plugin = OfficialCockpitHudPlugin()
-    ctx = PluginContext("simpad.builtin.official_cockpit_hud", cfg_mgr)
+    ctx = PluginContext("simpulse.builtin.official_cockpit_hud", cfg_mgr)
     plugin.on_load(ctx)
     plugin.on_enable()
 
@@ -774,7 +774,7 @@ def test_plugin_activation_config(tmp_path):
 
 def test_plugin_manager_widget_toggle_persists_config(qapp, tmp_path):
     """Test that toggling plugin in PluginManagerWidget persists state to config file."""
-    from simpad_qt.ui.plugin_manager_widget import PluginManagerWidget
+    from simpulse.ui.plugin_manager_widget import PluginManagerWidget
 
     cfg_file = tmp_path / "config_ui.json"
     cfg_mgr = ConfigManager(config_file=cfg_file)
@@ -830,7 +830,7 @@ class EventHookSpyPlugin(SimPulsePlugin):
 def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     """Test that PluginManager dispatches typed polymorphic event hooks to plugins reading from TelemetryStateStore."""
     from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl, SystemEvent
-    from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+    from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
 
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
@@ -881,7 +881,7 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
 def test_plugin_manager_widget_inspector_on_right(qapp, tmp_path):
     """Test that Plugin Inspector is placed in a horizontal layout to the right of the plugins table."""
     from PySide6.QtWidgets import QHBoxLayout, QGroupBox
-    from simpad_qt.ui.plugin_manager_widget import PluginManagerWidget
+    from simpulse.ui.plugin_manager_widget import PluginManagerWidget
 
     cfg_file = tmp_path / "config_ui.json"
     cfg_mgr = ConfigManager(config_file=cfg_file)
@@ -908,11 +908,11 @@ def test_plugin_manager_widget_inspector_on_right(qapp, tmp_path):
 
 def test_simpulse_window_title(qapp, tmp_path):
     """Test that the main studio console window title is set to 'SimPulse'."""
-    from simpad_qt.ui.main_window import SimPadQtMainWindow
-    from simpad_qt.core.game_plugin_manager import GamePluginManager
-    from simpad_qt.core.game_process_watcher import GameProcessWatcher
-    from simpad_qt.core.overlay_state_machine import OverlayStateMachine
-    from simpad_qt.core.telemetry_bus import TelemetryBus
+    from simpulse.ui.main_window import SimPulseMainWindow
+    from simpulse.core.game_plugin_manager import GamePluginManager
+    from simpulse.core.game_process_watcher import GameProcessWatcher
+    from simpulse.core.overlay_state_machine import OverlayStateMachine
+    from simpulse.core.telemetry_bus import TelemetryBus
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
@@ -921,7 +921,7 @@ def test_simpulse_window_title(qapp, tmp_path):
     osm = OverlayStateMachine()
     tb = TelemetryBus()
 
-    window = SimPadQtMainWindow(
+    window = SimPulseMainWindow(
         plugin_manager=pm,
         game_plugin_mgr=gpm,
         process_watcher=gw,
@@ -935,8 +935,8 @@ def test_simpulse_window_title(qapp, tmp_path):
 def test_game_plugin_config_widget_compact_layout(qapp, tmp_path):
     """Test that GamePluginConfigWidget uses compact QSizePolicy.Policy.Maximum and layout stretch."""
     from PySide6.QtWidgets import QSizePolicy
-    from simpad_qt.ui.game_plugin_config_widget import GamePluginConfigWidget
-    from simpad_qt.core.game_plugin_manager import GamePluginManager
+    from simpulse.ui.game_plugin_config_widget import GamePluginConfigWidget
+    from simpulse.core.game_plugin_manager import GamePluginManager
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)

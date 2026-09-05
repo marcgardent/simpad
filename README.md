@@ -1,4 +1,4 @@
-# SimPad Haptic Middleware
+# SimPulse Haptic Middleware
 
 High-frequency real-time haptic synthesis middleware (50 Hz, 200 Hz, 1000 Hz) for racing simulators (Le Mans Ultimate, etc.) featuring a compiled node graph architecture.
 
@@ -6,7 +6,7 @@ High-frequency real-time haptic synthesis middleware (50 Hz, 200 Hz, 1000 Hz) fo
 
 ## 📡 Telemetry Sensors Documentation `[0.0, 1.0]`
 
-SimPad converts raw wheel velocities from simulator telemetry plugins into **4 dimensionless normalized sensors ranging from `0.0` to `1.0`**.
+SimPulse converts raw wheel velocities from simulator telemetry plugins into **4 dimensionless normalized sensors ranging from `0.0` to `1.0`**.
 
 When cruising with full grip, all 4 sensors stay strictly at `0.0` (zero unwanted rumble). Vibration triggers proportionally only when physical tire slip occurs.
 
@@ -113,7 +113,7 @@ uv run python main.py
 
 ## 🤖 AI Graph Preset Generation & JSON Specification
 
-SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to generate custom haptic graphs in standard JSON format. AI-generated presets can be loaded directly using the **Import JSON** button in the UI.
+SimPulse allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to generate custom haptic graphs in standard JSON format. AI-generated presets can be loaded directly using the **Import JSON** button in the UI.
 
 ### 📐 Graph JSON Format
 
@@ -192,6 +192,6 @@ SimPad allows Generative AI models (ChatGPT, Claude, Gemini, DeepSeek) to genera
 
 ### 💡 AI System Prompt for Preset Generation
 
-Copy and paste the prompt below into ChatGPT / Claude / Gemini to generate custom SimPad haptic presets:
+Copy and paste the prompt below into ChatGPT / Claude / Gemini to generate custom SimPulse haptic presets:
 
-> *"You are an expert SimPad haptic preset designer. Generate a valid SimPad JSON graph for [insert vehicle/driving style, e.g. Rally Gravel ABS & Oversteer emphasis]. Use valid pins `attr_out_abs`, `attr_out_tc`, `attr_out_over`, `attr_out_und` (and L/R variants) and connect to `attr_in_low` or `attr_in_high`. Output only valid raw JSON."*
+> *"You are an expert SimPulse haptic preset designer. Generate a valid SimPulse JSON graph for [insert vehicle/driving style, e.g. Rally Gravel ABS & Oversteer emphasis]. Use valid pins `attr_out_abs`, `attr_out_tc`, `attr_out_over`, `attr_out_und` (and L/R variants) and connect to `attr_in_low` or `attr_in_high`. Output only valid raw JSON."*

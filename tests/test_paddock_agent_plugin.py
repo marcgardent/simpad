@@ -8,15 +8,15 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from simpulse_sdk import PluginState
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
-from simpad_qt.builtin_plugins.paddock_agent import PaddockAgentPlugin
-from simpad_qt.builtin_plugins.paddock_agent.plugin import (
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
+from simpulse.builtin_plugins.paddock_agent import PaddockAgentPlugin
+from simpulse.builtin_plugins.paddock_agent.plugin import (
     PaddockAgentConfig,
     PaddockAgentWidget,
     SeriesSetupCardWidget,
 )
-from simpad_qt.builtin_plugins.paddock_agent.schedule.manager import RaceEvent, RaceSetupConfig
+from simpulse.builtin_plugins.paddock_agent.schedule.manager import RaceEvent, RaceSetupConfig
 
 
 @pytest.fixture(scope="session")
@@ -33,7 +33,7 @@ def test_paddock_agent_plugin_lifecycle(qapp, tmp_path):
     pm = PluginManager(cfg_mgr)
 
     plugin = PaddockAgentPlugin()
-    assert plugin.metadata.id == "simpad.builtin.paddock_agent"
+    assert plugin.metadata.id == "simpulse.builtin.paddock_agent"
     assert plugin.metadata.icon == "🏁"
 
     assert pm.register_plugin(plugin) is True
@@ -42,7 +42,7 @@ def test_paddock_agent_plugin_lifecycle(qapp, tmp_path):
 
     # Check tab provider
     tabs = pm.get_tab_providers()
-    assert any(t.metadata.id == "simpad.builtin.paddock_agent" for t in tabs)
+    assert any(t.metadata.id == "simpulse.builtin.paddock_agent" for t in tabs)
     assert plugin.get_tab_title() == "LMU Paddock"
 
 
@@ -154,7 +154,7 @@ def test_paddock_timer_notifications(qapp, tmp_path):
 
 def test_paddock_api_sync_worker(qapp, tmp_path):
     from unittest.mock import patch
-    from simpad_qt.builtin_plugins.paddock_agent.plugin import ApiSyncWorker
+    from simpulse.builtin_plugins.paddock_agent.plugin import ApiSyncWorker
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)

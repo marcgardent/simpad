@@ -1,29 +1,31 @@
 """
-Unit and Integration tests for SimPad Configuration System & IConfigManager contract.
-Verifies:
-- IConfigManager contract interface conformance
-- Single source of truth (config.json) loading and saving
-- Flattened configuration schema (AppSettings, GamePluginConfig, LoggerSettings, SimPadConfig)
-- GamePluginManager binding to unified config
-- Exclusion of 'priority' key in subplugin configs (ordered array sorting)
+Unit and Integration tests for SimPulse Configuration System & IConfigManager contract.
+
+Focus areas:
+- Zero-config auto-generation with sane defaults
+- Flattened configuration schema (AppSettings, GamePluginConfig, LoggerSettings, SimPulseConfig)
+- Plugin configuration serialization and isolation
+- Thread safety across read and write operations
+- Strong type coercion and corruption resilience
 """
 
 import json
+import threading
 from pathlib import Path
 from dataclasses import dataclass
 import pytest
 
-from simpad_qt.core.config import (
+from simpulse.core.config import (
     IConfigManager,
     ConfigManager,
     ConfigFactory,
-    SimPadConfig,
+    SimPulseConfig,
     AppSettings,
     GamePluginConfig,
     LoggerSettings,
 )
-from simpad_qt.core.game_plugin_manager import GamePluginManager, ChannelSettings
-from simpad_qt.core.telemetry_channels import TelemetryChannel
+from simpulse.core.game_plugin_manager import GamePluginManager, ChannelSettings
+from simpulse.core.telemetry_channels import TelemetryChannel
 
 
 @dataclass
@@ -161,7 +163,7 @@ def test_game_plugin_manager_binding(tmp_path):
 
 def test_race_engineer_subplugin_order_without_priority(tmp_path):
     """Verify RaceEngineer configuration uses sorted arrays without priority field in subplugins."""
-    from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
+    from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
 
     config_file = tmp_path / "config.json"
     engineer = RaceEngineer(auto_load_builtin_roles=True, config_path=config_file)

@@ -450,7 +450,7 @@ def scan(
     clean_pct = (clean_files_count / total_files * 100) if total_files > 0 else 100.0
 
     print(f"\n{C_BOLD}{'=' * 80}{C_RESET}")
-    print(f"{C_BOLD}{C_CYAN} SIMPAD OOP & CLEAN CODE LINTER — STATISTICAL REPORT{C_RESET}")
+    print(f"{C_BOLD}{C_CYAN} SIMPULSE OOP & CLEAN CODE LINTER — STATISTICAL REPORT{C_RESET}")
     print(f"{C_BOLD}{'=' * 80}{C_RESET}\n")
 
     # 1. Global Summary
@@ -538,7 +538,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="SimPad OOP & Clean Code Linter — Static analysis and OOP design cleanliness metrics."
+        description="SimPulse OOP & Clean Code Linter — Static analysis and OOP design cleanliness metrics."
     )
     parser.add_argument("target", help="Path to the file or directory to analyze")
     parser.add_argument(

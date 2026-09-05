@@ -1,12 +1,12 @@
 """
-Unit tests for SimPad Central TelemetryStateStore and TelemetryWakeReason pipeline.
+Unit tests for SimPulse Central TelemetryStateStore and TelemetryWakeReason pipeline.
 """
 
 import time
 import unittest
-from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
 from isimotor_rawudp_client import (
     CompactScoring,
     FullScoringSession,
@@ -172,10 +172,10 @@ class TestTelemetryStateStore(unittest.TestCase):
 
     def test_all_telemetry_channel_update_methods(self):
         """Verify TelemetryStateStore provides update methods for all TelemetryChannel values."""
-        from simpad_qt.core.telemetry_channels import TelemetryChannel
+        from simpulse.core.telemetry_channels import TelemetryChannel
         from simpulse_sdk import TelemetryRawPacket
-        from simpad_qt.plugins.manager import PluginManager
-        from simpad_qt.core.config import ConfigManager
+        from simpulse.plugins.manager import PluginManager
+        from simpulse.core.config import ConfigManager
 
         self.assertTrue(hasattr(self.store, "update_extended_state"))
         self.assertTrue(hasattr(self.store, "update_opponent_telemetry"))
@@ -205,10 +205,10 @@ class TestTelemetryStateStore(unittest.TestCase):
 
     def test_update_telemetry_with_vehicle_sensors_and_mock_bus(self):
         """Verify strong typing contract: VehicleSensors explicitly converts to TelemInfo and TelemetryBus operates cleanly."""
-        from simpad_qt.core.telemetry import VehicleSensors
-        from simpad_qt.core.telemetry_bus import TelemetryBus
-        from simpad_qt.plugins.manager import PluginManager
-        from simpad_qt.core.config import ConfigManager
+        from simpulse.core.telemetry import VehicleSensors
+        from simpulse.core.telemetry_bus import TelemetryBus
+        from simpulse.plugins.manager import PluginManager
+        from simpulse.core.config import ConfigManager
 
         sensors = VehicleSensors(
             vehicle_speed=50.0,

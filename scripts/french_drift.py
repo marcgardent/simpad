@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SimPad — French Drift Detection Script.
+SimPulse — French Drift Detection Script.
 Scans Python and codebase source files to flag French vocabulary, docstrings, comments, and strings.
 """
 
@@ -54,7 +54,7 @@ WORD_RE = re.compile(r"\b[a-zA-ZÀ-ÿ_]{2,}\b")
 # Default ignore patterns
 IGNORE_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".idea",
-    ".antigravitycli", "build", "dist", "simpad.egg-info", "assets"
+    ".antigravitycli", "build", "dist", "simpulse.egg-info", "assets"
 }
 
 IGNORE_FILES = {
@@ -179,7 +179,7 @@ def print_cli_report(reports: List[FileDriftReport], project_root: Path, verbose
     all_unique_words = set().union(*(r.unique_words for r in reports)) if reports else set()
 
     print("=" * 80)
-    print(" 🇫🇷 SIMPAD — FRENCH DRIFT AUDIT REPORT")
+    print(" 🇫🇷 SIMPULSE — FRENCH DRIFT AUDIT REPORT")
     print("=" * 80)
     print(f" Flagged Files       : {total_files}")
     print(f" Total Occurrences   : {total_occurrences}")
@@ -234,13 +234,13 @@ def print_cli_report(reports: List[FileDriftReport], project_root: Path, verbose
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Detect French language drift (docstrings, comments, UI strings) in SimPad codebase."
+        description="Detect French language drift (docstrings, comments, UI strings) in SimPulse codebase."
     )
     parser.add_argument(
         "paths",
         nargs="*",
-        default=["simpad_qt", "scripts", "main_qt.py", "Makefile"],
-        help="Paths to scan (default: simpad_qt, scripts, main_qt.py, Makefile)"
+        default=["simpulse", "scripts", "main_qt.py", "Makefile"],
+        help="Paths to scan (default: simpulse, scripts, main_qt.py, Makefile)"
     )
     parser.add_argument(
         "-s", "--summary-only",

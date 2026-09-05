@@ -14,7 +14,7 @@ class BaseHudWidget(ABC):
     Abstract base class for third-party HUD overlay widgets.
 
     A developer creates a subclass of BaseHudWidget to render custom telemetry
-    visualizations (e.g. delta bar, radar, tyre temps) on the SimPad HUD overlay.
+    visualizations (e.g. delta bar, radar, tyre temps) on the SimPulse HUD overlay.
 
     The host compositor calls paint_hud() on every frame with the current
     VehicleSensors data and allocated painting area.

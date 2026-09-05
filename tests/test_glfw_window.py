@@ -3,8 +3,8 @@ Tests for GLFW window management, screen resolution queries, and overlay window 
 """
 
 import unittest
-from simpad_qt.core.utils.glfw_manager import GLFWWindowManager, _GLFW_AVAILABLE
-from simpad_qt.core.utils.window_utils import get_screen_dimensions
+from simpulse.core.utils.glfw_manager import GLFWWindowManager, _GLFW_AVAILABLE
+from simpulse.core.utils.window_utils import get_screen_dimensions
 
 
 class TestGLFWWindow(unittest.TestCase):
@@ -28,7 +28,7 @@ class TestGLFWWindow(unittest.TestCase):
         window = GLFWWindowManager.create_overlay_window(
             width=400,
             height=300,
-            title="Test SimPad GLFW Overlay",
+            title="Test SimPulse GLFW Overlay",
             visible=False
         )
         self.assertIsNotNone(window, "GLFW window handle should not be None.")
@@ -38,7 +38,7 @@ class TestGLFWWindow(unittest.TestCase):
 
     def test_foreground_window_detection(self):
         """Verifies foreground window title and process name detection functions execute without error."""
-        from simpad_qt.core.utils.window_utils import get_foreground_window_title, get_foreground_process_name, is_lmu_foreground
+        from simpulse.core.utils.window_utils import get_foreground_window_title, get_foreground_process_name, is_lmu_foreground
 
         title = get_foreground_window_title()
         self.assertIsInstance(title, str)

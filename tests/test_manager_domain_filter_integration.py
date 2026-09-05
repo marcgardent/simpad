@@ -8,9 +8,9 @@ import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
-from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 
 
 def _make_profile(track_length=5000.0, base_speed_kmh=200.0):
@@ -118,8 +118,8 @@ def test_manager_injects_reference_profile_into_context():
 
     scoring_normal = _scoring_both_in_domain()
 
-    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
         MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
         MockLMU._delta_engine = mock_delta_engine
 
@@ -157,8 +157,8 @@ def test_manager_domain_filter_allows_anomaly():
 
     scoring_crash = _scoring_player_crashed()
 
-    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
         MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
         MockLMU._delta_engine = mock_delta_engine
 
@@ -193,8 +193,8 @@ def test_manager_no_profile_bypasses_filter():
 
     scoring = _scoring_both_in_domain()
 
-    with patch("simpad_qt.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpad_qt.core.telemetry.lmu_parser.LMUParser") as MockLMU:
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
+         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
         MockRefMgr.get_instance.return_value.get_active_profile.return_value = None
         MockLMU._delta_engine = mock_delta_engine
 

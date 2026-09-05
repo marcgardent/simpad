@@ -3,8 +3,8 @@ Unit tests for sector status calculations, non-realtime sensor telemetry retenti
 """
 
 import unittest
-from simpad_qt.core.telemetry.sensors import VehicleSensors
-from simpad_qt.core.telemetry.lmu_parser import LMUParser
+from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse.core.telemetry.lmu_parser import LMUParser
 
 
 class TestSectorStatusCalculations(unittest.TestCase):

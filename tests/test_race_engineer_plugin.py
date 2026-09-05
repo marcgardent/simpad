@@ -14,18 +14,18 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from simpulse_sdk import PluginState, PluginContext
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.telemetry_channels import TelemetryChannel, ChannelRequirement, TelemetryRawPacket
-from simpad_qt.builtin_plugins.race_engineer import RaceEngineerPlugin
-from simpad_qt.builtin_plugins.race_engineer.plugin import (
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
+from simpulse.core.telemetry_channels import TelemetryChannel, ChannelRequirement, TelemetryRawPacket
+from simpulse.builtin_plugins.race_engineer import RaceEngineerPlugin
+from simpulse.builtin_plugins.race_engineer.plugin import (
     RaceEngineerPluginConfig, RaceEngineerWidget, RoleListItemWidget, RoleDetailWidget, SoundLibraryDialog
 )
-from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus
-from simpad_qt.builtin_plugins.race_engineer.params import BoolParam
-from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
-from simpad_qt.core.telemetry.sensors import VehicleSensors
-from simpad_qt.core.utils.audio import AudioAnnouncer
+from simpulse.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpulse.builtin_plugins.race_engineer.params import BoolParam
+from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse.core.utils.audio import AudioAnnouncer
 from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, VehicleScoring
 
 
@@ -44,7 +44,7 @@ def test_race_engineer_plugin_lifecycle_and_registration(qapp, tmp_path):
     pm = PluginManager(cfg_mgr)
 
     plugin = RaceEngineerPlugin()
-    assert plugin.metadata.id == "simpad.builtin.race_engineer"
+    assert plugin.metadata.id == "simpulse.builtin.race_engineer"
     assert plugin.metadata.name == "Virtual Race Engineer & Spotters"
     assert plugin.metadata.icon == "🎙️"
 
@@ -54,7 +54,7 @@ def test_race_engineer_plugin_lifecycle_and_registration(qapp, tmp_path):
 
     # Check tab provider
     tabs = pm.get_tab_providers()
-    assert any(t.metadata.id == "simpad.builtin.race_engineer" for t in tabs)
+    assert any(t.metadata.id == "simpulse.builtin.race_engineer" for t in tabs)
     assert plugin.get_tab_title() == "Race Engineer"
     assert plugin.get_tab_icon() == "🎙️"
 
@@ -311,11 +311,11 @@ def test_race_engineer_widget_complete_audio_list(qapp, tmp_path):
 
 def test_engineer_subplugins_in_plugin():
     """Verify that engineer roles are sub-plugins located directly within race_engineer plugin package."""
-    from simpad_qt.builtin_plugins.race_engineer import subplugins
-    from simpad_qt.builtin_plugins.race_engineer import roles
-    from simpad_qt.builtin_plugins.race_engineer.registry import SubpluginRegistry, RoleRegistry
-    from simpad_qt.builtin_plugins.race_engineer.factory import SubpluginFactory, RoleFactory
-    from simpad_qt.builtin_plugins.race_engineer.base import BaseEngineerSubplugin, BaseRole
+    from simpulse.builtin_plugins.race_engineer import subplugins
+    from simpulse.builtin_plugins.race_engineer import roles
+    from simpulse.builtin_plugins.race_engineer.registry import SubpluginRegistry, RoleRegistry
+    from simpulse.builtin_plugins.race_engineer.factory import SubpluginFactory, RoleFactory
+    from simpulse.builtin_plugins.race_engineer.base import BaseEngineerSubplugin, BaseRole
 
     assert SubpluginRegistry is RoleRegistry
     assert SubpluginFactory is RoleFactory

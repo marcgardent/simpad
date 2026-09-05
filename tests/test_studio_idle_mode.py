@@ -1,5 +1,5 @@
 """
-Tests for SimPad Studio IDLE background mode and CPU power-saving orchestration.
+Tests for SimPulse Studio IDLE background mode and CPU power-saving orchestration.
 """
 
 import pytest
@@ -7,16 +7,16 @@ from unittest.mock import MagicMock
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
-from simpad_qt.core.game_plugin_manager import GamePluginManager
-from simpad_qt.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
-from simpad_qt.core.overlay_state_machine import OverlayStateMachine, OverlayDisplayMode
-from simpad_qt.core.telemetry_bus import TelemetryBus
-from simpad_qt.ui.main_window import SimPadQtMainWindow
-from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
-from simpad_qt.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
-from simpad_qt.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
+from simpulse.core.game_plugin_manager import GamePluginManager
+from simpulse.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
+from simpulse.core.overlay_state_machine import OverlayStateMachine, OverlayDisplayMode
+from simpulse.core.telemetry_bus import TelemetryBus
+from simpulse.ui.main_window import SimPulseMainWindow
+from simpulse.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
+from simpulse.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
+from simpulse.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
 from simpulse_sdk import VehicleSensors, LapDeltaPacket
 
 
@@ -39,7 +39,7 @@ def studio_environment(qapp, tmp_path):
     overlay_state_machine = OverlayStateMachine(display_mode=OverlayDisplayMode.FORCE_HIDDEN)
     telemetry_bus = TelemetryBus()
 
-    main_win = SimPadQtMainWindow(
+    main_win = SimPulseMainWindow(
         plugin_manager=plugin_mgr,
         game_plugin_mgr=game_plugin_mgr,
         process_watcher=process_watcher,

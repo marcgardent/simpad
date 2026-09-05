@@ -1,8 +1,7 @@
 """
 SimPulse SDK — Normalized Telemetry Domain Models, Channels & Sensors.
+Provides IsiMotor standard domain abstractions, channels, and LMU extension telemetry models.
 """
-
-# TODO MGT il y a une sous-conception il faut des handler pour recevoir des IsiMotor standard, et les data LMU séparé, il plusieurs strategies BRAINSTROM (le consomateur doit savoir ce qu'il veut)
 
 from __future__ import annotations
 import math
@@ -144,6 +143,64 @@ class TelemetryRawPacket:
     timestamp: float = field(default_factory=time.time)
 
 
+@dataclass(frozen=True)
+class LmuTelemetryData:
+    """
+    Strongly-typed Le Mans Ultimate specific electronic, cockpit, and ECU data.
+    Separates game-specific telemetry extensions from IsiMotor standard core sensors.
+    """
+    ecu_abs_active_raw: Optional[bool] = None
+    ecu_tc_active_raw: Optional[bool] = None
+    ecu_abs_level: int = 0
+    ecu_abs_max: int = 0
+    ecu_tc_level: int = 0
+    ecu_tc_max: int = 0
+    ecu_tc_cut: int = 0
+    ecu_tc_cut_max: int = 0
+    ecu_tc_slip: int = 0
+    ecu_tc_slip_max: int = 0
+    ecu_motor_map: int = 0
+    ecu_motor_map_max: int = 0
+    ecu_brake_migration: int = 0
+    ecu_brake_migration_max: int = 0
+    ecu_front_arb: int = 0
+    ecu_front_arb_max: int = 0
+    ecu_rear_arb: int = 0
+    ecu_rear_arb_max: int = 0
+    ecu_wiper_state: int = 0
+    ecu_lift_and_coast: float = 0.0
+
+    @classmethod
+    def from_telem_info(cls, telem: TelemInfo) -> Optional[Self]:
+        """Extracts LMU-specific ECU telemetry from an isiMotor raw packet if present."""
+        lmu_ext = getattr(telem, "lmu", None)
+        if lmu_ext is not None and getattr(lmu_ext, "ecu", None) is not None:
+            e = lmu_ext.ecu
+            return cls(
+                ecu_abs_active_raw=bool(e.abs_active),
+                ecu_tc_active_raw=bool(e.tc_active),
+                ecu_abs_level=max(0, int(e.abs_level)),
+                ecu_abs_max=max(0, int(e.abs_max)),
+                ecu_tc_level=max(0, int(e.tc_level)),
+                ecu_tc_max=max(0, int(e.tc_max)),
+                ecu_tc_cut=max(0, int(e.tc_cut)),
+                ecu_tc_cut_max=max(0, int(e.tc_cut_max)),
+                ecu_tc_slip=max(0, int(e.tc_slip)),
+                ecu_tc_slip_max=max(0, int(e.tc_slip_max)),
+                ecu_motor_map=max(0, int(e.motor_map)),
+                ecu_motor_map_max=max(0, int(e.motor_map_max)),
+                ecu_brake_migration=max(0, int(e.brake_migration)),
+                ecu_brake_migration_max=max(0, int(e.brake_migration_max)),
+                ecu_front_arb=max(0, int(e.front_arb)),
+                ecu_front_arb_max=max(0, int(e.front_arb_max)),
+                ecu_rear_arb=max(0, int(e.rear_arb)),
+                ecu_rear_arb_max=max(0, int(e.rear_arb_max)),
+                ecu_wiper_state=int(e.wiper_state),
+                ecu_lift_and_coast=float(e.lift_and_coast),
+            )
+        return None
+
+
 @dataclass
 class VehicleSensors:
     """
@@ -254,6 +311,7 @@ class VehicleSensors:
     ecu_rear_arb_max: int = 0
     ecu_wiper_state: int = 0
     ecu_lift_and_coast: float = 0.0
+    lmu: Optional[LmuTelemetryData] = None
 
     @classmethod
     def from_wheel_velocities(
@@ -322,6 +380,7 @@ class VehicleSensors:
         wheels_on_track: int = 4,
         surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0),
         terrain_names: Tuple[str, str, str, str] = ("", "", "", ""),
+        lmu: Optional[LmuTelemetryData] = None,
     ) -> Self:
         """
         Builds a normalized VehicleSensors snapshot by evaluating wheel slip dynamics
@@ -529,6 +588,7 @@ class VehicleSensors:
             ecu_rear_arb_max=ecu_rear_arb_max,
             ecu_wiper_state=ecu_wiper_state,
             ecu_lift_and_coast=ecu_lift_and_coast,
+            lmu=lmu,
         )
 
     # Alias with explicit naming intent (wheel slips computation + full snapshot construction)
@@ -667,6 +727,8 @@ class VehicleSensors:
             ecu_wiper_state = 0
             ecu_lift_and_coast = 0.0
 
+        lmu_data = LmuTelemetryData.from_telem_info(telem)
+
         return cls.from_wheel_velocities(
             long_patch_vels=lpv,
             long_ground_vels=lgv,
@@ -731,6 +793,7 @@ class VehicleSensors:
             wheels_on_track=wheels_on_track,
             surface_types=surface_types,
             terrain_names=terrain_names,
+            lmu=lmu_data,
         )
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────

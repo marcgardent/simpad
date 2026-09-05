@@ -5,11 +5,11 @@ LMUParser, UDPServer, VehicleSensors, DeltaEngine, and EngineerContext.
 
 import time
 import pytest
-from simpad_qt.core.telemetry.sensors import VehicleSensors
-from simpad_qt.core.telemetry.lmu_parser import LMUParser, TelemetryData
-from simpad_qt.core.telemetry.delta_engine import DeltaEngine
-from simpad_qt.core.telemetry.udp_server import UDPServer
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse.core.telemetry.lmu_parser import LMUParser, TelemetryData
+from simpulse.core.telemetry.delta_engine import DeltaEngine
+from simpulse.core.telemetry.udp_server import UDPServer
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 
 from isimotor_rawudp_client import (
     TelemInfo,

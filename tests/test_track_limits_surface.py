@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from simpad_qt.core.telemetry.delta_engine import DeltaEngine
-from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
-from simpad_qt.core.telemetry.track_limits_logger import TrackLimitsLogger
+from simpulse.core.telemetry.delta_engine import DeltaEngine
+from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse.core.telemetry.track_limits_logger import TrackLimitsLogger
 
 
 class TestTrackLimitsCutDebt(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
         self.engine = DeltaEngine()
 
     def tearDown(self):
-        from simpad_qt.core.telemetry.lmu_parser import LMUParser
+        from simpulse.core.telemetry.lmu_parser import LMUParser
         LMUParser._delta_engine.reset_session()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -30,7 +30,7 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
     def test_no_compact_scoring_distance_jumping(self):
         """Verify that CompactScoring packets (where lap_dist=5781m is track length) do not corrupt car distance."""
         from isimotor_rawudp_client import CompactScoring, FullScoringSession, VehicleScoring, TelemInfo
-        from simpad_qt.core.telemetry.lmu_parser import LMUParser
+        from simpulse.core.telemetry.lmu_parser import LMUParser
 
         # Setup reference profile on 5781m track (Monza)
         prof = ReferenceLapProfile(

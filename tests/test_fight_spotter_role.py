@@ -6,9 +6,9 @@ la détection 3-Wide vs file indienne, et la machine à états temporelle anti-c
 
 import math
 import pytest
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.base import RoleStatus
-from simpad_qt.builtin_plugins.race_engineer.subplugins.fight_spotter import (
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.base import RoleStatus
+from simpulse.builtin_plugins.race_engineer.subplugins.fight_spotter import (
     FightSpotterRole,
     SpotterSide,
     SpotterMessageType,

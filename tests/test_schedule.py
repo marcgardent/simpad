@@ -1,5 +1,5 @@
 """
-Unit & Integration Tests for SimPad Official LMU Schedule Engine & Setups <Niveau><Classes><Circuit>.
+Unit & Integration Tests for SimPulse Official LMU Schedule Engine & Setups <Niveau><Classes><Circuit>.
 """
 
 import time
@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from simpad_qt.builtin_plugins.paddock_agent.schedule import (
+from simpulse.builtin_plugins.paddock_agent.schedule import (
     RaceSetupConfig,
     RaceTierConfig,
     RaceEvent,
@@ -18,7 +18,7 @@ from simpad_qt.builtin_plugins.paddock_agent.schedule import (
     clean_series_key,
     make_setup_key,
 )
-from simpad_qt.core.utils.audio import AudioAnnouncer
+from simpulse.core.utils.audio import AudioAnnouncer
 
 
 class TestRaceSetupConfig:

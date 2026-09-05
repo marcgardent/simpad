@@ -1,6 +1,6 @@
 # SimPulse SDK
 
-Official Python SDK for developing plugins, telemetry consumers, and extensions for SimPulse and SimPad.
+Official Python SDK for developing plugins, telemetry consumers, and extensions for SimPulse.
 
 ## Features
 

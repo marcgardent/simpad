@@ -18,12 +18,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from simpad_qt.core.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH, DEFAULT_SOUND_DIR
+from simpulse.core.utils.audio_baker import AudioBaker, DEFAULT_PHRASES, DEFAULT_MODEL_PATH, DEFAULT_SOUND_DIR
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SimPad Audio Baker — Bakes WAV voice audio files using Piper TTS."
+        description="SimPulse Audio Baker — Bakes WAV voice audio files using Piper TTS."
     )
     parser.add_argument(
         "-m", "--model",
@@ -63,7 +63,7 @@ def main():
     args = parser.parse_args()
 
     if args.list:
-        print("\n=== Default Configured SimPad Phrases ===")
+        print("\n=== Default Configured SimPulse Phrases ===")
         for k, v in DEFAULT_PHRASES.items():
             wav_file = args.output_dir / f"{k}.wav"
             status = "✓ [Present on disk]" if wav_file.exists() else "✗ [Not generated]"
@@ -85,7 +85,7 @@ def main():
 
     # Standard batch mode
     print(f"\n=======================================================")
-    print(f"  SimPad Piper-TTS Audio Baker")
+    print(f"  SimPulse Piper-TTS Audio Baker")
     print(f"  ONNX Model   : {args.model}")
     print(f"  Target Dir   : {args.output_dir}")
     print(f"  Force Mode   : {'Yes' if args.force else 'No (missing files only)'}")

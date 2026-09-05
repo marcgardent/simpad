@@ -6,10 +6,10 @@ Vérifie la détection du domaine normal et le filtrage (il faut qu'au moins l'u
 import unittest
 from unittest.mock import MagicMock
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
-from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
+from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 
 
 def create_mock_reference_profile(track_length=5000.0, base_speed_kmh=200.0):

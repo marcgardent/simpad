@@ -1,5 +1,5 @@
 """
-Automated validation and discovery tests for SimPad plugins.
+Automated validation and discovery tests for SimPulse plugins.
 Ensures that all built-in plugins (and dynamically discovered external plugins)
 can be loaded, initialized, and satisfy all SimPulsePlugin contracts without runtime errors.
 """
@@ -20,8 +20,8 @@ from simpulse_sdk import (
     HudSlot,
     ChannelRequirement,
 )
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
 
 
 @pytest.fixture(scope="session")
@@ -35,16 +35,16 @@ def qapp():
 
 @pytest.fixture
 def builtin_plugins_dir() -> Path:
-    """Return path to simpad_qt/builtin_plugins."""
+    """Return path to simpulse/builtin_plugins."""
     project_root = Path(__file__).resolve().parent.parent
-    builtin_dir = project_root / "simpad_qt" / "builtin_plugins"
+    builtin_dir = project_root / "simpulse" / "builtin_plugins"
     assert builtin_dir.is_dir(), f"Builtin plugins directory not found: {builtin_dir}"
     return builtin_dir
 
 
 def test_all_builtin_plugins_discover_and_load_without_errors(qapp, tmp_path, builtin_plugins_dir):
     """
-    Ensure every plugin in simpad_qt/builtin_plugins:
+    Ensure every plugin in simpulse/builtin_plugins:
     1. Has a valid plugin.py file.
     2. Is discovered and loaded by PluginManager.
     3. Produces zero load errors (load_errors is empty).
@@ -186,7 +186,7 @@ def test_all_builtin_plugins_live_telemetry_and_mock_execution(qapp, tmp_path, b
     3. Runs TelemetryBus in mock mode across multiple cycles.
     4. Asserts 100% clean execution without any AttributeError or uncaught exception.
     """
-    from simpad_qt.core.telemetry_bus import TelemetryBus
+    from simpulse.core.telemetry_bus import TelemetryBus
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
@@ -195,7 +195,7 @@ def test_all_builtin_plugins_live_telemetry_and_mock_execution(qapp, tmp_path, b
     assert len(pm.load_errors) == 0, f"Plugins failed to load: {pm.load_errors}"
 
     # Enable all race engineer roles if available
-    re_plugin = pm.plugins.get("simpad.builtin.race_engineer")
+    re_plugin = pm.plugins.get("simpulse.builtin.race_engineer")
     if re_plugin and hasattr(re_plugin, "engineer"):
         for r in re_plugin.engineer._roles:
             r.enabled = True

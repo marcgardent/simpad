@@ -13,13 +13,10 @@ from .config import IPluginConfigProvider
 from .params import (
     IParamDescriptor,
     ConfigParam,
+    PluginParam,
     RoleParam,
     SubpluginParam,
     ParamDescriptor,
-    BoolParam,
-    IntRangeParam,
-    FloatRangeParam,
-    ChoiceParam,
     ParamScalarValue,
 )
 
@@ -34,12 +31,10 @@ __all__ = [
     "IPluginConfigProvider",
     "IParamDescriptor",
     "ConfigParam",
+    "PluginParam",
     "RoleParam",
     "SubpluginParam",
     "ParamDescriptor",
-    "BoolParam",
-    "IntRangeParam",
-    "FloatRangeParam",
-    "ChoiceParam",
     "ParamScalarValue",
 ]
+

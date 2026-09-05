@@ -6,12 +6,12 @@ lorsque la session est une qualification (session entre 5 et 8 inclus), conform√
 
 import pytest
 from isimotor_rawudp_client import FullScoringSession, CompactScoring, VehicleScoring, TelemVect3
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
-from simpad_qt.builtin_plugins.race_engineer.subplugins.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
-from simpad_qt.builtin_plugins.race_engineer.subplugins.lap_validity import LapValidityRole
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
+from simpulse.builtin_plugins.race_engineer.subplugins.pitlane_spotter import PitlaneSpotterRole, PitlaneSpotterState
+from simpulse.builtin_plugins.race_engineer.subplugins.lap_validity import LapValidityRole
 
 
 class MockAudioEngine:

@@ -9,7 +9,7 @@ MODEL_URL = https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/al
 CONFIG_URL = https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alan/low/en_GB-alan-low.onnx.json
 
 help:
-	@echo "Available commands in SimPad Makefile:"
+	@echo "Available commands in SimPulse Makefile:"
 	@echo "  make init             - Initialize complete development environment (deps, ONNX model, bake WAV, tests)"
 	@echo "  make install-deps     - Install and synchronize Python dependencies"
 	@echo "  make download-model   - Download Piper ONNX voice model ($(MODEL_NAME)) and config"
@@ -20,14 +20,14 @@ help:
 	@echo "  make clean-model      - Remove ONNX model files from $(MODEL_DIR)"
 	@echo "  make clean-all        - Remove all generated audio files and ONNX models"
 	@echo "  make test             - Run unit test suite"
-	@echo "  make run              - Launch SimPad application"
+	@echo "  make run              - Launch SimPulse application"
 	@echo "  make french-drift     - Audit codebase for French language drift"
 	@echo "  make track-evil       - Run OOP linter on codebase"
 
 init: install-deps download-model bake-audio test
 	@echo ""
 	@echo "================================================================"
-	@echo "  🎉 SimPad environment successfully initialized!"
+	@echo "  🎉 SimPulse environment successfully initialized!"
 	@echo "  • Virtual environment : .venv/"
 	@echo "  • ONNX voice model    : $(MODEL_DIR)/$(MODEL_NAME).onnx"
 	@echo "  • Audio cue files     : $(SOUND_DIR)/"
@@ -98,4 +98,4 @@ french-drift:
 	@PYTHONPATH=. $(PYTHON) scripts/french_drift.py
 
 track-evil:
-	@PYTHONPATH=. $(PYTHON) scripts/lint_oop_evil.py ./simpad_qt -s
+	@PYTHONPATH=. $(PYTHON) scripts/lint_oop_evil.py ./simpulse -s

@@ -1,10 +1,10 @@
 """
-Unit tests for SimPad Haptics Math Engine and Waveform Synthesis.
+Unit tests for SimPulse Haptics Math Engine and Waveform Synthesis.
 """
 
 import pytest
 import math
-from simpad_qt.builtin_plugins.haptic_feedback.math_engine import (
+from simpulse.builtin_plugins.haptic_feedback.math_engine import (
     clamp,
     lerp,
     normalize_signal,

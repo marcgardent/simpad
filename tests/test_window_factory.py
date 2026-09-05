@@ -4,7 +4,7 @@ Unit tests for WindowManagerFactory, BaseWindowManager, LinuxWindowManager, and 
 
 import sys
 import unittest
-from simpad_qt.core.utils.window import (
+from simpulse.core.utils.window import (
     BaseWindowManager,
     WindowsWindowManager,
     LinuxWindowManager,

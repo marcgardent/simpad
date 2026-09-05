@@ -58,12 +58,6 @@ class Rect2D:
     def height(self) -> float:
         return self._height
 
-# TODO MGT Mais on peut carrement supprimer QtCore on non
-try:
-    from PySide6.QtCore import QSize, QRectF
-except ImportError:
-    QSize = Size2D  # type: ignore[assignment,misc]
-    QRectF = Rect2D  # type: ignore[assignment,misc]
 
 
 class HudSlot(str, Enum):

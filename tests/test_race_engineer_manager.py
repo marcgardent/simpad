@@ -3,9 +3,9 @@ Tests unitaires pour RaceEngineer Manager (Priorités, Tri, Activation, IHM, Sau
 """
 
 import pytest
-from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
-from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
+from simpulse.builtin_plugins.race_engineer.base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 
 
 class MockRoleA(BaseRole):
@@ -175,10 +175,10 @@ def test_race_engineer_file_persistence(tmp_path):
 def test_individual_roles_disabled_behavior():
     """Vérifie que les rôles désactivés ne déclenchent aucun son ni alerte."""
     from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3, CompactScoring
-    from simpad_qt.builtin_plugins.race_engineer.subplugins.lap_validity import LapValidityRole
-    from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole
-    from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
-    from simpad_qt.builtin_plugins.race_engineer.subplugins.pace_notes import PaceNotesRole
+    from simpulse.builtin_plugins.race_engineer.subplugins.lap_validity import LapValidityRole
+    from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole
+    from simpulse.builtin_plugins.race_engineer.subplugins.traffic_jam import TrafficJamRole
+    from simpulse.builtin_plugins.race_engineer.subplugins.pace_notes import PaceNotesRole
 
     played = []
     def mock_audio(phrase_key, interrupt=False):

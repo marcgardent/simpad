@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SimPad Plugin Integrity and Contract Verification CLI.
+SimPulse Plugin Integrity and Contract Verification CLI.
 
 Checks all built-in (and optionally external) plugins:
 - Syntax & importability (detects broken relative/absolute imports)
@@ -35,17 +35,17 @@ from simpulse_sdk import (
     HudSlot,
     ChannelRequirement,
 )
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
 
 
 def verify_plugins(search_paths: list[Path], verbose: bool = False) -> bool:
-    app = QApplication.instance() or QApplication(["simpad_plugin_checker"])
+    app = QApplication.instance() or QApplication(["simpulse_plugin_checker"])
     cfg = ConfigManager()
     pm = PluginManager(cfg)
 
     print("=" * 70)
-    print("🔍 SimPad Plugin Integrity & Contract Checker")
+    print("🔍 SimPulse Plugin Integrity & Contract Checker")
     print("=" * 70)
 
     start_time = time.perf_counter()
@@ -114,18 +114,18 @@ def verify_plugins(search_paths: list[Path], verbose: bool = False) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SimPad Plugin Verification Tool")
+    parser = argparse.ArgumentParser(description="SimPulse Plugin Verification Tool")
     parser.add_argument(
         "--dir",
         "-d",
         type=Path,
         action="append",
-        help="Additional plugin search directory (defaults to simpad_qt/builtin_plugins)",
+        help="Additional plugin search directory (defaults to simpulse/builtin_plugins)",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
-    search_paths = args.dir or [PROJECT_ROOT / "simpad_qt" / "builtin_plugins"]
+    search_paths = args.dir or [PROJECT_ROOT / "simpulse" / "builtin_plugins"]
     success = verify_plugins(search_paths, verbose=args.verbose)
     sys.exit(0 if success else 1)
 

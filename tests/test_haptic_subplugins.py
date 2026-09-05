@@ -1,19 +1,19 @@
 """
-Unit tests for SimPad Haptics Subplugins and Marc Profile Decomposition.
+Unit tests for SimPulse Haptics Subplugins and Marc Profile Decomposition.
 """
 
 import pytest
-from simpad_qt.core.telemetry.sensors import VehicleSensors
-from simpad_qt.builtin_plugins.haptic_feedback.models import HapticMotorOutput
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.base import HapticHostSlot
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_abs import MarcAbsSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_tc import MarcTcSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.curbs import CurbsHapticSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.slip import SlipHapticSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.subplugins.grip import TireGripHapticSubplugin
-from simpad_qt.builtin_plugins.haptic_feedback.manager import HapticSubpluginManager
-from simpad_qt.builtin_plugins.haptic_feedback.math_engine import WaveformShape
+from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse.builtin_plugins.haptic_feedback.models import HapticMotorOutput
+from simpulse.builtin_plugins.haptic_feedback.subplugins.base import HapticHostSlot
+from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_abs import MarcAbsSubplugin
+from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_tc import MarcTcSubplugin
+from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
+from simpulse.builtin_plugins.haptic_feedback.subplugins.curbs import CurbsHapticSubplugin
+from simpulse.builtin_plugins.haptic_feedback.subplugins.slip import SlipHapticSubplugin
+from simpulse.builtin_plugins.haptic_feedback.subplugins.grip import TireGripHapticSubplugin
+from simpulse.builtin_plugins.haptic_feedback.manager import HapticSubpluginManager
+from simpulse.builtin_plugins.haptic_feedback.math_engine import WaveformShape
 
 
 def test_haptic_motor_output_xinput_mapping():

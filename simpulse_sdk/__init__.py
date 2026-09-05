@@ -15,13 +15,10 @@ from simpulse_sdk.contracts import (
     IHudWidgetProvider,
     IParamDescriptor,
     ConfigParam,
+    PluginParam,
     RoleParam,
     SubpluginParam,
     ParamDescriptor,
-    BoolParam,
-    IntRangeParam,
-    FloatRangeParam,
-    ChoiceParam,
     ParamScalarValue,
 )
 
@@ -34,6 +31,7 @@ from simpulse_sdk.models import (
     TelemetryRawPacket,
     TelemetryPayload,
     TelemetryWakeReason,
+    LmuTelemetryData,
     LapDeltaPacket,
     SectorInfo,
     DeltaReferenceMode,
@@ -47,6 +45,10 @@ from simpulse_sdk.models import (
     clamp,
     apply_response_curve,
     format_lap_time,
+    BoolParam,
+    IntRangeParam,
+    FloatRangeParam,
+    ChoiceParam,
 )
 
 __all__ = [
@@ -61,6 +63,7 @@ __all__ = [
     "IHudWidgetProvider",
     "IParamDescriptor",
     "ConfigParam",
+    "PluginParam",
     "RoleParam",
     "SubpluginParam",
     "ParamDescriptor",
@@ -77,6 +80,7 @@ __all__ = [
     "TelemetryRawPacket",
     "TelemetryPayload",
     "TelemetryWakeReason",
+    "LmuTelemetryData",
     "LapDeltaPacket",
     "SectorInfo",
     "DeltaReferenceMode",

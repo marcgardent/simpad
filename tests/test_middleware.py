@@ -1,7 +1,7 @@
 import unittest
 from isimotor_rawudp_client import TelemInfo, TelemWheel, TelemVect3
-from simpad_qt.core.telemetry.lmu_parser import LMUParser
-from simpad_qt.core.physics.effects import PhysicsToHaptic
+from simpulse.core.telemetry.lmu_parser import LMUParser
+from simpulse.core.physics.effects import PhysicsToHaptic
 
 
 def make_wheel(lpv=0.0, lgv=0.0, lat_pv=0.0, lat_gv=0.0, susp_deflection=0.0):

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "simpulse-sdk"
 version = "0.1.0"
-description = "SimPulse SDK — Contracts and Domain Models for SimPulse & SimPad Plugins"
+description = "SimPulse SDK — Contracts and Domain Models for SimPulse Plugins"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

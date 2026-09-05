@@ -10,6 +10,7 @@ from simpulse_sdk.models.telemetry import (
     TelemetryRawPacket,
     TelemetryPayload,
     TelemetryWakeReason,
+    LmuTelemetryData,
 )
 from simpulse_sdk.models.delta import (
     LapDeltaPacket,
@@ -39,6 +40,12 @@ from simpulse_sdk.models.math import (
     apply_response_curve,
     format_lap_time,
 )
+from simpulse_sdk.models.params import (
+    BoolParam,
+    IntRangeParam,
+    FloatRangeParam,
+    ChoiceParam,
+)
 
 __all__ = [
     "VehicleSensors",
@@ -48,6 +55,7 @@ __all__ = [
     "TelemetryRawPacket",
     "TelemetryPayload",
     "TelemetryWakeReason",
+    "LmuTelemetryData",
     "LapDeltaPacket",
     "SectorInfo",
     "DeltaReferenceMode",
@@ -68,5 +76,9 @@ __all__ = [
     "clamp",
     "apply_response_curve",
     "format_lap_time",
+    "BoolParam",
+    "IntRangeParam",
+    "FloatRangeParam",
+    "ChoiceParam",
 ]
 

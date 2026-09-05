@@ -6,7 +6,7 @@
 j'ai demandé de ne pas mettre de priority, je veux un tableau trié, ca fait bugger les fonction de triage dans l'UI
 ```json 
 {
-  "simpad.builtin.race_engineer": {
+  "simpulse.builtin.race_engineer": {
     "master_enabled": true,
     "muted": false,
     "subplugin_configs": {

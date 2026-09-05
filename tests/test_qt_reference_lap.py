@@ -10,11 +10,12 @@ Verifies:
 
 import tempfile
 import time
+from dataclasses import asdict
 from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from simpad_qt.core.config import ConfigManager, AppSettings
+from simpulse.core.config import ConfigManager, AppSettings
 from simpulse_sdk import (
     SimPulsePlugin,
     PluginMetadata,
@@ -25,15 +26,15 @@ from simpulse_sdk import (
     DeltaReferenceMode,
     VehicleSensors,
 )
-from simpad_qt.core.reference_lap import (
+from simpulse.core.reference_lap import (
     ReferenceLapManager,
     ReferenceLapProfile,
     TrackAnnotation,
     AnnotationType,
 )
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.telemetry_bus import TelemetryBus
-from simpad_qt.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.telemetry_bus import TelemetryBus
+from simpulse.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
 
 
 @pytest.fixture(scope="session")
@@ -93,8 +94,8 @@ def test_lap_delta_packet_immutability_and_dict(qapp):
     with pytest.raises(Exception):
         pkt.live_delta = 1.0  # type: ignore
 
-    # Verify dictionary serialization
-    d = pkt.to_dict()
+    # Verify dictionary serialization via asdict
+    d = asdict(pkt)
     assert isinstance(d, dict)
     assert d["live_delta"] == -0.342
     assert d["track_name"] == "Spa-Francorchamps"
@@ -270,7 +271,7 @@ def test_telemetry_bus_and_plugin_delta_subscription(qapp, tmp_path):
         vehicles=[player],
     )
 
-    from simpad_qt.core.telemetry_channels import TelemetryChannel
+    from simpulse.core.telemetry_channels import TelemetryChannel
     bus.process_raw_packet(TelemetryChannel.FULL_SCORING, scoring_data, 184)
 
     # Verify dummy plugin received authoritative LapDeltaPacket
@@ -285,8 +286,8 @@ def test_telemetry_bus_and_plugin_delta_subscription(qapp, tmp_path):
     assert bus.latest_sensors.has_delta_reference is True
     assert pytest.approx(bus.latest_sensors.delta_time, 0.1) == -1.5
 
-from simpad_qt.builtin_plugins.reference_lap_studio import ReferenceLapStudioPlugin
-from simpad_qt.builtin_plugins.reference_lap_studio.plugin import (
+from simpulse.builtin_plugins.reference_lap_studio import ReferenceLapStudioPlugin
+from simpulse.builtin_plugins.reference_lap_studio.plugin import (
     ReferenceLapStudioConfig,
     ReferenceLapStudioTabWidget,
     SpatialTelemetryCanvas,
@@ -303,7 +304,7 @@ def test_reference_lap_studio_plugin_and_tab_lifecycle(qapp, tmp_path):
     plugin.ref_manager = ref_mgr
     plugin_mgr.register_plugin(plugin)
 
-    assert plugin.metadata.id == "simpad.builtin.reference_lap_studio"
+    assert plugin.metadata.id == "simpulse.builtin.reference_lap_studio"
     assert plugin.get_tab_title() == "Reference Lap Studio"
     assert plugin.get_tab_icon() == "🗺️"
 

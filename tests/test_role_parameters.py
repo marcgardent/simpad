@@ -5,12 +5,12 @@ and dynamic configuration in Race Engineer roles.
 
 import unittest
 from unittest.mock import MagicMock
-from simpad_qt.builtin_plugins.race_engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
-from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, RoleStatus, EngineerMessage
-from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
-from simpad_qt.builtin_plugins.race_engineer.subplugins.pace_notes import PaceNotesRole
-from simpad_qt.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
-from simpad_qt.core.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
+from simpulse.builtin_plugins.race_engineer.params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam
+from simpulse.builtin_plugins.race_engineer.base import BaseRole, RoleStatus, EngineerMessage
+from simpulse.builtin_plugins.race_engineer.context import EngineerContext
+from simpulse.builtin_plugins.race_engineer.subplugins.pace_notes import PaceNotesRole
+from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
+from simpulse.core.telemetry.reference_profile import ReferenceLapProfile, TrackAnnotation, AnnotationType
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 
 

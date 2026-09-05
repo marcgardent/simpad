@@ -48,12 +48,12 @@
     "delta_debug": false
   },
   "plugins_enabled": {
-    "simpad.builtin.race_engineer": true,
-    "simpad.builtin.pedal_monitor": false,
-    "simpad.builtin.gear_speed_hud": false
+    "simpulse.builtin.race_engineer": true,
+    "simpulse.builtin.pedal_monitor": false,
+    "simpulse.builtin.gear_speed_hud": false
   },
   "plugins": {
-    "simpad.builtin.race_engineer": {
+    "simpulse.builtin.race_engineer": {
       "master_enabled": true,
       "muted": false,
       "subplugin_configs": {

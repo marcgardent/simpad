@@ -7,15 +7,15 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from simpulse_sdk import PluginState, PluginContext
-from simpad_qt.plugins.manager import PluginManager
-from simpad_qt.core.config import ConfigManager
-from simpad_qt.builtin_plugins.haptic_feedback import HapticFeedbackPlugin
-from simpad_qt.builtin_plugins.haptic_feedback.plugin import (
+from simpulse.plugins.manager import PluginManager
+from simpulse.core.config import ConfigManager
+from simpulse.builtin_plugins.haptic_feedback import HapticFeedbackPlugin
+from simpulse.builtin_plugins.haptic_feedback.plugin import (
     HapticFeedbackConfig,
     HapticFeedbackWidget,
     SubpluginListItemWidget,
 )
-from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpulse.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +32,7 @@ def test_haptic_plugin_lifecycle_and_registration(qapp, tmp_path):
     pm = PluginManager(cfg_mgr)
 
     plugin = HapticFeedbackPlugin()
-    assert plugin.metadata.id == "simpad.builtin.haptic_feedback"
+    assert plugin.metadata.id == "simpulse.builtin.haptic_feedback"
     assert plugin.metadata.icon == "🎮"
 
     assert pm.register_plugin(plugin) is True
@@ -42,7 +42,7 @@ def test_haptic_plugin_lifecycle_and_registration(qapp, tmp_path):
 
     # Check tab provider
     tabs = pm.get_tab_providers()
-    assert any(t.metadata.id == "simpad.builtin.haptic_feedback" for t in tabs)
+    assert any(t.metadata.id == "simpulse.builtin.haptic_feedback" for t in tabs)
     assert plugin.get_tab_title() == "XInput Haptics"
 
 

@@ -1,5 +1,5 @@
 """
-SimPad Central Telemetry State Store.
+SimPulse Central Telemetry State Store.
 Maintains in-memory the latest known frame for each ISI / LMU UDP telemetry channel,
 tracks packet timestamps & freshness, and exposes a unified, consistent vehicle and session state.
 """

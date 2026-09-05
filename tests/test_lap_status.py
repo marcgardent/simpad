@@ -10,9 +10,9 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPainter, QImage
 from PySide6.QtCore import QRectF
 
-from simpad_qt.core.telemetry.state_store import TelemetryStateStore
-from simpad_qt.builtin_plugins.official_cockpit_hud.widgets.lap_status import QtLapStatusWidget
-from simpad_qt.core.telemetry.sensors import VehicleSensors
+from simpulse.core.telemetry.state_store import TelemetryStateStore
+from simpulse.builtin_plugins.official_cockpit_hud.widgets.lap_status import QtLapStatusWidget
+from simpulse.core.telemetry.sensors import VehicleSensors
 from isimotor_rawudp_client import TelemInfo, CompactScoring
 
 
@@ -85,7 +85,7 @@ class TestHitAndCleanLap(unittest.TestCase):
         self.assertTrue(self.store.is_clean_lap)
 
     def test_lap_status_widget_paint_both_states(self):
-        from simpad_qt.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets import CockpitWidgetContext
         widget = QtLapStatusWidget()
 
         img = QImage(800, 600, QImage.Format.Format_ARGB32)
@@ -101,7 +101,7 @@ class TestHitAndCleanLap(unittest.TestCase):
         painter.end()
 
     def test_cockpit_hud_plugin_separate_switches(self):
-        from simpad_qt.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudPlugin
+        from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudPlugin
         plugin = OfficialCockpitHudPlugin()
         sensors = VehicleSensors()
 

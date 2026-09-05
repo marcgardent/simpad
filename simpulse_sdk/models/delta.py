@@ -5,9 +5,9 @@ Defines strongly-typed LapDeltaPacket, SectorInfo, and DeltaReferenceMode.
 
 from __future__ import annotations
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict
+from typing import List
 
 
 class DeltaReferenceMode(str, Enum):
@@ -26,17 +26,6 @@ class SectorInfo:
     delta: float = 0.0
     delta_str: str = "--"
     is_current: bool = False
-
-    def get(self, key: str, default: object = None) -> object:
-        """Dict-like accessor for backward compatibility."""
-        return getattr(self, key, default)
-
-    def __getitem__(self, key: str) -> object:
-        """Dict-like accessor for backward compatibility."""
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key)
 
 
 @dataclass(frozen=True)
@@ -77,40 +66,3 @@ class LapDeltaPacket:
     vehicle_name: str = ""
     vehicle_class: str = ""
     timestamp: float = field(default_factory=time.time)
-
-    # TODO MGT pas faire des user Exit avec des Dictionnaires, les consomateurs doivent connaitre les types
-    def to_dict(self) -> Dict[str, object]:
-        return {
-            "live_delta": self.live_delta,
-            "display_delta": self.display_delta,
-            "delta_str": self.delta_str,
-            "has_reference": self.has_reference,
-            "reference_mode": self.reference_mode.value,
-            "ref_lap_time": self.ref_lap_time,
-            "ref_lap_time_str": self.ref_lap_time_str,
-            "estimated_lap_time": self.estimated_lap_time,
-            "estimated_lap_time_str": self.estimated_lap_time_str,
-            "current_sector": self.current_sector,
-            "sector1_delta": self.sector1_delta,
-            "sector2_delta": self.sector2_delta,
-            "sector3_delta": self.sector3_delta,
-            "sector1_time": self.sector1_time,
-            "sector1_status": self.sector1_status,
-            "sector2_time": self.sector2_time,
-            "sector2_status": self.sector2_status,
-            "sector3_time": self.sector3_time,
-            "sector3_status": self.sector3_status,
-            "sectors_list": [asdict(s) for s in self.sectors_list],
-            "last_lap_time": self.last_lap_time,
-            "last_lap_time_str": self.last_lap_time_str,
-            "last_lap_status": self.last_lap_status,
-            "is_lap_freeze_active": self.is_lap_freeze_active,
-            "lap_flag": self.lap_flag,
-            "is_pit_lap": self.is_pit_lap,
-            "track_name": self.track_name,
-            "track_length": self.track_length,
-            "player_dist": self.player_dist,
-            "vehicle_name": self.vehicle_name,
-            "vehicle_class": self.vehicle_class,
-            "timestamp": self.timestamp,
-        }

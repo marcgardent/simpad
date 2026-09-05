@@ -1,8 +1,8 @@
 import unittest
-from simpad_qt.builtin_plugins.haptic_feedback.base import HapticController
-from simpad_qt.builtin_plugins.haptic_feedback.mock_controller import MockHapticController
-from simpad_qt.builtin_plugins.haptic_feedback.mapper import DirectMixMapper, XInputSeparatedMapper
-from simpad_qt.builtin_plugins.haptic_feedback.factory import HapticBackendFactory
+from simpulse.builtin_plugins.haptic_feedback.base import HapticController
+from simpulse.builtin_plugins.haptic_feedback.mock_controller import MockHapticController
+from simpulse.builtin_plugins.haptic_feedback.mapper import DirectMixMapper, XInputSeparatedMapper
+from simpulse.builtin_plugins.haptic_feedback.factory import HapticBackendFactory
 
 
 class TestHapticAbstractions(unittest.TestCase):
@@ -10,7 +10,7 @@ class TestHapticAbstractions(unittest.TestCase):
     def test_mock_controller(self):
         controller = MockHapticController()
         self.assertTrue(controller.is_connected())
-        self.assertEqual(controller.get_gamepad_name(), "SimPad Virtual Gamepad (Mock)")
+        self.assertEqual(controller.get_gamepad_name(), "SimPulse Virtual Gamepad (Mock)")
 
         controller.set_vibration(0.5, 0.2, 0.1, 0.8, duration_ms=100)
         self.assertEqual(controller.left_low, 0.5)
@@ -46,7 +46,7 @@ class TestHapticAbstractions(unittest.TestCase):
         self.assertTrue(backend.is_connected())
 
     def test_sdl3_controller_auto_reconnect_simulation(self):
-        from simpad_qt.builtin_plugins.haptic_feedback.sdl3_controller import SDL3HapticController
+        from simpulse.builtin_plugins.haptic_feedback.sdl3_controller import SDL3HapticController
         from unittest.mock import MagicMock
         import ctypes
 
@@ -103,7 +103,7 @@ class TestHapticAbstractions(unittest.TestCase):
 
 
     def test_native_windows_xinput_disconnect_reconnect(self):
-        from simpad_qt.builtin_plugins.haptic_feedback.windows import NativeWindowsXInputController
+        from simpulse.builtin_plugins.haptic_feedback.windows import NativeWindowsXInputController
         from unittest.mock import MagicMock
 
         ctrl = NativeWindowsXInputController(device_index=0)
