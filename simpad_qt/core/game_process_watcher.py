@@ -19,6 +19,7 @@ from simpad_qt.core.utils.window_utils import (
     get_foreground_process_name,
 )
 
+
 logger = logging.getLogger("simpad.process_watcher")
 
 

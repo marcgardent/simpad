@@ -57,7 +57,6 @@ class PaceNotesRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
         self.enable_brake = bool(enable_brake)
@@ -240,9 +239,6 @@ class PaceNotesRole(BaseRole):
         """
         Evaluates player position relative to track markers on each tick.
         """
-        if not self.enabled:
-            return None
-
         # Retrieve player vehicle and position info
         player_veh = context.get_player_vehicle()
         if not player_veh:

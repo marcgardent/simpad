@@ -66,7 +66,6 @@ class PitlaneSpotterRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
         self.state = PitlaneSpotterState.IDLE
@@ -212,7 +211,7 @@ class PitlaneSpotterRole(BaseRole):
         return self._evaluate_pitlane(context.state_store, context)
 
     def _evaluate_pitlane(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled or not context.scoring or context.is_private_qualifying():
+        if not context.scoring or context.is_private_qualifying():
             if self.state != PitlaneSpotterState.IDLE:
                 self.reset()
             return None

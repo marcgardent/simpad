@@ -45,7 +45,6 @@ class LapValidityRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
         self._last_lap_flag: Optional[int] = None
@@ -108,9 +107,6 @@ class LapValidityRole(BaseRole):
         return self._evaluate_validity(context.state_store, context)
 
     def _evaluate_validity(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled:
-            return None
-
         # Access central TelemetryStateStore
         state_store: TelemetryStateStore
         if context is not None:

@@ -74,3 +74,5 @@ def get_instance(cls) -> "TelemetryStateStore":
 
 
 
+if TYPE_CHECKING:
+    from ..models.context import EngineerContext

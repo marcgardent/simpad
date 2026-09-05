@@ -3,7 +3,7 @@ SimPad Qt6 Application Orchestrator.
 Initializes QApplication, Config, GamePluginManager, ProcessWatcher, OverlayStateMachine,
 PluginManager, TelemetryBus, and MainWindow.
 """
-
+# TODO MGT créer un package python avec le nom simpulse
 from __future__ import annotations
 import sys
 import logging

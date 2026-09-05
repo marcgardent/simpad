@@ -255,6 +255,8 @@ class LMUParser:
         """Returns latest TelemInfo packet received."""
         return cls._last_telem_info
 
+
+    # TODO MGT un peu chelou, et trouve pas d'usage je comprend pas l'intention. QUESTION parle moi de  TelemInfo et TelemetryData et VehicleSensors c'est quoi ses trois structures ?
     @classmethod
     def to_vehicle_sensors(cls, data: Union[VehicleSensors, TelemetryData, TelemInfo]) -> VehicleSensors:
         """Convert a TelemInfo or TelemetryData instance into VehicleSensors."""

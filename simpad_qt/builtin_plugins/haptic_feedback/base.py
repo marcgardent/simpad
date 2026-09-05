@@ -1,8 +1,15 @@
+"""
+SimPad Haptic Feedback — Hardware Controller & Channel Mapping Abstractions.
+Internal host driver contracts for SDL3/Windows gamepad vibration.
+"""
+
+from __future__ import annotations
 from abc import ABC, abstractmethod
+from typing import Tuple
 
 
 class HapticController(ABC):
-    """Abstract base class for multi-channel haptic feedback control."""
+    """Abstract base contract for multi-channel haptic feedback hardware control."""
 
     @abstractmethod
     def set_vibration(
@@ -13,15 +20,7 @@ class HapticController(ABC):
         right_high: float = 0.0,
         duration_ms: int = 0,
     ) -> None:
-        """
-        Sets haptic frequency intensities for Left and Right sides.
-
-        :param left_low: Low frequency Left side (0.0 to 1.0)
-        :param left_high: High frequency Left side (0.0 to 1.0)
-        :param right_low: Low frequency Right side (0.0 to 1.0)
-        :param right_high: High frequency Right side (0.0 to 1.0)
-        :param duration_ms: Vibration duration in ms
-        """
+        """Sets haptic frequency intensities for Left and Right sides."""
         pass
 
     @abstractmethod
@@ -57,3 +56,18 @@ class HapticController(ABC):
     def get_south_button(self) -> bool:
         """Primary south button (A / Cross)."""
         return False
+
+
+class IHapticChannelMapper(ABC):
+    """Contract for mapping 4-channel haptic output to physical rumble motors."""
+
+    @abstractmethod
+    def map_channels(
+        self,
+        left_low: float = 0.0,
+        left_high: float = 0.0,
+        right_low: float = 0.0,
+        right_high: float = 0.0,
+    ) -> Tuple[float, float]:
+        """Maps 4 channels to (low_freq_intensity, high_freq_intensity) in [0.0, 1.0]."""
+        pass

@@ -1,23 +1,27 @@
 """
-SimPulse SDK — Official Python SDK for SimPulse / SimPad Plugins and Extensions.
+SimPulse SDK — Official Python SDK for SimPulse Plugins and Subplugins.
+Contains only contracts, protocols, and domain models for third-party plugin development.
 """
 
-# Contracts
+# Contracts & Protocols
 from simpulse_sdk.contracts import (
     SimPulsePlugin,
     PluginContext,
     IPluginConfigProvider,
-    ICoreConfigProvider,
-    IConfigManager,
-    AppSettings,
-    GamePluginConfig,
-    LoggerSettings,
     ITelemetrySubscriber,
     IDeltaSubscriber,
     IPacketSubscriber,
     ITelemetryStateSubscriber,
     ITabProvider,
     IHudWidgetProvider,
+    RoleParam,
+    SubpluginParam,
+    ParamDescriptor,
+    BoolParam,
+    IntRangeParam,
+    FloatRangeParam,
+    ChoiceParam,
+    ParamScalarValue,
 )
 
 # Models
@@ -45,21 +49,24 @@ from simpulse_sdk.models import (
 )
 
 __all__ = [
-    # Contracts
+    # Contracts & Protocols
     "SimPulsePlugin",
     "PluginContext",
     "IPluginConfigProvider",
-    "ICoreConfigProvider",
-    "IConfigManager",
-    "AppSettings",
-    "GamePluginConfig",
-    "LoggerSettings",
     "ITelemetrySubscriber",
     "IDeltaSubscriber",
     "IPacketSubscriber",
     "ITelemetryStateSubscriber",
     "ITabProvider",
     "IHudWidgetProvider",
+    "RoleParam",
+    "SubpluginParam",
+    "ParamDescriptor",
+    "BoolParam",
+    "IntRangeParam",
+    "FloatRangeParam",
+    "ChoiceParam",
+    "ParamScalarValue",
     # Models
     "VehicleSensors",
     "TelemetryChannel",

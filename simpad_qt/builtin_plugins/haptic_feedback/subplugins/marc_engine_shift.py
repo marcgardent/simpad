@@ -20,14 +20,12 @@ class MarcEngineShiftSubplugin(BaseHapticSubplugin):
     Provides haptic cues for ideal upshifts (20 Hz Sawtooth on over-rev) and downshifts (20 Hz Sine on under-rev).
     """
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self):
         super().__init__(
             subplugin_id="marc_engine_shift",
             name="Engine Shift & Rev Limiter (Marc Profile)",
             description="Tactile shift cues and rev-limiter alerts (Sawtooth pulse on redline upshift, Sine on downshift).",
             icon="🔄",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -127,9 +125,6 @@ class MarcEngineShiftSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         # Extract parameters
         o_gain = float(self.get_param("overrev_gain", 1.00))
         o_gamma = float(self.get_param("overrev_gamma", 0.25))
@@ -157,7 +152,7 @@ class MarcEngineShiftSubplugin(BaseHapticSubplugin):
             frequency_hz=o_freq,
             duty_cycle=1.0,
             amplitude=curved_over
-        ) * self.master_gain
+        )
 
         # Under-rev computation -> Low-frequency motor
         curved_under = apply_response_curve(raw_under, gamma=u_gamma, gain=u_gain, min_cutoff=0.0)
@@ -167,7 +162,7 @@ class MarcEngineShiftSubplugin(BaseHapticSubplugin):
             frequency_hz=u_freq,
             duty_cycle=1.0,
             amplitude=curved_under
-        ) * self.master_gain
+        )
 
         return HapticMotorOutput(
             left_low=vibe_under,

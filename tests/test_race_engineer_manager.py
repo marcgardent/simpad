@@ -4,7 +4,7 @@ Tests unitaires pour RaceEngineer Manager (Priorités, Tri, Activation, IHM, Sau
 
 import pytest
 from simpad_qt.builtin_plugins.race_engineer.manager import RaceEngineer
-from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, EngineerMessage, RoleStatus
+from simpad_qt.builtin_plugins.race_engineer.base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus
 from simpad_qt.builtin_plugins.race_engineer.context import EngineerContext
 
 
@@ -91,7 +91,8 @@ def test_race_engineer_enable_disable():
     engineer.add_role(role_a)
 
     engineer.set_role_enabled("role_a", False)
-    assert role_a.enabled is False
+    assert engineer.is_role_enabled("role_a") is False
+    assert engineer.get_slot("role_a").enabled is False
 
     # Le rôle désactivé ne produit aucun message
     role_a._busy = True
@@ -99,7 +100,8 @@ def test_race_engineer_enable_disable():
     assert len(msgs) == 0
 
     engineer.set_role_enabled("role_a", True)
-    assert role_a.enabled is True
+    assert engineer.is_role_enabled("role_a") is True
+    assert engineer.get_slot("role_a").enabled is True
     msgs2 = engineer.update(telemetry=None, scoring=None)
     assert len(msgs2) == 1
 
@@ -145,7 +147,7 @@ def test_race_engineer_save_and_load_config():
 
     roles2 = engineer2.get_roles()
     assert roles2[0].role_id == "role_b"
-    assert engineer2.get_role("role_a").enabled is False
+    assert engineer2.is_role_enabled("role_a") is False
 
 
 def test_race_engineer_file_persistence(tmp_path):
@@ -165,9 +167,9 @@ def test_race_engineer_file_persistence(tmp_path):
 
     # Recharger dans une nouvelle instance
     engineer2 = RaceEngineer(auto_load_builtin_roles=True, config_path=config_file)
-    assert engineer2.get_role("lap_validity").enabled is False
-    assert engineer2.get_role("traffic_jam").enabled is False
-    assert engineer2.get_role("traffic_spotter").enabled is True
+    assert engineer2.is_role_enabled("lap_validity") is False
+    assert engineer2.is_role_enabled("traffic_jam") is False
+    assert engineer2.is_role_enabled("traffic_spotter") is True
 
 
 def test_individual_roles_disabled_behavior():
@@ -183,15 +185,15 @@ def test_individual_roles_disabled_behavior():
         played.append(phrase_key)
 
     # 1. Lap Validity désactivé
-    lap_role = LapValidityRole(audio_engine=mock_audio, enabled=False)
-    assert lap_role.status == RoleStatus.IDLE
+    lap_slot = RoleHostSlot(role=LapValidityRole(audio_engine=mock_audio), enabled=False)
+    assert lap_slot.status == RoleStatus.IDLE
     ctx_clean = EngineerContext(scoring=CompactScoring(count_lap_flag=2))
-    assert lap_role.update(ctx_clean) is None
+    assert lap_slot.update(ctx_clean) is None
     assert len(played) == 0
 
     # 2. Traffic Spotter désactivé
-    spotter_role = TrafficSpotterRole(audio_engine=mock_audio, enabled=False)
-    assert spotter_role.status == RoleStatus.IDLE
+    spotter_slot = RoleHostSlot(role=TrafficSpotterRole(audio_engine=mock_audio), enabled=False)
+    assert spotter_slot.status == RoleStatus.IDLE
     scoring_threat = FullScoringSession(
         lap_dist=5000.0,
         vehicles=[
@@ -199,13 +201,13 @@ def test_individual_roles_disabled_behavior():
             VehicleScoring(id=2, is_player=False, control=1, lap_dist=460.0, local_vel=TelemVect3(0.0, 0.0, 60.0)),
         ],
     )
-    assert spotter_role.update(EngineerContext(scoring=scoring_threat)) is None
-    assert spotter_role.status == RoleStatus.IDLE
+    assert spotter_slot.update(EngineerContext(scoring=scoring_threat)) is None
+    assert spotter_slot.status == RoleStatus.IDLE
     assert len(played) == 0
 
     # 3. Traffic Jam désactivé
-    jam_role = TrafficJamRole(audio_engine=mock_audio, enabled=False)
-    assert jam_role.status == RoleStatus.IDLE
+    jam_slot = RoleHostSlot(role=TrafficJamRole(audio_engine=mock_audio), enabled=False)
+    assert jam_slot.status == RoleStatus.IDLE
     scoring_slow = FullScoringSession(
         lap_dist=5000.0,
         vehicles=[
@@ -213,13 +215,13 @@ def test_individual_roles_disabled_behavior():
             VehicleScoring(id=2, is_player=False, control=1, lap_dist=540.0, local_vel=TelemVect3(0.0, 0.0, 5.0)),
         ],
     )
-    assert jam_role.update(EngineerContext(scoring=scoring_slow)) is None
-    assert jam_role.status == RoleStatus.IDLE
+    assert jam_slot.update(EngineerContext(scoring=scoring_slow)) is None
+    assert jam_slot.status == RoleStatus.IDLE
     assert len(played) == 0
 
     # 4. Pace Notes désactivé
-    pace_role = PaceNotesRole(audio_engine=mock_audio, enabled=False)
-    assert pace_role.status == RoleStatus.IDLE
-    assert pace_role.update(EngineerContext(scoring=scoring_threat)) is None
+    pace_slot = RoleHostSlot(role=PaceNotesRole(audio_engine=mock_audio), enabled=False)
+    assert pace_slot.status == RoleStatus.IDLE
+    assert pace_slot.update(EngineerContext(scoring=scoring_threat)) is None
     assert len(played) == 0
 

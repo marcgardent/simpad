@@ -692,7 +692,6 @@ class FightSpotterRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
 
@@ -954,9 +953,6 @@ class FightSpotterRole(BaseRole):
         """
         Evaluates telemetry and relative positioning on each tick.
         """
-        if not self.enabled:
-            return None
-
         now = context.timestamp or time.time()
 
         # 1. Global filter conditions: Pits, Garage, Private Qualifying

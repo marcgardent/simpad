@@ -19,14 +19,12 @@ class CurbsHapticSubplugin(BaseHapticSubplugin):
     Applies a 1.5 gain, 0.8 gamma curve and 35 Hz sawtooth scrub on suspension compression.
     """
 
-    def __init__(self, enabled: bool = False):
+    def __init__(self):
         super().__init__(
             subplugin_id="curbs",
             name="Curbs & Suspension Bumps",
             description="Directional rumble when riding track kerbs or encountering severe road bumps.",
             icon="🏁",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -89,9 +87,6 @@ class CurbsHapticSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         gain = float(self.get_param("gain", 1.50))
         gamma = float(self.get_param("gamma", 0.80))
         thresh = float(self.get_param("threshold", 0.08))
@@ -106,8 +101,8 @@ class CurbsHapticSubplugin(BaseHapticSubplugin):
         curved_l = apply_response_curve(trv_l, gamma=gamma, gain=gain, min_cutoff=thresh)
         curved_r = apply_response_curve(trv_r, gamma=gamma, gain=gain, min_cutoff=thresh)
 
-        vibe_l = generate_waveform(shape, time_s, freq, duty, amplitude=curved_l) * self.master_gain
-        vibe_r = generate_waveform(shape, time_s, freq, duty, amplitude=curved_r) * self.master_gain
+        vibe_l = generate_waveform(shape, time_s, freq, duty, amplitude=curved_l)
+        vibe_r = generate_waveform(shape, time_s, freq, duty, amplitude=curved_r)
 
         return HapticMotorOutput(
             left_low=vibe_l,

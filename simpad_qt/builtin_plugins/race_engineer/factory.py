@@ -40,15 +40,19 @@ class RoleFactory:
         role_desc = meta.description if meta else ""
         role_prio = priority if priority is not None else (meta.default_priority if meta else 50)
 
-        instance = role_cls(
-            role_id=role_id,
-            name=role_name,
-            description=role_desc,
-            priority=role_prio,
-            enabled=enabled,
-            audio_engine=audio_engine,
+        init_kwargs = {
+            "role_id": role_id,
+            "name": role_name,
+            "description": role_desc,
+            "priority": role_prio,
+            "audio_engine": audio_engine,
             **kwargs,
-        )
+        }
+        import inspect
+        sig = inspect.signature(role_cls.__init__)
+        if "enabled" in sig.parameters:
+            init_kwargs["enabled"] = enabled
+        instance = role_cls(**init_kwargs)
         return instance
 
     @classmethod

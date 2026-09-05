@@ -48,7 +48,6 @@ class TrafficJamRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
         self.slow_speed_threshold_mps = float(slow_speed_threshold_kmh) / 3.6
@@ -178,7 +177,7 @@ class TrafficJamRole(BaseRole):
         return self._evaluate_traffic_jam(context.state_store, context)
 
     def _evaluate_traffic_jam(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled or not context.scoring or context.is_private_qualifying():
+        if not context.scoring or context.is_private_qualifying():
             self._is_active_alert = False
             self._target_slow_car_info = ""
             return None

@@ -19,14 +19,12 @@ class SlipHapticSubplugin(BaseHapticSubplugin):
     Translates rear axle oversteer (drift) and front axle understeer (pushing/scrub) into rumble cues.
     """
 
-    def __init__(self, enabled: bool = False):
+    def __init__(self):
         super().__init__(
             subplugin_id="slip",
             name="Lateral Slip (Drift & Scrub)",
             description="Tactile feedback on cornering lateral slip (Oversteer drift on right motor, Understeer push on left motor).",
             icon="🏎️",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -91,9 +89,6 @@ class SlipHapticSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         o_gain = float(self.get_param("oversteer_gain", 1.20))
         o_thresh = float(self.get_param("oversteer_thresh", 0.10))
         u_gain = float(self.get_param("understeer_gain", 1.00))
@@ -107,8 +102,8 @@ class SlipHapticSubplugin(BaseHapticSubplugin):
         curved_over = apply_response_curve(over_comb, gamma=1.0, gain=o_gain, min_cutoff=o_thresh)
         curved_under = apply_response_curve(under_comb, gamma=1.0, gain=u_gain, min_cutoff=u_thresh)
 
-        vibe_over = generate_waveform(shape, time_s, freq, duty_cycle=0.8, amplitude=curved_over) * self.master_gain
-        vibe_under = generate_waveform(shape, time_s, freq, duty_cycle=0.8, amplitude=curved_under) * self.master_gain
+        vibe_over = generate_waveform(shape, time_s, freq, duty_cycle=0.8, amplitude=curved_over)
+        vibe_under = generate_waveform(shape, time_s, freq, duty_cycle=0.8, amplitude=curved_under)
 
         return HapticMotorOutput(
             left_low=vibe_under,

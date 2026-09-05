@@ -1,0 +1,13 @@
+[project]
+name = "simpulse-haptics-sdk"
+version = "0.1.0"
+description = "SimPulse Haptics & XInput Gamepad Rumble Contracts and Models SDK"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "simpulse-sdk>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

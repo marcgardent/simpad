@@ -28,7 +28,7 @@ from simpulse_sdk import (
 from .base import HapticController
 from .factory import HapticBackendFactory
 from .manager import HapticSubpluginManager
-from .subplugins.base import BaseHapticSubplugin
+from .subplugins.base import BaseHapticSubplugin, HapticHostSlot
 from simpad_qt.core.params import (
     RoleParam, BoolParam, FloatRangeParam, IntRangeParam, ChoiceParam, ParamScalarValue
 )
@@ -54,9 +54,21 @@ class SubpluginListItemWidget(QWidget):
 
     enable_toggled = Signal(str, bool)
 
-    def __init__(self, subplugin: BaseHapticSubplugin, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        slot_or_subplugin: Union[HapticHostSlot, BaseHapticSubplugin],
+        parent: Optional[QWidget] = None,
+        enabled: Optional[bool] = None,
+    ):
         super().__init__(parent)
-        self.subplugin = subplugin
+        if isinstance(slot_or_subplugin, HapticHostSlot):
+            self.slot = slot_or_subplugin
+            self.subplugin = slot_or_subplugin.subplugin
+            self._is_enabled = slot_or_subplugin.enabled
+        else:
+            self.slot = None
+            self.subplugin = slot_or_subplugin
+            self._is_enabled = enabled if enabled is not None else getattr(slot_or_subplugin, "enabled", True)
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -66,7 +78,7 @@ class SubpluginListItemWidget(QWidget):
 
         # Enable checkbox
         self.chk_enabled = QCheckBox(self)
-        self.chk_enabled.setChecked(self.subplugin.enabled)
+        self.chk_enabled.setChecked(self._is_enabled)
         self.chk_enabled.toggled.connect(lambda checked: self.enable_toggled.emit(self.subplugin.subplugin_id, checked))
         layout.addWidget(self.chk_enabled)
 
@@ -76,8 +88,8 @@ class SubpluginListItemWidget(QWidget):
         layout.addWidget(lbl_name, 1)
 
         # Status badge
-        self.badge = QLabel("ON" if self.subplugin.enabled else "OFF", self)
-        self._update_badge(self.subplugin.enabled)
+        self.badge = QLabel("ON" if self._is_enabled else "OFF", self)
+        self._update_badge(self._is_enabled)
         layout.addWidget(self.badge)
 
     def _update_badge(self, enabled: bool) -> None:
@@ -95,6 +107,9 @@ class SubpluginListItemWidget(QWidget):
             )
 
     def set_checked(self, checked: bool) -> None:
+        self._is_enabled = checked
+        if self.slot:
+            self.slot.enabled = checked
         self.chk_enabled.blockSignals(True)
         self.chk_enabled.setChecked(checked)
         self.chk_enabled.blockSignals(False)
@@ -275,25 +290,25 @@ class HapticFeedbackWidget(QWidget):
         self.subplugins_list.clear()
         self._subplugin_item_widgets.clear()
 
-        subplugins = self.plugin.manager.get_all_subplugins()
-        for sp in subplugins:
+        slots = self.plugin.manager.get_all_slots()
+        for slot in slots:
             item = QListWidgetItem(self.subplugins_list)
-            widget = SubpluginListItemWidget(sp, self.subplugins_list)
+            widget = SubpluginListItemWidget(slot, self.subplugins_list)
             widget.enable_toggled.connect(self._on_subplugin_toggled)
             item.setSizeHint(QSize(300, 42))
             self.subplugins_list.addItem(item)
             self.subplugins_list.setItemWidget(item, widget)
-            self._subplugin_item_widgets[sp.subplugin_id] = widget
+            self._subplugin_item_widgets[slot.subplugin_id] = widget
 
-        if subplugins:
+        if slots:
             self.subplugins_list.setCurrentRow(0)
-            self._load_subplugin_details(subplugins[0].subplugin_id)
+            self._load_subplugin_details(slots[0].subplugin_id)
 
     def _on_subplugin_selected(self, item: QListWidgetItem) -> None:
         row = self.subplugins_list.row(item)
-        subplugins = self.plugin.manager.get_all_subplugins()
-        if 0 <= row < len(subplugins):
-            self._load_subplugin_details(subplugins[row].subplugin_id)
+        slots = self.plugin.manager.get_all_slots()
+        if 0 <= row < len(slots):
+            self._load_subplugin_details(slots[row].subplugin_id)
 
     def _on_subplugin_toggled(self, subplugin_id: str, enabled: bool) -> None:
         self.plugin.manager.set_subplugin_enabled(subplugin_id, enabled)
@@ -304,9 +319,10 @@ class HapticFeedbackWidget(QWidget):
 
     def _load_subplugin_details(self, subplugin_id: str) -> None:
         self._selected_subplugin_id = subplugin_id
-        sp = self.plugin.manager.get_subplugin(subplugin_id)
-        if not sp:
+        slot = self.plugin.manager.get_slot(subplugin_id)
+        if not slot:
             return
+        sp = slot.subplugin
 
         self.lbl_sp_title.setText(f"{sp.icon} {sp.name}")
         self.lbl_sp_desc.setText(sp.description)
@@ -327,16 +343,16 @@ class HapticFeedbackWidget(QWidget):
         gain_row.addWidget(QLabel("Effect Intensity (Master Gain):", self.param_scroll_content), 1)
         sp_gain_slider = QSlider(Qt.Orientation.Horizontal, self.param_scroll_content)
         sp_gain_slider.setRange(0, 300)
-        sp_gain_slider.setValue(int(sp.master_gain * 100))
+        sp_gain_slider.setValue(int(slot.master_gain * 100))
         gain_row.addWidget(sp_gain_slider, 2)
 
-        lbl_val = QLabel(f"{int(sp.master_gain * 100)}%", self.param_scroll_content)
+        lbl_val = QLabel(f"{int(slot.master_gain * 100)}%", self.param_scroll_content)
         lbl_val.setFixedWidth(50)
         lbl_val.setStyleSheet("color: #38bdf8; font-weight: bold;")
         gain_row.addWidget(lbl_val)
 
         def on_sp_gain_changed(v: int):
-            sp.master_gain = v / 100.0
+            slot.master_gain = v / 100.0
             lbl_val.setText(f"{v}%")
             self.plugin.save_config()
 

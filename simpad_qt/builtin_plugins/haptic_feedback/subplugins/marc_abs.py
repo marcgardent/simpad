@@ -20,14 +20,12 @@ class MarcAbsSubplugin(BaseHapticSubplugin):
     Applies a 1.8 gain, 0.7 gamma curve and 144 Hz sine pulse on braking lock / ABS activation.
     """
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self):
         super().__init__(
             subplugin_id="marc_abs",
             name="ABS & Wheel Lockup (Marc Profile)",
             description="High-definition 144 Hz sinusoidal pulsing on ABS activation and front wheel lockups.",
             icon="🛑",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -96,9 +94,6 @@ class MarcAbsSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         gain = float(self.get_param("gain", 1.80))
         gamma = float(self.get_param("gamma", 0.70))
         thresh = float(self.get_param("threshold", 0.0))
@@ -123,5 +118,4 @@ class MarcAbsSubplugin(BaseHapticSubplugin):
         )
 
         # 4. Route to Left Motor (Low Frequency Rumble on XInput)
-        scaled_vibe = vibe * self.master_gain
-        return HapticMotorOutput(left_low=scaled_vibe)
+        return HapticMotorOutput(left_low=vibe)

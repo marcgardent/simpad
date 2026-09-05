@@ -19,14 +19,12 @@ class TireGripHapticSubplugin(BaseHapticSubplugin):
     Activates a distinct tactile buzz whenever tire contact patch grip falls below a configurable threshold.
     """
 
-    def __init__(self, enabled: bool = False):
+    def __init__(self):
         super().__init__(
             subplugin_id="grip",
             name="Tire Grip Loss Warning",
             description="Warns when tires exceed their maximum grip coefficient and begin losing traction.",
             icon="🛞",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -71,9 +69,6 @@ class TireGripHapticSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         gain = float(self.get_param("gain", 1.30))
         thresh = float(self.get_param("grip_loss_thresh", 0.15))
         freq = float(self.get_param("frequency", 60.0))
@@ -86,8 +81,8 @@ class TireGripHapticSubplugin(BaseHapticSubplugin):
         curved_l = apply_response_curve(loss_l, gamma=1.0, gain=gain, min_cutoff=thresh)
         curved_r = apply_response_curve(loss_r, gamma=1.0, gain=gain, min_cutoff=thresh)
 
-        vibe_l = generate_waveform(shape, time_s, freq, duty_cycle=0.5, amplitude=curved_l) * self.master_gain
-        vibe_r = generate_waveform(shape, time_s, freq, duty_cycle=0.5, amplitude=curved_r) * self.master_gain
+        vibe_l = generate_waveform(shape, time_s, freq, duty_cycle=0.5, amplitude=curved_l)
+        vibe_r = generate_waveform(shape, time_s, freq, duty_cycle=0.5, amplitude=curved_r)
 
         return HapticMotorOutput(
             left_low=vibe_l,

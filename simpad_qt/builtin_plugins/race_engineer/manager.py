@@ -11,7 +11,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Union, Tuple
 from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
-from .base import BaseRole, EngineerMessage, RoleStatus, AudioEngineType
+from .base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus, AudioEngineType
 from .context import EngineerContext, TelemetryTriggerPacket
 from .factory import RoleFactory
 from simpad_qt.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
@@ -57,54 +57,79 @@ class RaceEngineer:
         self.enabled: bool = True
         self.audio_engine = audio_engine if audio_engine is not None else AudioAnnouncer
         self.config_path = Path(config_path) if config_path is not None else None
-        self._roles: List[BaseRole] = []
+        self._slots: List[RoleHostSlot] = []
         self._last_processed_time: float = 0.0
 
         if auto_load_builtin_roles:
-            self._roles = RoleFactory.create_all_roles(audio_engine=self.audio_engine)
+            builtin_roles = RoleFactory.create_all_roles(audio_engine=self.audio_engine)
+            for r in builtin_roles:
+                self.add_role(r)
             if auto_load_config and self.config_path and self.config_path.exists():
                 self.load_from_file(self.config_path)
             else:
-                self._sort_roles()
+                self._sort_slots()
 
-    def _sort_roles(self) -> None:
-        """Sorts role list by descending priority."""
-        self._roles.sort(key=lambda r: r.priority, reverse=True)
+    @property
+    def _roles(self) -> List[BaseRole]:
+        """Backward compatibility property returning underlying roles."""
+        return [s.role for s in self._slots]
+
+    def _sort_slots(self) -> None:
+        """Sorts slot list by descending priority."""
+        self._slots.sort(key=lambda s: s.priority, reverse=True)
+
+    _sort_roles = _sort_slots
+
+    def get_slots(self) -> List[RoleHostSlot]:
+        """Returns host slot list ordered by priority."""
+        return list(self._slots)
+
+    def get_slot(self, role_id: str) -> Optional[RoleHostSlot]:
+        """Searches for a host slot by identifier."""
+        for s in self._slots:
+            if s.role_id == role_id:
+                return s
+        return None
 
     def get_roles(self) -> List[BaseRole]:
         """Returns role list ordered by priority."""
-        return list(self._roles)
+        return [s.role for s in self._slots]
 
     def get_role(self, role_id: str) -> Optional[BaseRole]:
         """Searches for a role by identifier."""
-        for r in self._roles:
-            if r.role_id == role_id:
-                return r
-        return None
+        slot = self.get_slot(role_id)
+        return slot.role if slot else None
 
-    def add_role(self, role: BaseRole) -> None:
-        """Adds a custom role and reorders by priority."""
+    def add_role(self, role: BaseRole, enabled: bool = True) -> RoleHostSlot:
+        """Adds a custom role wrapped in a host slot and reorders by priority."""
         # Replace if already present
-        self._roles = [r for r in self._roles if r.role_id != role.role_id]
+        self._slots = [s for s in self._slots if s.role_id != role.role_id]
         role.audio_engine = self.audio_engine
-        self._roles.append(role)
-        self._sort_roles()
+        slot = RoleHostSlot(role=role, enabled=enabled)
+        self._slots.append(slot)
+        self._sort_slots()
+        return slot
 
     def remove_role(self, role_id: str) -> bool:
         """Removes a role from engineer."""
-        before = len(self._roles)
-        self._roles = [r for r in self._roles if r.role_id != role_id]
-        return len(self._roles) < before
+        before = len(self._slots)
+        self._slots = [s for s in self._slots if s.role_id != role_id]
+        return len(self._slots) < before
 
     def set_role_enabled(self, role_id: str, enabled: bool, auto_save: bool = True) -> None:
-        """Enables or disables a specific role."""
-        role = self.get_role(role_id)
-        if role:
-            role.enabled = enabled
+        """Enables or disables a specific role in its host slot."""
+        slot = self.get_slot(role_id)
+        if slot:
+            slot.enabled = enabled
             if not enabled:
-                role.reset()
+                slot.reset()
             if auto_save and self.config_path:
                 self.save_to_file()
+
+    def is_role_enabled(self, role_id: str) -> bool:
+        """Returns True if the role host slot is registered and enabled."""
+        slot = self.get_slot(role_id)
+        return slot.enabled if slot else False
 
     # Sub-plugin alias methods
     get_subplugins = get_roles
@@ -115,20 +140,18 @@ class RaceEngineer:
 
     def move_role_up(self, role_id: str, auto_save: bool = True) -> bool:
         """
-        Increases priority of a role by swapping with role above.
+        Increases priority of a role by swapping with slot above.
         """
-        for i, r in enumerate(self._roles):
-            if r.role_id == role_id and i > 0:
-                # Swap priorities
-                prev_role = self._roles[i - 1]
-                # Ensure strict priority difference
-                if r.priority <= prev_role.priority:
-                    new_prio = prev_role.priority + 10
-                    r.priority = new_prio
+        for i, s in enumerate(self._slots):
+            if s.role_id == role_id and i > 0:
+                prev_slot = self._slots[i - 1]
+                if s.priority <= prev_slot.priority:
+                    new_prio = prev_slot.priority + 10
+                    s.priority = new_prio
                 else:
-                    r.priority, prev_role.priority = prev_role.priority, r.priority
+                    s.priority, prev_slot.priority = prev_slot.priority, s.priority
 
-                self._sort_roles()
+                self._sort_slots()
                 if auto_save and self.config_path:
                     self.save_to_file()
                 return True
@@ -136,18 +159,18 @@ class RaceEngineer:
 
     def move_role_down(self, role_id: str, auto_save: bool = True) -> bool:
         """
-        Decreases priority of a role by swapping with role below.
+        Decreases priority of a role by swapping with slot below.
         """
-        for i, r in enumerate(self._roles):
-            if r.role_id == role_id and i < len(self._roles) - 1:
-                next_role = self._roles[i + 1]
-                if r.priority >= next_role.priority:
-                    new_prio = max(0, next_role.priority - 10)
-                    r.priority = new_prio
+        for i, s in enumerate(self._slots):
+            if s.role_id == role_id and i < len(self._slots) - 1:
+                next_slot = self._slots[i + 1]
+                if s.priority >= next_slot.priority:
+                    new_prio = max(0, next_slot.priority - 10)
+                    s.priority = new_prio
                 else:
-                    r.priority, next_role.priority = next_role.priority, r.priority
+                    s.priority, next_slot.priority = next_slot.priority, s.priority
 
-                self._sort_roles()
+                self._sort_slots()
                 if auto_save and self.config_path:
                     self.save_to_file()
                 return True
@@ -158,22 +181,22 @@ class RaceEngineer:
         Reassigns priorities across all roles according to provided order.
         First element receives highest priority (e.g. 100, 90, 80...).
         """
-        base_priority = max(100, (len(ordered_role_ids) + len(self._roles)) * 10)
+        base_priority = max(100, (len(ordered_role_ids) + len(self._slots)) * 10)
         for index, r_id in enumerate(ordered_role_ids):
-            role = self.get_role(r_id)
-            if role:
-                role.priority = base_priority - (index * 10)
-        self._sort_roles()
+            slot = self.get_slot(r_id)
+            if slot:
+                slot.priority = base_priority - (index * 10)
+        self._sort_slots()
         if auto_save and self.config_path:
             self.save_to_file()
 
     def is_any_role_busy(self) -> bool:
         """Indicates whether at least one active role is in BUSY state."""
-        return any(r.enabled and r.is_busy() for r in self._roles)
+        return any(s.enabled and s.is_busy() for s in self._slots)
 
     def get_busy_roles(self) -> List[BaseRole]:
         """Returns list of currently busy roles."""
-        return [r for r in self._roles if r.enabled and r.is_busy()]
+        return [s.role for s in self._slots if s.enabled and s.is_busy()]
 
     # =========================================================================
     # Aggregation of Sub-Plugin Requirements (Channels & Sounds)
@@ -186,24 +209,24 @@ class RaceEngineer:
         """
         channel_map: Dict[TelemetryChannel, _ChannelAggregation] = {}
 
-        for role in self._roles:
-            if not role.enabled:
+        for slot in self._slots:
+            if not slot.enabled:
                 continue
 
-            reqs = role.get_channel_requirements()
+            reqs = slot.role.get_channel_requirements()
             for req in reqs:
                 ch = req.channel
                 if ch not in channel_map:
                     channel_map[ch] = _ChannelAggregation(
                         preferred_hz=req.preferred_hz,
                         required=req.required,
-                        reasons=[f"[{role.name}] {req.reason}"] if req.reason else [f"[{role.name}]"],
+                        reasons=[f"[{slot.role.name}] {req.reason}"] if req.reason else [f"[{slot.role.name}]"],
                     )
                 else:
                     channel_map[ch].preferred_hz = max(channel_map[ch].preferred_hz, req.preferred_hz)
                     channel_map[ch].required = channel_map[ch].required or req.required
                     if req.reason:
-                        channel_map[ch].reasons.append(f"[{role.name}] {req.reason}")
+                        channel_map[ch].reasons.append(f"[{slot.role.name}] {req.reason}")
 
         aggregated: List[ChannelRequirement] = []
         for ch, data in channel_map.items():
@@ -217,20 +240,18 @@ class RaceEngineer:
             )
         return aggregated
 
-    def get_all_sound_requirements(self, only_enabled: bool = False) -> Dict[str, str]:
+    def get_all_sound_requirements(self, only_enabled: bool = True) -> Dict[str, str]:
         """
-        Aggregates all speech phrases required by sub-plugins.
-        Returns a dictionary {phrase_key: text_to_synthesize}.
+        Aggregates all sound requirements declared across all roles.
         """
-        aggregated_sounds: Dict[str, str] = {}
-        for role in self._roles:
-            if only_enabled and not role.enabled:
+        sounds: Dict[str, str] = {}
+        for slot in self._slots:
+            if only_enabled and not slot.enabled:
                 continue
-            role_sounds = role.get_sound_requirements()
-            for key, text in role_sounds.items():
-                if key not in aggregated_sounds:
-                    aggregated_sounds[key] = text
-        return aggregated_sounds
+            for k, text in slot.role.get_sound_requirements().items():
+                if k not in sounds:
+                    sounds[k] = text
+        return sounds
 
     def get_missing_sounds(self, sound_dir: Optional[Path] = None, only_enabled: bool = False) -> Dict[str, str]:
         """
@@ -344,32 +365,32 @@ class RaceEngineer:
         emitted_messages: List[EngineerMessage] = []
 
         # Evaluation in strict priority order
-        for role in self._roles:
-            if not role.enabled:
+        for slot in self._slots:
+            if not slot.enabled:
                 continue
 
             try:
-                msg = role.update(context)
+                msg = slot.update(context)
                 if msg:
                     emitted_messages.append(msg)
             except Exception as e:
-                logger.error(f"[RaceEngineer] Error executing role '{role.role_id}': {e}", exc_info=True)
+                logger.error(f"[RaceEngineer] Error executing role '{slot.role_id}': {e}", exc_info=True)
 
         return emitted_messages
 
     def reset_all(self) -> None:
         """Resets all roles."""
-        for role in self._roles:
-            role.reset()
+        for slot in self._slots:
+            slot.reset()
 
     def get_status_summary(self) -> Dict[str, Union[bool, List[str], List[Dict[str, Union[str, int, float, bool, List[str], None]]]]]:
         """Returns complete state summary for UI."""
-        busy_roles = [r.role_id for r in self._roles if r.enabled and r.is_busy()]
+        busy_roles = [s.role_id for s in self._slots if s.enabled and s.is_busy()]
         return {
             "enabled": self.enabled,
             "is_busy": len(busy_roles) > 0,
             "busy_roles": busy_roles,
-            "roles": [r.get_state_summary() for r in self._roles],
+            "roles": [s.get_state_summary() for s in self._slots],
         }
 
     def set_master_enabled(self, enabled: bool, auto_save: bool = True) -> None:
@@ -381,14 +402,14 @@ class RaceEngineer:
     def save_configuration(self) -> Dict[str, Union[bool, List[str], Dict[str, Dict[str, ParamScalarValue]]]]:
         """Exports role configuration (activations, parameters)."""
         roles_cfg: Dict[str, Dict[str, ParamScalarValue]] = {}
-        for r in self._roles:
-            cfg = dict(r.get_config())
+        for s in self._slots:
+            cfg = dict(s.get_config())
             cfg.pop("priority", None)
-            roles_cfg[r.role_id] = cfg
+            roles_cfg[s.role_id] = cfg
         return {
             "enabled": self.enabled,
             "roles": roles_cfg,
-            "order": [r.role_id for r in self._roles],
+            "order": [s.role_id for s in self._slots],
         }
 
     def load_configuration(self, config: Dict[str, Union[bool, List[str], Dict[str, Dict[str, ParamScalarValue]]]]) -> None:
@@ -398,15 +419,15 @@ class RaceEngineer:
 
         roles_config = config.get("roles", {})
         for role_id, r_cfg in roles_config.items():
-            role = self.get_role(role_id)
-            if role and isinstance(r_cfg, dict):
-                role.set_config(r_cfg)
+            slot = self.get_slot(role_id)
+            if slot and isinstance(r_cfg, dict):
+                slot.set_config(r_cfg)
 
         order = config.get("order")
         if order and isinstance(order, list):
             self.reorder_roles(order, auto_save=False)
         else:
-            self._sort_roles()
+            self._sort_slots()
 
     def save_to_file(self, filepath: Optional[Path] = None) -> bool:
         """Saves current role configuration to JSON file."""

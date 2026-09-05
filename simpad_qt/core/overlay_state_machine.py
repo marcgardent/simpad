@@ -16,22 +16,23 @@ from PySide6.QtCore import QObject, Signal, QTimer
 from simpad_qt.core.game_process_watcher import GameStatus, GameFocusState
 from simpad_qt.core.telemetry import VehicleSensors
 
+
 logger = logging.getLogger("simpad.overlay_state_machine")
 
 
 class GameSceneState(Enum):
     """Contextual simulator scene state."""
-    DESKTOP = "desktop"                # Game is not running or not focused in foreground
-    MAIN_MENU = "main_menu"            # Game is foreground, but in launcher/main menu (no session)
-    GARAGE_PAUSE = "garage_pause"      # Game is foreground, session loaded, but in Garage/Pits/Setup/Pause/Replay
-    ON_TRACK_DRIVING = "on_track"      # Game is foreground, vehicle is actively driving on track (in_realtime=True)
+    DESKTOP = "desktop"
+    MAIN_MENU = "main_menu"
+    GARAGE_PAUSE = "garage_pause"
+    ON_TRACK_DRIVING = "on_track"
 
 
 class OverlayDisplayMode(Enum):
     """User-configured overlay display policy."""
-    AUTO = "auto"                      # Auto-show on track, auto-hide in garage/menu/desktop
-    FORCE_VISIBLE = "force_visible"    # Always visible (for preview, debugging, setup)
-    FORCE_HIDDEN = "force_hidden"      # Always hidden
+    AUTO = "auto"
+    FORCE_VISIBLE = "force_visible"
+    FORCE_HIDDEN = "force_hidden"
 
 
 @dataclass(frozen=True)

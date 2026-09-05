@@ -11,8 +11,8 @@ from simpad_qt.builtin_plugins.race_engineer.factory import RoleFactory
 
 class DummyRole(BaseRole):
     """Rôle de test factice pour vérifier l'enregistrement dynamique."""
-    def __init__(self, role_id="dummy", name="Dummy Role", description="", priority=40, enabled=True, audio_engine=None):
-        super().__init__(role_id, name, description, priority, enabled, audio_engine)
+    def __init__(self, role_id="dummy", name="Dummy Role", description="", priority=40, audio_engine=None):
+        super().__init__(role_id=role_id, name=name, description=description, priority=priority, audio_engine=audio_engine)
         self._busy = False
 
     def is_busy(self) -> bool:
@@ -40,6 +40,7 @@ def test_role_registry_registration():
     assert meta is not None
     assert meta.name == "Custom Dummy"
     assert meta.default_priority == 65
+    RoleRegistry.unregister("custom_dummy")
 
 
 def test_role_factory_instantiation():
@@ -51,12 +52,12 @@ def test_role_factory_instantiation():
         default_priority=80,
     )
 
-    role = RoleFactory.create_role("factory_test_role", priority=90, enabled=True)
+    role = RoleFactory.create_role("factory_test_role", priority=90)
     assert isinstance(role, DummyRole)
     assert role.role_id == "factory_test_role"
     assert role.priority == 90
-    assert role.enabled is True
     assert role.status == RoleStatus.IDLE
+    RoleRegistry.unregister("factory_test_role")
 
 
 def test_role_factory_create_all():

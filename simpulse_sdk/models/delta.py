@@ -67,6 +67,7 @@ class LapDeltaPacket:
     vehicle_class: str = ""
     timestamp: float = field(default_factory=time.time)
 
+    # TODO MGT pas faire des user Exit avec des Dictionnaires, les consomateurs doivent connaitre les types
     def to_dict(self) -> Dict[str, object]:
         return {
             "live_delta": self.live_delta,

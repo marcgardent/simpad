@@ -35,7 +35,7 @@ from simpulse_sdk import (
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
     LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryWakeReason
 )
-from .base import BaseRole, EngineerMessage, RoleStatus
+from .base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus
 from .manager import RaceEngineer
 from .context import TelemetryTriggerPacket
 from .params import RoleParam, BoolParam, IntRangeParam, FloatRangeParam, ParamScalarValue
@@ -185,9 +185,21 @@ class RoleListItemWidget(QWidget):
 
     enable_toggled = Signal(str, bool)
 
-    def __init__(self, role: BaseRole, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        slot_or_role: Union[RoleHostSlot, BaseRole],
+        parent: Optional[QWidget] = None,
+        enabled: Optional[bool] = None,
+    ):
         super().__init__(parent)
-        self.role = role
+        if isinstance(slot_or_role, RoleHostSlot):
+            self.slot = slot_or_role
+            self.role = slot_or_role.role
+            self._is_enabled = slot_or_role.enabled
+        else:
+            self.slot = None
+            self.role = slot_or_role
+            self._is_enabled = enabled if enabled is not None else getattr(slot_or_role, "enabled", True)
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -197,7 +209,7 @@ class RoleListItemWidget(QWidget):
 
         # Checkbox
         self.chk_enabled = QCheckBox(self)
-        self.chk_enabled.setChecked(self.role.enabled)
+        self.chk_enabled.setChecked(self._is_enabled)
         self.chk_enabled.toggled.connect(lambda checked: self.enable_toggled.emit(self.role.role_id, checked))
         layout.addWidget(self.chk_enabled)
 
@@ -212,11 +224,13 @@ class RoleListItemWidget(QWidget):
         layout.addWidget(self.lbl_status)
 
     def update_status(self) -> None:
+        if self.slot:
+            self._is_enabled = self.slot.enabled
         self.chk_enabled.blockSignals(True)
-        self.chk_enabled.setChecked(self.role.enabled)
+        self.chk_enabled.setChecked(self._is_enabled)
         self.chk_enabled.blockSignals(False)
 
-        if not self.role.enabled:
+        if not self._is_enabled:
             self.lbl_status.setText("OFF")
             self.lbl_status.setStyleSheet("background-color: #3e1b1e; color: #f85149; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;")
         elif self.role.is_busy():
@@ -225,6 +239,15 @@ class RoleListItemWidget(QWidget):
         else:
             self.lbl_status.setText("IDLE")
             self.lbl_status.setStyleSheet("background-color: #1b3e2b; color: #3fb950; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px;")
+
+    def set_checked(self, checked: bool) -> None:
+        self._is_enabled = checked
+        if self.slot:
+            self.slot.enabled = checked
+        self.chk_enabled.blockSignals(True)
+        self.chk_enabled.setChecked(checked)
+        self.chk_enabled.blockSignals(False)
+        self.update_status()
 
 
 # =============================================================================
@@ -314,9 +337,23 @@ class RoleDetailWidget(QWidget):
 
         self.layout.addStretch()
 
-    def set_role(self, role: Optional[BaseRole]) -> None:
+    def set_slot(self, slot: Optional[RoleHostSlot]) -> None:
+        """Display details for the given host slot."""
+        self.current_slot = slot
+        self.set_role(slot.role if slot else None, enabled=slot.enabled if slot else True)
+
+    def set_role(self, role: Optional[BaseRole], enabled: Optional[bool] = None) -> None:
         """Display details for the given role."""
         self.current_role = role
+        if enabled is not None:
+            self._is_enabled = enabled
+        elif hasattr(self, "current_slot") and self.current_slot and self.current_slot.role == role:
+            self._is_enabled = self.current_slot.enabled
+        elif role and hasattr(self.plugin, "engineer") and self.plugin.engineer.get_slot(role.role_id):
+            self._is_enabled = self.plugin.engineer.is_role_enabled(role.role_id)
+        else:
+            self._is_enabled = getattr(role, "enabled", True)
+
         if not role:
             self.lbl_title.setText("Select a Role from the list")
             self.lbl_description.setText("")
@@ -328,7 +365,7 @@ class RoleDetailWidget(QWidget):
             return
 
         self.chk_role_enabled.blockSignals(True)
-        self.chk_role_enabled.setChecked(role.enabled)
+        self.chk_role_enabled.setChecked(self._is_enabled)
         self.chk_role_enabled.blockSignals(False)
 
         self.lbl_title.setText(role.name)
@@ -354,7 +391,7 @@ class RoleDetailWidget(QWidget):
     def _update_status_badge(self) -> None:
         if not self.current_role:
             return
-        if not self.current_role.enabled:
+        if not getattr(self, "_is_enabled", True):
             self.lbl_status_badge.setText("DISABLED")
             self.lbl_status_badge.setStyleSheet("background-color: #3e1b1e; color: #f85149; padding: 3px 8px; border-radius: 4px; font-weight: bold;")
         elif self.current_role.is_busy():
@@ -365,6 +402,9 @@ class RoleDetailWidget(QWidget):
             self.lbl_status_badge.setStyleSheet("background-color: #1b3e2b; color: #3fb950; padding: 3px 8px; border-radius: 4px; font-weight: bold;")
 
     def _on_enable_toggled(self, checked: bool) -> None:
+        self._is_enabled = checked
+        if hasattr(self, "current_slot") and self.current_slot:
+            self.current_slot.enabled = checked
         if self.current_role:
             self.enable_toggled.emit(self.current_role.role_id, checked)
             self._update_status_badge()
@@ -687,37 +727,37 @@ class RaceEngineerWidget(QWidget):
         sel_id = keep_selected_id
         if sel_id is None and self.roles_list.currentItem():
             row = self.roles_list.currentRow()
-            roles = self.plugin.engineer.get_roles()
-            if 0 <= row < len(roles):
-                sel_id = roles[row].role_id
+            slots = self.plugin.engineer.get_slots()
+            if 0 <= row < len(slots):
+                sel_id = slots[row].role_id
 
         self.roles_list.clear()
-        roles = self.plugin.engineer.get_roles()
+        slots = self.plugin.engineer.get_slots()
 
         target_row = 0
-        for row, role in enumerate(roles):
+        for row, slot in enumerate(slots):
             item = QListWidgetItem(self.roles_list)
             item.setSizeHint(QSize(280, 42))
 
-            widget = RoleListItemWidget(role, self.roles_list)
+            widget = RoleListItemWidget(slot, self.roles_list)
             widget.enable_toggled.connect(self._on_role_enable_toggled)
             self.roles_list.setItemWidget(item, widget)
 
-            if sel_id and role.role_id == sel_id:
+            if sel_id and slot.role_id == sel_id:
                 target_row = row
 
-        if roles:
+        if slots:
             self.roles_list.setCurrentRow(target_row)
-            self.role_detail_widget.set_role(roles[target_row])
+            self.role_detail_widget.set_slot(slots[target_row])
         else:
-            self.role_detail_widget.set_role(None)
+            self.role_detail_widget.set_slot(None)
 
     def _on_role_selected(self, row: int) -> None:
-        roles = self.plugin.engineer.get_roles()
-        if 0 <= row < len(roles):
-            self.role_detail_widget.set_role(roles[row])
+        slots = self.plugin.engineer.get_slots()
+        if 0 <= row < len(slots):
+            self.role_detail_widget.set_slot(slots[row])
         else:
-            self.role_detail_widget.set_role(None)
+            self.role_detail_widget.set_slot(None)
 
     def _on_move_selected_up(self) -> None:
         row = self.roles_list.currentRow()

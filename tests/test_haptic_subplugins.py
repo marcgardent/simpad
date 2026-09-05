@@ -5,6 +5,7 @@ Unit tests for SimPad Haptics Subplugins and Marc Profile Decomposition.
 import pytest
 from simpad_qt.core.telemetry.sensors import VehicleSensors
 from simpad_qt.builtin_plugins.haptic_feedback.models import HapticMotorOutput
+from simpad_qt.builtin_plugins.haptic_feedback.subplugins.base import HapticHostSlot
 from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_abs import MarcAbsSubplugin
 from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_tc import MarcTcSubplugin
 from simpad_qt.builtin_plugins.haptic_feedback.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
@@ -38,7 +39,7 @@ def test_haptic_motor_output_combine():
 
 
 def test_marc_abs_subplugin():
-    sub = MarcAbsSubplugin(enabled=True)
+    sub = MarcAbsSubplugin()
     # Test parameters defaults matching Marc Profile
     assert sub.get_param("gain") == 1.80
     assert sub.get_param("gamma") == 0.70
@@ -59,14 +60,17 @@ def test_marc_abs_subplugin():
     assert res.left_low > 0.5
     assert res.right_high == 0.0
 
-    # Test disabled
-    sub.enabled = False
-    res_dis = sub.evaluate(sensors, time_s=t_peak)
-    assert res_dis.is_silent()
+    # Test slot hosting (enabled/disabled and gain)
+    slot = HapticHostSlot(subplugin=sub, enabled=True, master_gain=1.0)
+    slot_res = slot.evaluate(sensors, time_s=t_peak)
+    assert slot_res.left_low > 0.5
+
+    slot.enabled = False
+    assert slot.evaluate(sensors, time_s=t_peak).is_silent()
 
 
 def test_marc_tc_subplugin():
-    sub = MarcTcSubplugin(enabled=True)
+    sub = MarcTcSubplugin()
     assert sub.get_param("gain") == 1.81
     assert sub.get_param("gamma") == 0.70
     assert sub.get_param("frequency") == 144.0
@@ -88,7 +92,7 @@ def test_marc_tc_subplugin():
 
 
 def test_marc_engine_shift_subplugin():
-    sub = MarcEngineShiftSubplugin(enabled=True)
+    sub = MarcEngineShiftSubplugin()
 
     # 1. Test Over-Rev at Redline (gear 3, 98% RPM)
     sensors_over = VehicleSensors(
@@ -130,7 +134,7 @@ def test_marc_engine_shift_subplugin():
 
 
 def test_curbs_and_slip_subplugins():
-    curbs = CurbsHapticSubplugin(enabled=True)
+    curbs = CurbsHapticSubplugin()
     sensors_curb = VehicleSensors(
         vehicle_speed=30.0,
         in_realtime=True,
@@ -140,7 +144,7 @@ def test_curbs_and_slip_subplugins():
     res_curb = curbs.evaluate(sensors_curb, time_s=0.01)
     assert res_curb.left_low > 0.1
 
-    slip = SlipHapticSubplugin(enabled=True)
+    slip = SlipHapticSubplugin()
     sensors_slip = VehicleSensors(
         vehicle_speed=30.0,
         in_realtime=True,

@@ -2,6 +2,8 @@
 SimPulse SDK — Normalized Telemetry Domain Models, Channels & Sensors.
 """
 
+# TODO MGT il y a une sous-conception il faut des handler pour recevoir des IsiMotor standard, et les data LMU séparé, il plusieurs strategies BRAINSTROM (le consomateur doit savoir ce qu'il veut)
+
 from __future__ import annotations
 import math
 import time
@@ -35,7 +37,7 @@ TelemetryPayload = Union[
     Graphics,
     SystemEvent,
     bytes,
-    Dict[str, Union[str, int, float, bool, None]],
+    Dict[str, Union[str, int, float, bool, None]], # TODO MGT au bout d'un momment il faut créer une structure lisible
     None,
 ]
 
@@ -254,7 +256,7 @@ class VehicleSensors:
     ecu_lift_and_coast: float = 0.0
 
     @classmethod
-    def from_wheel_velocities(
+    def from_wheel_velocities( # TODO MGT QUESTION??? pourquoi il y a des sector* engine* & co, c'est quoi le raport avec wheel velocities???
         cls,
         long_patch_vels: Tuple[float, float, float, float],
         long_ground_vels: Tuple[float, float, float, float],
@@ -757,6 +759,7 @@ class VehicleSensors:
     @property
     def sectors_list(self) -> list:
         """Structured list of 3 sectors for SectorTimesWidget."""
+        # TODO MGT Création de type
         return [
             {
                 "time": self.sector1_time,

@@ -8,6 +8,9 @@ from ..math_utils import apply_response_curve, clamp
 from ..telemetry.sensors import VehicleSensors
 from ..telemetry.lmu_parser import TelemetryData
 
+# TODO MGT c'est quoi cette classes ??? tres etranges ne peux pas etre gardé en l'etat. ca ressemble à un bout de plugin generique pour 4 implémentations différentes. Core c'est pas une poubelle. A minima devra etre deplacé dans le SDK et enlever toutes dicts (Dict[str, float])
+
+
 # TODO: [DRY] Import unified apply_response_curve from src.core.math_utils instead of duplicating math definitions across physics and GUI modules.
 
 

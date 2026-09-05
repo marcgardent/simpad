@@ -19,12 +19,12 @@ def get_default_subplugins() -> List[BaseHapticSubplugin]:
     Marc Profile subplugins (ABS, TC, Engine Shift) are enabled by default.
     """
     return [
-        MarcAbsSubplugin(enabled=True),
-        MarcTcSubplugin(enabled=True),
-        MarcEngineShiftSubplugin(enabled=True),
-        CurbsHapticSubplugin(enabled=False),
-        SlipHapticSubplugin(enabled=False),
-        TireGripHapticSubplugin(enabled=False),
+        MarcAbsSubplugin(),
+        MarcTcSubplugin(),
+        MarcEngineShiftSubplugin(),
+        CurbsHapticSubplugin(),
+        SlipHapticSubplugin(),
+        TireGripHapticSubplugin(),
     ]
 
 

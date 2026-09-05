@@ -20,7 +20,6 @@ def reset_state_store():
 def test_lap_validity_initialization():
     role = LapValidityRole()
     assert role.role_id == "lap_validity"
-    assert role.enabled is True
     assert not role.is_busy()
 
 

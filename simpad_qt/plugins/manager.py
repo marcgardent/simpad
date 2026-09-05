@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from PySide6.QtCore import QObject, Signal
+from simpad_qt.core.config import IConfigManager
 
 from simpulse_sdk import (
     SimPulsePlugin,
@@ -26,7 +27,6 @@ from simpulse_sdk import (
     IPacketSubscriber,
     ITelemetryStateSubscriber,
     IHudWidgetProvider,
-    IConfigManager,
     ChannelRequirement,
     TelemetryRawPacket,
     TelemetryChannel,

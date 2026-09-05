@@ -100,7 +100,6 @@ class TrafficSpotterRole(BaseRole):
             name=name,
             description=description,
             priority=priority,
-            enabled=enabled,
             audio_engine=audio_engine,
         )
         self.state = TrafficSpotterState.IDLE
@@ -344,7 +343,7 @@ class TrafficSpotterRole(BaseRole):
         return self._evaluate_traffic(context.state_store, context)
 
     def _evaluate_traffic(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not self.enabled or not context.scoring or context.is_private_qualifying():
+        if not context.scoring or context.is_private_qualifying():
             if self.state != TrafficSpotterState.IDLE:
                 self.reset()
             return None

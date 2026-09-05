@@ -20,14 +20,12 @@ class MarcTcSubplugin(BaseHapticSubplugin):
     Applies a 1.81 gain, 0.7 gamma curve and 144 Hz sine pulse on wheelspin / TC activation.
     """
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self):
         super().__init__(
             subplugin_id="marc_tc",
             name="TC & Wheelspin (Marc Profile)",
             description="High-definition 144 Hz sinusoidal buzz on Traction Control activation and power wheelspin.",
             icon="⚡",
-            enabled=enabled,
-            master_gain=1.0,
         )
 
     def get_declared_params(self) -> List[RoleParam]:
@@ -96,9 +94,6 @@ class MarcTcSubplugin(BaseHapticSubplugin):
         ]
 
     def evaluate(self, sensors: VehicleSensors, time_s: float) -> HapticMotorOutput:
-        if not self.enabled or self.master_gain <= 0.001:
-            return HapticMotorOutput()
-
         gain = float(self.get_param("gain", 1.81))
         gamma = float(self.get_param("gamma", 0.70))
         thresh = float(self.get_param("threshold", 0.0))
@@ -123,5 +118,4 @@ class MarcTcSubplugin(BaseHapticSubplugin):
         )
 
         # 4. Route to Right Motor (High Frequency Buzz on XInput)
-        scaled_vibe = vibe * self.master_gain
-        return HapticMotorOutput(right_high=scaled_vibe)
+        return HapticMotorOutput(right_high=vibe)

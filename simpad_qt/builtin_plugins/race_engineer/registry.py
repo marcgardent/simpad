@@ -7,18 +7,9 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Type, Optional, List, Callable
 from .base import BaseRole
+from simpulse_race_engineer_sdk import RoleMetadata, SubpluginMetadata
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class RoleMetadata:
-    """Metadata describing a registered race engineer role."""
-    role_id: str
-    name: str
-    description: str = ""
-    default_priority: int = 50
-    role_class: Optional[Type[BaseRole]] = None
 
 
 class RoleRegistry:
@@ -100,6 +91,12 @@ class RoleRegistry:
     def is_registered(cls, role_id: str) -> bool:
         """Checks if a role is registered."""
         return role_id in cls._registry
+
+    @classmethod
+    def unregister(cls, role_id: str) -> None:
+        """Unregisters a role by identifier."""
+        cls._registry.pop(role_id, None)
+        cls._metadata.pop(role_id, None)
 
     @classmethod
     def clear(cls) -> None:

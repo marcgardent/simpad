@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Tuple, Any
 
+
+# TODO MGT jai bien l'impression que nous sommes sur un cas d'ecole pour utiliser: typing.Protocol (introduit via la PEP 544).
+
 try:
     from PySide6.QtCore import QSize, QRectF
 except ImportError:

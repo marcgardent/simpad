@@ -218,7 +218,7 @@ def test_race_engineer_loads_pitlane_spotter_by_default():
     pit_role = engineer.get_role("pitlane_spotter")
     assert pit_role is not None
     assert isinstance(pit_role, PitlaneSpotterRole)
-    assert pit_role.enabled is True
+    assert engineer.is_role_enabled("pitlane_spotter") is True
 
 
 def test_pitlane_spotter_with_typed_vehicle_scoring():

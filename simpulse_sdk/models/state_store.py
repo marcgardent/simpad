@@ -97,10 +97,10 @@ class TelemetryStateStore:
         self._last_lap_flag: Optional[int] = None
         self._is_lap_valid: bool = True
         self._is_lap_invalid: bool = False
-        self._lap_timing_status: str = "timing_in_progress"
-        self._last_validity_event: str = "IDLE"
+        self._lap_timing_status: str = "timing_in_progress" # TODO MGT class TimingStatus(Enum):
+        self._last_validity_event: str = "IDLE"  # TODO MGT class MyEnum(Enum):
         self._last_validity_event_time: float = 0.0
-        self._validity_transition: Optional[str] = None
+        self._validity_transition: Optional[str] = None # TODO MGT class MyEnum(Enum):
         self._was_in_garage: bool = False
         self._last_current_sector: int = 1
         self._last_total_laps: int = 0
@@ -122,7 +122,7 @@ class TelemetryStateStore:
         self._last_impact_et: float = 0.0       # last_impact_et from TelemInfo UDP
         self._hit_lap_reference: Optional[int] = None  # lap number used to detect lap changes
         self._cache_is_clean_lap: bool = True
-        self._cache_clean_lap_status: str = "clean"
+        self._cache_clean_lap_status: str = "clean" # TODO MGT class LapStatus(Enum):
         self._cache_hit_count: int = 0
 
     @classmethod
