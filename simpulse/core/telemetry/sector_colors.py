@@ -25,6 +25,18 @@ from pathlib import Path as _Path
 
 _EPS = 0.001
 
+# ---- sector_eval diagnostic gating -------------------------------------
+# sector_eval.log is off by default; enable it via config.json
+# ("loggers": {"sector_eval": true}) which calls set_sector_eval_enabled(True).
+_AUDIT_ENABLED: bool = False
+
+
+def set_sector_eval_enabled(enabled: bool) -> None:
+    """Enables or disables writing to sector_eval.log (config loggers.sector_eval)."""
+    global _AUDIT_ENABLED
+    _AUDIT_ENABLED = bool(enabled)
+
+
 # ---- diagnostics ------------------------------------------------------------
 # Audit file for every split-colour decision (won't alter behaviour); useful to
 # prove which producer (delta/lmu) evaluates a paint and on which references.
@@ -32,6 +44,8 @@ _EVAL_LOG = _Path(__file__).resolve().parents[3] / "sector_eval.log"
 
 
 def _audit(source: str, value: float, best: float, sess: float, status: str) -> None:
+    if not _AUDIT_ENABLED:
+        return
     try:
         now = _time.time()
         ts = _time.strftime("%H:%M:%S") + f".{int((now % 1) * 1000):03d}"
@@ -92,4 +106,4 @@ def sector_split_status(
     return "default"
 
 
-__all__ = ["sector_split_status"]
+__all__ = ["sector_split_status", "set_sector_eval_enabled"]

@@ -48,6 +48,10 @@ class TelemetryDiagnosticLogger:
             cls._instance = cls()
         return cls._instance
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Enables or disables telemetry_live.log sampling (config loggers.telemetry)."""
+        self.enabled = bool(enabled)
+
     def log_sample(
         self,
         sensors: VehicleSensors,

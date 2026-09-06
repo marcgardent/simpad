@@ -77,6 +77,8 @@ class LoggerSettings:
     track_limits: bool = False
     overlay_anomaly: bool = False
     delta_debug: bool = False
+    sector_eval: bool = False
+    sector_paint: bool = False
 
 
 class ICoreConfigProvider(ABC):

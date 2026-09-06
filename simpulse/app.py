@@ -41,6 +41,11 @@ class SimPulseApp:
         # 1. Configuration
         self.config_mgr = ConfigManager()
 
+        # 1b. Honour config.json "loggers" booleans before any telemetry/logger
+        # instance starts writing (each logger now respects its key).
+        from simpulse.core.runtime_loggers import apply_logger_settings
+        apply_logger_settings(self.config_mgr.get_logger_settings())
+
         # 2. Game Plugin & Channels Manager (LMU isiMotor_RawUDP.dll + JSON Rates)
         self.game_plugin_mgr = GamePluginManager(config_manager=self.config_mgr)
 

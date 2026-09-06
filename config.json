@@ -45,7 +45,9 @@
     "utils": false,
     "track_limits": false,
     "overlay_anomaly": false,
-    "delta_debug": false
+    "delta_debug": false,
+    "sector_eval": false,
+    "sector_paint": false
   },
   "plugins_enabled": {
     "simpulse.builtin.race_engineer": true,
