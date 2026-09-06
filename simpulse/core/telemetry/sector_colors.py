@@ -106,4 +106,60 @@ def sector_split_status(
     return "default"
 
 
-__all__ = ["sector_split_status", "set_sector_eval_enabled"]
+def expected_status(
+    expected: float,
+    *,
+    ever=None,
+    paddock=None,
+    session=None,
+    invalid: bool = False,
+    eps: float = _EPS,
+    source: str = "expected",
+) -> str:
+    """Colour of an *expected (projected) lap time* under the unified rule.
+
+    The expected/estimated lap time is the projection at the current instant
+    (reference + live delta).  It is compared here, with strict priority, to the
+    three scalar baselines:
+
+      * ``pink``   → expected better-or-equal my **best-ever** (all-sessions);
+      * ``purple`` → else better-or-equal the **paddock** best (other cars, session);
+      * ``green``  → else better-or-equal **my session** best;
+      * ``yellow`` → else a *valid* expected value slower than my session;
+      * ``white``  → no usable reference at all (still tracking before any lap).
+
+    Comparisons are “better-or-equal with EPS” (equal record counts as beaten).
+    Missing reference values (None / 0 / ≥999900) never demote the colour: pink
+    and purple are simply skipped when their baseline is unknown.
+    """
+    try:
+        v = float(expected)
+    except (TypeError, ValueError):
+        v = 0.0
+    if invalid:
+        return "invalid"
+    if not (0.0 < v < 999900.0):
+        return "white"
+
+    def _num(x):
+        if x is None:
+            return None
+        try:
+            f = float(x)
+        except (TypeError, ValueError):
+            return None
+        return f if 0.0 < f < 999900.0 else None
+
+    ev = _num(ever)
+    pd = _num(paddock)
+    ss = _num(session)
+    if ev is not None and v <= ev + eps:
+        return "pink"
+    if pd is not None and v <= pd + eps:
+        return "purple"
+    if ss is not None:
+        return "green" if v <= ss + eps else "yellow"
+    return "white"
+
+
+__all__ = ["sector_split_status", "expected_status", "set_sector_eval_enabled"]

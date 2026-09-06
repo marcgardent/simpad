@@ -68,6 +68,7 @@ class LapDeltaPacket:
     ref_lap_time_str: str = "--:--.---"
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
+    expected_status: str = "white"   # unified colour of the projected/expected lap
     current_sector: int = 1
     sector1_delta: float = 0.0
     sector2_delta: float = 0.0
@@ -103,6 +104,7 @@ class LapDeltaPacket:
             "ref_lap_time_str": self.ref_lap_time_str,
             "estimated_lap_time": self.estimated_lap_time,
             "estimated_lap_time_str": self.estimated_lap_time_str,
+            "expected_status": self.expected_status,
             "current_sector": self.current_sector,
             "sector1_delta": self.sector1_delta,
             "sector2_delta": self.sector2_delta,
@@ -427,6 +429,7 @@ class ReferenceLapManager(QObject):
             ref_lap_time_str=ref_time_str,
             estimated_lap_time=de.estimated_lap_time,
             estimated_lap_time_str=de.estimated_lap_time_str,
+            expected_status=de.expected_lap_status,
             current_sector=de._last_current_sector,
             sector1_delta=de.sector1_delta,
             sector2_delta=de.sector2_delta,

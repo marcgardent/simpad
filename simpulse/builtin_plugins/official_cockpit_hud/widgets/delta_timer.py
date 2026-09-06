@@ -55,20 +55,34 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             else:
                 text_color = QColor(255, 255, 255, 255)
         else:
-            # On-track mode: Live Delta
+            # On-track mode: Live Delta — colour follows the EXPECTED-lap decision
+            # (projection vs ever/paddock/my-session), parsed by the engine.
             disp_str = expected_str
+            expected_tok = str(getattr(sensors, "expected_status", "") or "").strip()
 
-            if lap_flag == 0:
+            if lap_flag == 0 or expected_tok == "invalid":
                 # Invalid lap -> Grey
                 text_color = QColor(156, 163, 175, 255)
-            elif expected_str.startswith("-"):
-                # Ahead -> Green
+            elif expected_tok == "pink":
+                # PROJ < my best-ever
+                text_color = QColor(255, 105, 180, 255)
+            elif expected_tok == "purple":
+                # PROJ < paddock best (other cars)
+                text_color = QColor(168, 85, 247, 255)
+            elif expected_tok == "green":
+                # PROJ < my session best
                 text_color = QColor(34, 197, 94, 255)
-            elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
-                text_color = QColor(255, 255, 255, 255)
+            elif expected_tok == "yellow":
+                # PROJ slower than my session
+                text_color = QColor(234, 179, 8, 255)
             else:
-                # Behind -> Red
-                text_color = QColor(239, 68, 68, 255)
+                # white / reference missing -> classic sign fallback
+                if expected_str.startswith("-"):
+                    text_color = QColor(34, 197, 94, 255)
+                elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
+                    text_color = QColor(255, 255, 255, 255)
+                else:
+                    text_color = QColor(239, 68, 68, 255)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0

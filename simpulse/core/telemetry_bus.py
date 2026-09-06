@@ -266,6 +266,7 @@ class TelemetryBus(QObject):
                     sensors.has_delta_reference = delta_pkt.has_reference
                     sensors.estimated_lap_time = delta_pkt.estimated_lap_time
                     sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
+                    sensors.expected_status = getattr(delta_pkt, 'expected_status', 'white') or 'white'
                     sensors.is_pit_lap = delta_pkt.is_pit_lap
                     sensors.lap_flag = delta_pkt.lap_flag
                     sensors.current_sector = delta_pkt.current_sector
@@ -293,6 +294,7 @@ class TelemetryBus(QObject):
                     sensors.has_delta_reference = delta_pkt.has_reference
                     sensors.estimated_lap_time = delta_pkt.estimated_lap_time
                     sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
+                    sensors.expected_status = getattr(delta_pkt, 'expected_status', 'white') or 'white'
                     sensors.is_pit_lap = delta_pkt.is_pit_lap
                     sensors.lap_flag = delta_pkt.lap_flag
                     sensors.current_sector = delta_pkt.current_sector

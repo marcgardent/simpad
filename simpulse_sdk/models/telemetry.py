@@ -274,6 +274,7 @@ class VehicleSensors:
     delta_time: float = 0.0
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
+    expected_status: str = "white"  # unified pink/purple/green/yellow/white of the projected lap
     sector1_time: str = "--"
     sector1_status: str = "default"
     sector2_time: str = "--"

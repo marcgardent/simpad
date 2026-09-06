@@ -146,6 +146,10 @@ class DeltaEngine:
         self._ref_lap_time: float = 999999.0
         self._all_time_best_lap_time: float = 999999.0
         self._session_best_lap_time: float = 999999.0
+        # Paddock scalar (best LAP of the OTHER cars this session) for the expected
+        # colour.  None/0 until a Full/dict scoring packet proves other cars exist.
+        self._paddock_best_lap: float = 999999.0
+        self._paddock_known: bool = False
         self._stint_best_lap_time: float = 999999.0
         self._last_lap_time: float = 999999.0
 
@@ -691,6 +695,31 @@ class DeltaEngine:
                 self._session_split_best_s2 = sess_s2
             if sess_s3:
                 self._session_split_best_s3 = sess_s3
+
+            # ----- paddock scalar: best full-lap of the OTHER cars this session -----
+            def _is_player(v):
+                if isinstance(v, dict):
+                    for k in ("mIsPlayer", "isPlayer", "is_player"):
+                        if k in v:
+                            return bool(v.get(k))
+                    ctrl = v.get("mControl", v.get("control", None))
+                    return ctrl is not None and int(ctrl) == 0
+                return bool(getattr(v, "is_player", False)) or (getattr(v, "control", None) == 0)
+
+            min_other_lap = 999900.0
+            for v in vehicles_src:
+                if _is_player(v):
+                    continue
+                blap = (
+                    float(v.get("mBestLapTime", v.get("bestLapTime", 0.0)) or 0.0)
+                    if isinstance(v, dict)
+                    else float(getattr(v, "best_lap_time", 0.0) or 0.0)
+                )
+                if 0.0 < blap < min_other_lap:
+                    min_other_lap = blap
+            if min_other_lap < 999900.0:
+                self._paddock_best_lap = min_other_lap
+                self._paddock_known = True
 
         # Refresh stable per-sector HUD display (keeps intermediate sectors frozen).
         self._refresh_display_sector_times(
@@ -1356,6 +1385,31 @@ class DeltaEngine:
         if projected_time > 0.0:
             return format_lap_time(projected_time)
         return "--:--.---"
+
+    @property
+    def expected_lap_status(self) -> str:
+        """Unified colour of the expected lap time (pink/purple/green/yellow/white).
+
+        Compares the *projection* estimated_lap_time to the three references the
+        engine tracks:
+          ever    → _all_time_best_lap_time,
+          paddock → best other-car lap this session (_paddock_best_lap),
+          session → _session_best_lap_time (my session best).
+        First valid match wins; white when no usable reference exists yet.
+        """
+        from .sector_colors import expected_status
+        ever = self._all_time_best_lap_time if (self._all_time_best_lap_time or 0.0) < 999900.0 else None
+        session = self._session_best_lap_time if (self._session_best_lap_time or 0.0) < 999900.0 else None
+        paddock = self._paddock_best_lap if (self._paddock_known and (self._paddock_best_lap or 0.0) < 999900.0) else None
+        invalid = not self.has_reference
+        return expected_status(
+            self.estimated_lap_time,
+            ever=ever,
+            paddock=paddock,
+            session=session,
+            invalid=invalid,
+            source="delta.expected",
+        )
 
     @property
     def sector1_delta(self) -> float:
