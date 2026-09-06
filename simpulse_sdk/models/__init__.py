@@ -44,6 +44,7 @@ from simpulse_sdk.models.math import (
     clamp,
     apply_response_curve,
     format_lap_time,
+    format_sector_time,
 )
 from simpulse_sdk.models.params import (
     BoolParam,
@@ -84,6 +85,7 @@ __all__ = [
     "clamp",
     "apply_response_curve",
     "format_lap_time",
+    "format_sector_time",
     "BoolParam",
     "IntRangeParam",
     "FloatRangeParam",

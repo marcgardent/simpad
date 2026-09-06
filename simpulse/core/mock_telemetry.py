@@ -166,16 +166,16 @@ class MockTelemetryGenerator(QObject):
         else:
             sensors.current_sector = 3
 
-        # Sector timings & deltas
-        sensors.sector1_time = "29.412"
+        # Sector timings & deltas (canonical MM:ss.mmm strings)
+        sensors.sector1_time = "00:29.412"
         sensors.sector1_status = "purple"
         sensors.sector1_delta = -0.145
 
-        sensors.sector2_time = "31.850" if sensors.current_sector >= 2 else "--"
+        sensors.sector2_time = "00:31.850" if sensors.current_sector >= 2 else "--"
         sensors.sector2_status = "green" if sensors.current_sector >= 2 else "default"
         sensors.sector2_delta = -0.082 if sensors.current_sector >= 2 else 0.0
 
-        sensors.sector3_time = "28.480" if sensors.current_sector >= 3 else "--"
+        sensors.sector3_time = "00:28.480" if sensors.current_sector >= 3 else "--"
         sensors.sector3_status = "green" if sensors.current_sector >= 3 else "default"
         sensors.sector3_delta = -0.057 if sensors.current_sector >= 3 else 0.0
 
@@ -187,9 +187,8 @@ class MockTelemetryGenerator(QObject):
         sensors.estimated_lap_time = 89.458
         sensors.estimated_lap_time_str = "01:29.458"
         sensors.last_lap_time = self._last_completed_time
-        mins = int(self._last_completed_time // 60)
-        secs = self._last_completed_time % 60
-        sensors.last_lap_time_str = f"{mins:02d}:{secs:06.3f}"
+        from simpulse_sdk import format_lap_time as _fmt_lap
+        sensors.last_lap_time_str = _fmt_lap(self._last_completed_time)
         sensors.last_lap_status = "purple" if self._last_completed_time < 89.6 else "green"
         sensors.is_lap_freeze_active = is_freeze
         sensors.remaining_laps = max(0, 25 - self._lap_count)

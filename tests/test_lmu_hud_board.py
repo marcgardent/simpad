@@ -56,13 +56,26 @@ class TestQtHudOverlay(unittest.TestCase):
 
 
     def test_format_time_sec(self):
-        """Verify format_time_sec formats times as [MM:]ss.mmm."""
+        """format_time_sec delegates to the canonical MM:ss.mmm formatter."""
         from simpulse.core.telemetry.lmu_parser import format_time_sec
-        self.assertEqual(format_time_sec(32.41), "32.410")
-        self.assertEqual(format_time_sec(92.41), "1:32.410")
-        self.assertEqual(format_time_sec(125.008), "2:05.008")
-        self.assertEqual(format_time_sec(0.0), "--")
-        self.assertEqual(format_time_sec(-1.0), "--")
+        formatter = format_time_sec
+        # canonical: minutes zero-padded, same style as engine/packets
+        self.assertEqual(formatter(32.41), "00:32.410")
+        self.assertEqual(formatter(92.41), "01:32.410")
+        self.assertEqual(formatter(125.008), "02:05.008")
+        self.assertEqual(formatter(0.0), "--")
+        self.assertEqual(formatter(-1.0), "--")
+
+    def test_unified_formatters_agree(self):
+        """Engine, parser and SDK all share one clock format for the same value."""
+        from simpulse_sdk import format_lap_time as sdk_lap
+        from simpulse.core.telemetry.lmu_parser import format_time_sec
+        from simpulse.core.telemetry.delta_engine import format_lap_time as engine_lap, sector_time_display_str as engine_sect
+        self.assertEqual(engine_lap(30.0), sdk_lap(30.0))
+        self.assertEqual(format_time_sec(30.0), engine_sect(30.0))
+        self.assertEqual(sdk_lap(30.0), engine_sect(30.0))
+        self.assertEqual(sdk_lap(92.4), engine_lap(92.4))
+        self.assertEqual(format_time_sec(92.4), sdk_lap(92.4))
 
     def test_hud_gauges_abs_and_tc_binding(self):
         """Verify that ECU ABS and TC activation are properly bound to sensors."""

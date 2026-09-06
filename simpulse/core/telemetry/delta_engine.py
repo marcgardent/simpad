@@ -67,21 +67,24 @@ def log_delta_debug(msg: str) -> None:
 
 
 def format_lap_time(seconds: float) -> str:
-    """Formats seconds into lap time representation MM:ss.mmm (e.g. '01:32.450')."""
-    if seconds <= 0.0 or seconds >= 999900.0:
-        return "--:--.---"
-    minutes = int(seconds // 60)
-    rem_sec = seconds % 60.0
-    return f"{minutes:02d}:{rem_sec:06.3f}"
+    """Canonical MM:ss.mmm lap-time formatter (single impl in simpulse_sdk).
+
+    Thin delegator kept so core modules importing from delta_engine keep resolving;
+    the actual formatting lives in simpulse_sdk.models.math.format_lap_time (guards
+    NaN/inf and returns '--:--.---' for unknown).
+    """
+    from simpulse_sdk import format_lap_time as _fmt
+    return _fmt(seconds)
 
 
 def sector_time_display_str(seconds: float) -> str:
-    """Short MM:ss.mmm display used for the per-sector HUD boxes ('--' when unknown)."""
-    if seconds <= 0.0 or seconds >= 999900.0:
-        return "--"
-    minutes = int(seconds // 60)
-    rem_sec = seconds % 60.0
-    return f"{minutes:02d}:{rem_sec:06.3f}"
+    """Canonical MM:ss.mmm sector display ('--' when the split is unknown).
+
+    Delegates to simpulse_sdk.models.math.format_sector_time so packets, engine
+    snapshots and the Full-scoring parser share one clock format.
+    """
+    from simpulse_sdk import format_sector_time as _fmt
+    return _fmt(seconds, missing="--")
 
 
 def sector_display_status(val: float, best_val: float, session_best: float | None = None) -> str:

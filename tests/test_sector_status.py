@@ -60,13 +60,13 @@ class TestSectorStatusCalculations(unittest.TestCase):
 
         LMUParser._update_player_sector_times_from_model(player_veh, session_bests)
 
-        self.assertEqual(LMUParser._last_sector1_time, "30.000")
+        self.assertEqual(LMUParser._last_sector1_time, "00:30.000")
         self.assertEqual(LMUParser._last_sector1_status, "pink")   # session == personal (no rival gap)
 
-        self.assertEqual(LMUParser._last_sector2_time, "40.000")
+        self.assertEqual(LMUParser._last_sector2_time, "00:40.000")
         self.assertEqual(LMUParser._last_sector2_status, "pink")
 
-        self.assertEqual(LMUParser._last_sector3_time, "25.000")
+        self.assertEqual(LMUParser._last_sector3_time, "00:25.000")
         self.assertEqual(LMUParser._last_sector3_status, "pink")
 
     def test_sector_delta_str_zero_delta(self):

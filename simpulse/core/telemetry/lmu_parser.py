@@ -30,15 +30,14 @@ logger = logging.getLogger(__name__)
 
 
 def format_time_sec(seconds: float) -> str:
-    """Formats seconds into clean representation [MM:]ss.mmm."""
-    if seconds <= 0.0:
-        return "--"
-    minutes = int(seconds // 60)
-    rem_sec = seconds % 60.0
-    if minutes > 0:
-        return f"{minutes}:{rem_sec:06.3f}"
-    else:
-        return f"{rem_sec:.3f}"
+    """Canonical MM:ss.mmm sector/lap display ('--' when unknown).
+
+    Delegates to the single project formatter (simpulse_sdk) so the Full-scoring
+    path emits exactly the same clock style as DeltaEngine — never the legacy
+    bare 'ss.mmm' or unpadded 'M:ss.mmm' forms.
+    """
+    from simpulse_sdk import format_sector_time as _fmt
+    return _fmt(seconds, missing="--")
 
 
 @dataclass

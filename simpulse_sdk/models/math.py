@@ -24,10 +24,30 @@ def apply_response_curve(raw_intensity: float, gamma: float = 1.0, gain: float =
     return clamp(curved * gain)
 
 
-def format_lap_time(seconds: float) -> str:
-    """Format seconds into MM:SS.mmm format."""
-    if seconds <= 0.0 or math.isnan(seconds) or math.isinf(seconds) or seconds >= 999900.0:
-        return "--:--.---"
+def format_lap_time(seconds: float, *, missing: str = "--:--.---") -> str:
+    """UNIFIED project-wide lap-time formatter.
+
+    Canonical form: ``MM:ss.mmm`` (minutes zero-padded to 2 digits, ms padded to
+    3) — e.g. ``01:32.450``.  This formatter is the single implementation used
+    for whole laps, sector splits, expected times and deltas: never produce
+    bare ``ss.mmm`` or non-padded ``M:ss.mmm`` from another module.
+
+    Returns ``missing`` for unrepresentable input: ``<=0``, NaN, +/-Inf or
+    ``>=999900`` (sentinels meaning “time unknown / not yet recorded”).
+    """
+    if (seconds is None or seconds <= 0.0 or math.isnan(seconds)
+            or math.isinf(seconds) or seconds >= 999900.0):
+        return missing
     mins = int(seconds // 60)
     secs = seconds % 60.0
     return f"{mins:02d}:{secs:06.3f}"
+
+
+def format_sector_time(seconds: float, *, missing: str = "--") -> str:
+    """Canonical formatter for a *sector split* displayed value.
+
+    Same underlying MM:ss.mmm rendering as :func:`format_lap_time` (so packets,
+    engine snapshots and the Full scoring parser all emit the very same clock
+    format); only the “unknown” token defaults to ``--`` for the compact HUD box.
+    """
+    return format_lap_time(seconds, missing=missing)
