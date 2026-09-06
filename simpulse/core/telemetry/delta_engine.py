@@ -75,6 +75,24 @@ def format_lap_time(seconds: float) -> str:
     return f"{minutes:02d}:{rem_sec:06.3f}"
 
 
+def sector_time_display_str(seconds: float) -> str:
+    """Short MM:ss.mmm display used for the per-sector HUD boxes ('--' when unknown)."""
+    if seconds <= 0.0 or seconds >= 999900.0:
+        return "--"
+    minutes = int(seconds // 60)
+    rem_sec = seconds % 60.0
+    return f"{minutes:02d}:{rem_sec:06.3f}"
+
+
+def sector_display_status(val: float, best_val: float) -> str:
+    """Colors a displayed sector time: 'green' when better than personal best, else 'default'."""
+    if val <= 0.0:
+        return "default"
+    if best_val > 0.0 and val <= (best_val + 0.001):
+        return "green"
+    return "default"
+
+
 class DeltaReferenceMode(str, Enum):
     """Reference modes for delta calculation."""
     ALL_TIME_BEST = "all_time_best"  # All-time best lap saved to disk
@@ -417,6 +435,60 @@ class DeltaEngine:
                 log_delta_debug(f"[SECTOR_CUT_S2] t_into={effective_time:.3f}s, dist={effective_dist:.1f}m")
             self._last_current_sector = curr_sec
 
+    def _refresh_display_sector_times(
+        self,
+        *,
+        cur_sector1: float = 0.0,
+        cur_sector2: float = 0.0,
+        last_sector1: float = 0.0,
+        last_sector2: float = 0.0,
+        last_lap_time: float = 0.0,
+        best_sector1: float = 0.0,
+        best_sector2: float = 0.0,
+        best_lap_time: float = 0.0,
+    ) -> None:
+        """
+        Keeps the HUD per-sector times stable across packets.
+
+        isiMotor exposes both current-lap cumulative timing splits (cur_*) and the
+        splits of the previous fully completed lap (last_*). While a split of the
+        current lap has not been crossed yet (cur_* == 0.0) we keep showing the last
+        completed split so the sector boxes never flick back to '--' in the middle of
+        a lap. Once crossed inside the current lap, cur_* freezes at the split value
+        and becomes the displayed time.
+
+        All values arrive at 10 Hz (CompactScoring or FullScoringSession) which is
+        faster than a human can read a whole sector, so this refresh is visually crisp.
+        """
+        # S1: current lap when already crossed, otherwise the last completed lap split.
+        s1_cur = cur_sector1 if cur_sector1 > 0.0 else last_sector1
+
+        # -- Sector 1 box --
+        if s1_cur > 0.0:
+            self._last_sector1_time = sector_time_display_str(s1_cur)
+            self._last_sector1_status = sector_display_status(s1_cur, best_sector1)
+
+        # -- Sector 2 box (standalone: cumulated S1+S2 minus S1) --
+        # Compose exclusively from the current lap once its split is crossed, otherwise
+        # fall back to the previous lap splits. Never mix current & last references.
+        indiv_s2 = 0.0
+        if cur_sector2 > 0.0 and cur_sector1 > 0.0 and cur_sector2 > cur_sector1:
+            indiv_s2 = cur_sector2 - cur_sector1
+        elif last_sector2 > 0.0 and last_sector1 > 0.0 and last_sector2 > last_sector1:
+            indiv_s2 = last_sector2 - last_sector1
+        if indiv_s2 > 0.0:
+            self._last_sector2_time = sector_time_display_str(indiv_s2)
+            best_indiv_s2 = (best_sector2 - best_sector1) if (best_sector2 > 0.0 and best_sector1 > 0.0) else 0.0
+            self._last_sector2_status = sector_display_status(indiv_s2, best_indiv_s2)
+
+        # -- Sector 3 box (standalone remainder of the last completed lap) --
+        s3_cum_base = last_sector2
+        if last_lap_time > 0.0 and s3_cum_base > 0.0 and last_lap_time > s3_cum_base:
+            indiv_s3 = last_lap_time - s3_cum_base
+            best_indiv_s3 = (best_lap_time - best_sector2) if (best_lap_time > 0.0 and best_sector2 > 0.0) else 0.0
+            self._last_sector3_time = sector_time_display_str(indiv_s3)
+            self._last_sector3_status = sector_display_status(indiv_s3, best_indiv_s3)
+
     def _collect_lap_sample(
         self,
         time_into: float,
@@ -469,6 +541,13 @@ class DeltaEngine:
             in_pits = bool(player_veh.in_pits)
             lap_flag = int(player_veh.count_lap_flag)
             last_lap_time = float(player_veh.last_lap_time)
+            cur_s1 = float(player_veh.cur_sector1)
+            cur_s2 = float(player_veh.cur_sector2)
+            last_s1 = float(player_veh.last_sector1)
+            last_s2 = float(player_veh.last_sector2)
+            best_s1 = float(player_veh.best_sector1)
+            best_s2 = float(player_veh.best_sector2)
+            best_lap = float(player_veh.best_lap_time)
         elif isinstance(scoring_js, CompactScoring):
             track_name = scoring_js.track_name.strip()
             track_len = float(scoring_js.lap_dist)
@@ -485,6 +564,13 @@ class DeltaEngine:
             in_pits = False
             lap_flag = int(scoring_js.count_lap_flag)
             last_lap_time = float(scoring_js.last_lap_time)
+            cur_s1 = float(scoring_js.cur_sector1)
+            cur_s2 = float(scoring_js.cur_sector2)
+            last_s1 = float(scoring_js.last_sector1)
+            last_s2 = float(scoring_js.last_sector2)
+            best_s1 = float(scoring_js.best_sector1)
+            best_s2 = float(scoring_js.best_sector2)
+            best_lap = float(scoring_js.best_lap_time)
         else:
             scoring_info = scoring_js.get("mScoringInfo", scoring_js) if isinstance(scoring_js, dict) else {}
             track_name = str(scoring_info.get("mTrackName", scoring_info.get("trackName", ""))).strip()
@@ -507,6 +593,25 @@ class DeltaEngine:
             in_pits = bool(player_veh.get("mInPits", player_veh.get("inPits", False)))
             lap_flag = int(player_veh.get("mCountLapFlag", player_veh.get("countLapFlag", 2)))
             last_lap_time = float(player_veh.get("mLastLapTime", -1.0))
+            cur_s1 = float(player_veh.get("mCurSector1", player_veh.get("curSector1", 0.0)))
+            cur_s2 = float(player_veh.get("mCurSector2", player_veh.get("curSector2", 0.0)))
+            last_s1 = float(player_veh.get("mLastSector1", player_veh.get("lastSector1", 0.0)))
+            last_s2 = float(player_veh.get("mLastSector2", player_veh.get("lastSector2", 0.0)))
+            best_s1 = float(player_veh.get("mBestSector1", player_veh.get("bestSector1", 0.0)))
+            best_s2 = float(player_veh.get("mBestSector2", player_veh.get("bestSector2", 0.0)))
+            best_lap = float(player_veh.get("mBestLapTime", player_veh.get("bestLapTime", 0.0)))
+
+        # Refresh stable per-sector HUD display (keeps intermediate sectors frozen).
+        self._refresh_display_sector_times(
+            cur_sector1=cur_s1,
+            cur_sector2=cur_s2,
+            last_sector1=last_s1,
+            last_sector2=last_s2,
+            last_lap_time=last_lap_time,
+            best_sector1=best_s1,
+            best_sector2=best_s2,
+            best_lap_time=best_lap,
+        )
 
         # Session/track/vehicle change
         if track_name and (track_name != self._track_name or (veh_name and veh_name != self._vehicle_name)):
