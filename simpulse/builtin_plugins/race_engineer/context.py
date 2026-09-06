@@ -71,6 +71,23 @@ class EngineerContext:
                 sync_fn(st, self.scoring, self.timestamp)
         return st
 
+    def _resolve_state_store(self) -> Optional[TelemetryStateStore]:
+        """
+        Returns the unified store this context should consult for vehicle/grid state.
+
+        Sources are authoritative only when this context actually carries them:
+          - an explicitly injected ``store``,
+          - or a ``scoring`` event (ingested on demand).
+        A standalone context (no scoring / no store) must NOT read the global
+        TelemetryStateStore singleton to avoid cross-test residue leaking into role
+        evaluations — it may carry a reference_profile instead (used below).
+        """
+        if self.store is not None:
+            return self.store
+        if self.scoring is not None and self.state_store is not None:
+            return self.state_store
+        return None
+
     @property
     def wheels_on_track(self) -> int:
         """Authoritative wheels on track from state store."""
@@ -163,13 +180,12 @@ class EngineerContext:
     @property
     def active_session(self) -> Optional[int]:
         """Authoritative session code from the unified timing state.
-        Returns None when this context has no scoring source (does not read the global
+        Returns None when this context has no scoring source (never reads the global
         singleton residue of unrelated contexts).
         """
-        if self.scoring is None and self.store is None:
+        store = self._resolve_state_store()
+        if store is None:
             return None
-        # state_store syncs the context-scoring into the unified models before reading.
-        store = self.state_store
         # BaseTimingState is fed by CompactScoring (10 Hz) and also re-derived from a
         # FullScoringSession when only Full is available; it is the common session source.
         base = store.timing if store.timing is not None else store.grid
@@ -179,19 +195,24 @@ class EngineerContext:
 
     @property
     def grid_available(self) -> bool:
-        """True when a FullScoringSession (grid/leaderboard) has been ingested."""
-        return self.state_store.grid is not None
+        """True when this context's full-grid state (leaderboard) is available."""
+        store = self._resolve_state_store()
+        return store is not None and store.grid is not None
 
     @property
     def scoring_available(self) -> bool:
-        """True when any scoring timing state has been ingested (Compact or Full)."""
-        store = self.state_store
+        """True when any scoring timing state is available for this context."""
+        store = self._resolve_state_store()
+        if store is None:
+            return False
         return (store.timing is not None and bool(store.timing.track_name)) or store.grid is not None
 
     @property
     def has_scoring_packet(self) -> bool:
-        """True if at least one raw scoring packet was received during this session."""
-        store = self.state_store
+        """True if the raw scoring ingress slot received a packet (existence probe only)."""
+        store = self._resolve_state_store()
+        if store is None:
+            return False
         return store.compact_scoring.data is not None or store.full_scoring.data is not None
 
     def get_session_type(self) -> int:
@@ -216,29 +237,30 @@ class EngineerContext:
         return self.is_qualifying_session()
 
     def get_track_name(self) -> str:
-        """Returns active track name from the unified state (timing/grid/delta) or reference profile."""
-        if self.store is not None or TelemetryStateStore._instance is not None:
-            store = self.state_store
-            # Unifi timing is the 10 Hz source of truth for the track name.
-            if store.timing is not None and getattr(store.timing, "track_name", ""):
-                name = str(store.timing.track_name).strip()
+        """Returns active track name from the unified state (timing/grid/delta) or reference profile.
+
+        Sources are authoritative only when this context carries them (explicit store or an
+        incoming scoring event); a standalone context relies on its injected reference profile
+        and never reads the global store residue of unrelated evaluations.
+        """
+        resolved = self._resolve_state_store()
+        if resolved is not None:
+            if resolved.timing is not None and getattr(resolved.timing, "track_name", ""):
+                name = str(resolved.timing.track_name).strip()
                 if name:
                     return name
-            if store.grid is not None and getattr(store.grid, "track_name", ""):
-                name = str(store.grid.track_name).strip()
+            if resolved.grid is not None and getattr(resolved.grid, "track_name", ""):
+                name = str(resolved.grid.track_name).strip()
                 if name:
                     return name
-            if store.delta.data is not None and store.delta.data.track_name:
-                name = str(store.delta.data.track_name).strip()
-                if name:
-                    return name
+            if resolved.delta.data is not None and resolved.delta.data.track_name:
+                return str(resolved.delta.data.track_name).strip()
 
         if self.reference_profile is not None and self.reference_profile.track_name:
             ref_name = str(self.reference_profile.track_name).strip()
             if ref_name:
                 return ref_name
         return ""
-
     def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
         """Returns active reference lap profile if it matches current track."""
         scoring_track = self.get_track_name()
@@ -252,6 +274,10 @@ class EngineerContext:
                     return None
             return self.reference_profile
 
+        if self.scoring is None and self.store is None:
+            # A standalone context relies on its injected reference_profile only; it must
+            # not reach into the global engine/residue of unrelated evaluations.
+            return None
         try:
             from simpulse.core.reference_lap import ReferenceLapManager
             ref_mgr = ReferenceLapManager.get_instance()
@@ -376,14 +402,15 @@ class EngineerContext:
         return (not player_in) or (not opp_in)
 
     def get_track_length(self) -> float:
-        """Returns total track length in meters (unified timing/grid state first)."""
-        store = self.state_store
-        # Unified scoring models expose track_length (disambiguated from car lap distance).
-        base = store.grid if store.grid is not None else store.timing
-        if base is not None and getattr(base, "track_length", 0.0) > 500.0:
-            return float(base.track_length)
-        if store.delta.data is not None and store.delta.data.track_length > 500.0:
-            return float(store.delta.data.track_length)
+        """Returns total track length in meters (unified timing/grid/delta state first)."""
+        store = self._resolve_state_store()
+        if store is not None:
+            # Unified scoring models expose track_length (disambiguated from car lap distance).
+            base = store.grid if store.grid is not None else store.timing
+            if base is not None and getattr(base, "track_length", 0.0) > 500.0:
+                return float(base.track_length)
+            if store.delta.data is not None and store.delta.data.track_length > 500.0:
+                return float(store.delta.data.track_length)
         if self.reference_profile is not None and self.reference_profile.track_length > 500.0:
             return float(self.reference_profile.track_length)
         return 5000.0  # Fallback default
@@ -404,7 +431,9 @@ class EngineerContext:
 
     def _grid_player_vehicle(self) -> Optional[VehicleScoring]:
         """Returns the player vehicle from the unified grid state (full scoring)."""
-        store = self.state_store
+        store = self._resolve_state_store()
+        if store is None:
+            return None
         grid = store.grid
         if grid is None:
             return None
@@ -418,10 +447,10 @@ class EngineerContext:
 
     def _grid_vehicles(self) -> List[VehicleScoring]:
         """Returns the complete vehicle list of the unified grid state (empty when no grid)."""
-        grid = self.state_store.grid
-        if grid is None:
+        store = self._resolve_state_store()
+        if store is None or store.grid is None:
             return []
-        return list(grid.vehicles)
+        return list(store.grid.vehicles)
 
     def get_player_vehicle(self) -> Optional[VehicleScoring]:
         """Extracts player vehicle from the unified full-grid state (never the raw packet)."""
