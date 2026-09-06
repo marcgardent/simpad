@@ -25,9 +25,11 @@ from simpulse_sdk import (
     ITelemetrySubscriber,
     IDeltaSubscriber,
     ITelemetryStateSubscriber,
+    IChannelSampleSubscriber,
     IHudWidgetProvider,
     ChannelRequirement,
     TelemetryRawPacket,
+    ChannelSample,
     TelemetryChannel,
     LapDeltaPacket,
     VehicleSensors,
@@ -400,6 +402,23 @@ class PluginManager(QObject):
         store_method = getattr(store, store_method_name, None)
         if store_method is not None:
             store_method(packet.data, packet.timestamp, packet.raw_bytes_len)
+
+        # 1b. Metadata-only channel sample to IChannelSampleSubscriber plugins.
+        # Deliberately carries NO decoded payload: diagnostics plugins measure Hz/bytes
+        # without ever receiving consolidated or raw UDP data.
+        sample = ChannelSample(
+            channel=packet.channel,
+            raw_bytes_len=packet.raw_bytes_len,
+            timestamp=packet.timestamp,
+        )
+        for pid, p in list(self._plugins.items()):
+            if p.state != PluginState.ENABLED or not isinstance(p, IChannelSampleSubscriber):
+                continue
+            try:
+                p.on_channel_sample(sample)
+                self._error_counts[pid] = 0
+            except Exception as e:
+                self._handle_plugin_error(pid, "on_channel_sample", e)
 
         # 2. Dispatch polymorphic on_* hook to enabled plugins
         for pid, p in list(self._plugins.items()):

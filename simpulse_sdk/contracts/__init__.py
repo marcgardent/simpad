@@ -6,6 +6,7 @@ from .protocols import (
     ITelemetrySubscriber,
     IDeltaSubscriber,
     ITelemetryStateSubscriber,
+    IChannelSampleSubscriber,
     ITabProvider,
     IHudWidgetProvider,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "ITelemetrySubscriber",
     "IDeltaSubscriber",
     "ITelemetryStateSubscriber",
+    "IChannelSampleSubscriber",
     "ITabProvider",
     "IHudWidgetProvider",
     "IPluginConfigProvider",

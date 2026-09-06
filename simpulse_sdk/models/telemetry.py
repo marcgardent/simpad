@@ -144,6 +144,19 @@ class TelemetryRawPacket:
 
 
 @dataclass(frozen=True)
+class ChannelSample:
+    """
+    Metadata-only sample of an incoming UDP frame.
+
+    Deliberately carries NO decoded payload: this is the ONLY thing stream / monitor
+    plugins may consume per raw frame, so UDP data cannot leak out of the ingest layer.
+    """
+    channel: TelemetryChannel
+    raw_bytes_len: int
+    timestamp: float = 0.0
+
+
+@dataclass(frozen=True)
 class LmuTelemetryData:
     """
     Strongly-typed Le Mans Ultimate specific electronic, cockpit, and ECU data.

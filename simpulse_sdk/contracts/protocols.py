@@ -6,7 +6,7 @@ Plugins implement only the protocols they require.
 from __future__ import annotations
 from typing import Optional, Protocol, runtime_checkable, Any
 
-from simpulse_sdk.models.telemetry import VehicleSensors
+from simpulse_sdk.models.telemetry import VehicleSensors, ChannelSample
 from simpulse_sdk.models.delta import LapDeltaPacket
 from simpulse_sdk.models.state_store import TelemetryStateStore
 from simpulse_sdk.models.plugin_metadata import HudSlot
@@ -89,6 +89,20 @@ class ITelemetryStateSubscriber(Protocol):
 
     def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
         """Called directly on pit strategy menu selection and adjustments."""
+        ...
+
+
+@runtime_checkable
+class IChannelSampleSubscriber(Protocol):
+    """
+    Low-level monitoring capability: receives a metadata-only sample per raw frame.
+
+    This is the ONLY sanctioned way for diagnostics/monitor plugins to observe raw
+    UDP flow (channel, byte length, timestamp) without any access to decoded packets.
+    """
+
+    def on_channel_sample(self, sample: "ChannelSample") -> None:
+        """Called once per decoded UDP frame with metadata only (no payload)."""
         ...
 
 
