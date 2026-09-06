@@ -21,6 +21,8 @@ from isimotor_rawudp_client import (
     Graphics,
     SystemEvent,
 )
+from .scoring import BaseTimingState, FullGridScoringState
+from .delta import LapDeltaPacket
 
 T = TypeVar("T")
 
@@ -105,6 +107,11 @@ class TelemetryStateStore:
         self.graphics = PacketSlot()           # Graphics
         self.track_rules = PacketSlot()        # TrackRules
         self.pit_menu = PacketSlot()           # PitMenu
+        self.delta = PacketSlot()              # LapDeltaPacket derived state (120Hz continuous)
+
+        # Unified typed scoring models
+        self.timing: BaseTimingState = BaseTimingState()
+        self.grid: Optional[FullGridScoringState] = None
 
         # Persistent state memory across packet boundaries
         self._last_wheels_on_track: int = 4
@@ -180,6 +187,9 @@ class TelemetryStateStore:
             self.graphics = PacketSlot()
             self.track_rules = PacketSlot()
             self.pit_menu = PacketSlot()
+            self.delta = PacketSlot()
+            self.timing = BaseTimingState()
+            self.grid = None
 
             self._last_wheels_on_track = 4
             self._last_is_on_track = True
@@ -339,7 +349,47 @@ class TelemetryStateStore:
             self._last_total_laps = new_laps
 
             raw_sec = data.sector
-            self._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+            norm_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+            self._last_current_sector = norm_sec
+
+            # Construct unified BaseTimingState (continuous 10Hz)
+            self.timing = BaseTimingState(
+                track_name=data.track_name.strip(),
+                session=data.session,
+                current_et=data.current_et,
+                track_length=data.lap_dist,
+                max_laps=data.max_laps,
+                in_realtime=data.in_realtime,
+                total_laps=data.total_laps,
+                sector=norm_sec,
+                in_garage=data.in_garage_stall,
+                count_lap_flag=data.count_lap_flag,
+                is_lap_valid=(data.count_lap_flag == 2),
+                cur_sector1=data.cur_sector1,
+                cur_sector2=data.cur_sector2,
+                last_sector1=data.last_sector1,
+                last_sector2=data.last_sector2,
+                last_lap_time=data.last_lap_time,
+                best_sector1=data.best_sector1,
+                best_sector2=data.best_sector2,
+                best_lap_time=data.best_lap_time,
+            )
+
+            # Sync timing updates to grid state if present
+            if self.grid is not None:
+                self.grid.total_laps = data.total_laps
+                self.grid.sector = norm_sec
+                self.grid.in_garage = data.in_garage_stall
+                self.grid.count_lap_flag = data.count_lap_flag
+                self.grid.is_lap_valid = (data.count_lap_flag == 2)
+                self.grid.cur_sector1 = data.cur_sector1
+                self.grid.cur_sector2 = data.cur_sector2
+                self.grid.last_sector1 = data.last_sector1
+                self.grid.last_sector2 = data.last_sector2
+                self.grid.last_lap_time = data.last_lap_time
+                self.grid.best_sector1 = data.best_sector1
+                self.grid.best_sector2 = data.best_sector2
+                self.grid.best_lap_time = data.best_lap_time
 
             self._recalculate_cache()
 
@@ -349,25 +399,115 @@ class TelemetryStateStore:
             self.full_scoring.update(data, timestamp, raw_bytes_len)
 
             # Rules parameters LMU
+            steps_per_point = 3
+            steps_per_penalty = 12
             if data.lmu:
                 if data.lmu.track_limits_steps_per_point > 0:
                     self._last_steps_per_point = data.lmu.track_limits_steps_per_point
+                    steps_per_point = data.lmu.track_limits_steps_per_point
                 if data.lmu.track_limits_steps_per_penalty > 0:
                     self._last_steps_per_penalty = data.lmu.track_limits_steps_per_penalty
+                    steps_per_penalty = data.lmu.track_limits_steps_per_penalty
 
             # Player vehicle data
             player_veh = data.player_vehicle
+            norm_sec = 1
             if player_veh is not None:
                 self._last_in_garage = player_veh.in_garage_stall
                 self._last_penalties = player_veh.num_penalties
                 self._last_total_laps = player_veh.total_laps
                 self._last_lap_dist = player_veh.lap_dist
                 raw_sec = player_veh.sector
-                self._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+                norm_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+                self._last_current_sector = norm_sec
                 if player_veh.lmu:
                     self._last_track_limits_steps = player_veh.lmu.track_limits_steps
 
                 self._process_lap_validity(player_veh.count_lap_flag, timestamp)
+
+                # Keep BaseTimingState in sync
+                self.timing = BaseTimingState(
+                    track_name=data.track_name.strip(),
+                    session=data.session,
+                    current_et=data.current_et,
+                    track_length=data.lap_dist,
+                    max_laps=data.max_laps,
+                    in_realtime=data.in_realtime,
+                    total_laps=player_veh.total_laps,
+                    sector=norm_sec,
+                    in_garage=player_veh.in_garage_stall,
+                    count_lap_flag=player_veh.count_lap_flag,
+                    is_lap_valid=(player_veh.count_lap_flag == 2),
+                    cur_sector1=player_veh.cur_sector1,
+                    cur_sector2=player_veh.cur_sector2,
+                    last_sector1=player_veh.last_sector1,
+                    last_sector2=player_veh.last_sector2,
+                    last_lap_time=player_veh.last_lap_time,
+                    best_sector1=player_veh.best_sector1,
+                    best_sector2=player_veh.best_sector2,
+                    best_lap_time=player_veh.best_lap_time,
+                )
+
+                # Construct FullGridScoringState
+                self.grid = FullGridScoringState(
+                    track_name=data.track_name.strip(),
+                    session=data.session,
+                    current_et=data.current_et,
+                    track_length=data.lap_dist,
+                    max_laps=data.max_laps,
+                    in_realtime=data.in_realtime,
+                    total_laps=player_veh.total_laps,
+                    sector=norm_sec,
+                    in_garage=player_veh.in_garage_stall,
+                    count_lap_flag=player_veh.count_lap_flag,
+                    is_lap_valid=(player_veh.count_lap_flag == 2),
+                    cur_sector1=player_veh.cur_sector1,
+                    cur_sector2=player_veh.cur_sector2,
+                    last_sector1=player_veh.last_sector1,
+                    last_sector2=player_veh.last_sector2,
+                    last_lap_time=player_veh.last_lap_time,
+                    best_sector1=player_veh.best_sector1,
+                    best_sector2=player_veh.best_sector2,
+                    best_lap_time=player_veh.best_lap_time,
+                    end_et=data.end_et,
+                    game_phase=data.game_phase,
+                    yellow_flag_state=data.yellow_flag_state,
+                    sector_flags=data.sector_flags,
+                    start_light=data.start_light,
+                    num_red_lights=data.num_red_lights,
+                    is_fcy=data.is_fcy,
+                    ambient_temp=data.ambient_temp,
+                    track_temp=data.track_temp,
+                    dark_cloud=data.dark_cloud,
+                    raining=data.raining,
+                    avg_path_wetness=data.avg_path_wetness,
+                    min_path_wetness=data.min_path_wetness,
+                    max_path_wetness=data.max_path_wetness,
+                    track_limits_steps_per_point=steps_per_point,
+                    track_limits_steps_per_penalty=steps_per_penalty,
+                    driver_name=player_veh.driver_name.strip(),
+                    vehicle_name=player_veh.vehicle_name.strip(),
+                    vehicle_class=player_veh.vehicle_class.strip(),
+                    place=player_veh.place,
+                    qualification=player_veh.qualification,
+                    finish_status=player_veh.finish_status,
+                    num_pitstops=player_veh.num_pitstops,
+                    num_penalties=player_veh.num_penalties,
+                    track_limits_steps=self._last_track_limits_steps,
+                    in_pits=player_veh.in_pits,
+                    pit_state=player_veh.pit_state,
+                    time_behind_leader=player_veh.time_behind_leader,
+                    time_behind_next=player_veh.time_behind_next,
+                    laps_behind_leader=player_veh.laps_behind_leader,
+                    laps_behind_next=player_veh.laps_behind_next,
+                    lap_start_et=player_veh.lap_start_et,
+                    time_into_lap=player_veh.time_into_lap,
+                    estimated_lap_time=player_veh.estimated_lap_time,
+                    car_lap_dist=player_veh.lap_dist,
+                    num_vehicles=len(data.vehicles),
+                    vehicles=data.vehicles,
+                    leaderboard=data.leaderboard,
+                )
 
             self._recalculate_cache()
 
@@ -424,6 +564,19 @@ class TelemetryStateStore:
         """Ingests pit strategy menu state."""
         with self._mutex:
             self.pit_menu.update(data, timestamp, raw_bytes_len)
+
+    def update_delta(
+        self,
+        data: LapDeltaPacket,
+        timestamp: Optional[float] = None,
+        raw_bytes_len: int = 0,
+    ) -> None:
+        """Ingests authoritative continuous LapDeltaPacket and updates continuous distance."""
+        with self._mutex:
+            ts = timestamp if timestamp is not None else time.time()
+            self.delta.update(data, ts, raw_bytes_len)
+            if data.player_dist > 0.0 or self._last_lap_dist == 0.0:
+                self._last_lap_dist = data.player_dist
 
     def update_lap_validity(self, flag: int, timestamp: float) -> None:
         """Explicit update of authoritative lap validity flag."""
@@ -559,6 +712,12 @@ class TelemetryStateStore:
             return self._last_speed_kmh
 
     @property
+    def speed_mps(self) -> float:
+        """Current vehicle speed in m/s."""
+        with self._mutex:
+            return self._last_speed_kmh / 3.6
+
+    @property
     def throttle_pct(self) -> float:
         """Current unfiltered throttle percentage (0-100%)."""
         with self._mutex:
@@ -616,7 +775,46 @@ class TelemetryStateStore:
     def lap_dist(self) -> float:
         """Current lap distance along track spline in meters."""
         with self._mutex:
+            if self.delta.data is not None and self.delta.data.player_dist > 0.0:
+                return float(self.delta.data.player_dist)
             return self._last_lap_dist
+
+    @property
+    def player_lap_dist(self) -> float:
+        """Authoritative high-frequency player lap distance in meters from Delta dead-reckoning."""
+        return self.lap_dist
+
+    @property
+    def live_delta(self) -> float:
+        """Live delta to reference in seconds."""
+        with self._mutex:
+            if self.delta.data is not None:
+                return float(self.delta.data.live_delta)
+            return 0.0
+
+    @property
+    def display_delta(self) -> float:
+        """Display delta to reference in seconds (frozen at sectors/finish)."""
+        with self._mutex:
+            if self.delta.data is not None:
+                return float(self.delta.data.display_delta)
+            return 0.0
+
+    @property
+    def delta_str(self) -> str:
+        """Formatted delta string (e.g. '+0.123', '-0.456', '--:--.---')."""
+        with self._mutex:
+            if self.delta.data is not None:
+                return str(self.delta.data.delta_str)
+            return "--:--.---"
+
+    @property
+    def has_delta_reference(self) -> bool:
+        """True if an active reference profile is loaded."""
+        with self._mutex:
+            if self.delta.data is not None:
+                return bool(self.delta.data.has_reference)
+            return False
 
     @property
     def hit_count_current_lap(self) -> int:
@@ -653,3 +851,15 @@ class TelemetryStateStore:
         """Elapsed time of the last detected collision/contact impact."""
         with self._mutex:
             return self._last_impact_et
+
+    @property
+    def session_timing(self) -> BaseTimingState:
+        """Authoritative unified session and player timing state."""
+        with self._mutex:
+            return self.timing
+
+    @property
+    def session_grid(self) -> Optional[FullGridScoringState]:
+        """Full grid, multi-car leaderboard and environmental scoring state."""
+        with self._mutex:
+            return self.grid

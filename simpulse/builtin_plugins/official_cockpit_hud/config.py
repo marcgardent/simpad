@@ -13,6 +13,7 @@ class OfficialCockpitHudConfig:
     hud_enabled: bool = True
     speed_unit: str = "kmh"          # "kmh" or "mph"
     scale: float = 1.0               # 0.7 to 1.5 multiplier
+    show_background: bool = True
     show_gear_speed: bool = True
     show_rev_indicator: bool = True
     show_pedals: bool = True

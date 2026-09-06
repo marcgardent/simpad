@@ -64,10 +64,10 @@ class QtLapStatusWidget(BaseQtHudWidget):
         scale_y = canvas_h / 600.0
         center_x = canvas_w / 2.0
 
-        # Position: directly below the aero bar (aero_y=250, aero_height=12)
-        badge_size = 24.0 * min(scale_x, scale_y)
-        badge_gap = 14.0 * scale_x
-        badge_y = (250.0 + 12.0 + 6.0) * scale_y
+        # Position: directly below the aero bar (doubled size: 48px)
+        badge_size = 48.0 * min(scale_x, scale_y)
+        badge_gap = 16.0 * scale_x
+        badge_y = 244.0 * scale_y
 
         # Total width of 2 badges + gap, centered horizontally
         total_w = badge_size * 2 + badge_gap

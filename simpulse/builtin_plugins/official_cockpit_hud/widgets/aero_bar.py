@@ -47,8 +47,8 @@ class QtAeroBarWidget(BaseQtHudWidget):
     ) -> None:
         raw_aero = context.sensors.aero_load * 100.0
 
-        # LERP Smoothing (0.65 immediate response)
-        self.display_aero = lerp(self.display_aero, raw_aero, 0.65)
+        # Instant direct response (no LERP smoothing lag)
+        self.display_aero = raw_aero
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
@@ -56,12 +56,12 @@ class QtAeroBarWidget(BaseQtHudWidget):
 
         # Width (330px) sized to fit between rear tires
         aero_width = 330.0 * scale_x
-        aero_height = 12.0 * scale_y
+        aero_height = 8.0 * scale_y
         aero_x = center_x - (aero_width / 2.0)
-        aero_y = 250.0 * scale_y
+        aero_y = 230.0 * scale_y
 
         # Background track
-        painter.setBrush(QBrush(QColor(17, 24, 39, 120)))
+        painter.setBrush(QBrush(QColor(17, 24, 39, 140)))
         painter.setPen(QPen(QColor(30, 41, 59, 200), 1))
         painter.drawRoundedRect(QRectF(aero_x, aero_y, aero_width, aero_height), 2.0 * scale_x, 2.0 * scale_y)
 

@@ -351,9 +351,12 @@ class RaceEngineer:
             else:
                 wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
 
+        effective_telem = telemetry if telemetry is not None else active_store.telemetry.data
+        effective_scoring = scoring if scoring is not None else (active_store.full_scoring.data or active_store.compact_scoring.data)
+
         context = EngineerContext(
-            telemetry=telemetry,
-            scoring=scoring,
+            telemetry=effective_telem,
+            scoring=effective_scoring,
             timestamp=now,
             audio_engine=self.audio_engine,
             reference_profile=self._get_active_reference_profile(),

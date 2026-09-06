@@ -131,6 +131,75 @@ class TestHitAndCleanLap(unittest.TestCase):
 
         painter.end()
 
+    def test_cockpit_hud_no_lerp_instant_telemetry(self):
+        """Verify that telemetry values are applied directly with zero LERP smoothing lag."""
+        from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudPlugin
+        plugin = OfficialCockpitHudPlugin()
+
+        img = QImage(640, 300, QImage.Format.Format_ARGB32)
+        painter = QPainter(img)
+
+        # Step 1: initial frame with high input
+        sensors = VehicleSensors(
+            unfiltered_brake=0.85,
+            unfiltered_throttle=0.92,
+            ecu_abs_active_raw=True,
+            ecu_tc_active_raw=True,
+            vehicle_speed=50.0,
+            explicit_aero_load=70.0,
+            front_left_lock=0.40,
+            rear_left_spin=0.60,
+        )
+        plugin.paint_hud(painter, 640, 300, sensors)
+
+        # Values must immediately equal raw sensor percentages on the very first frame!
+        self.assertAlmostEqual(plugin.widget_brake.display_brake, 85.0, places=2)
+        self.assertAlmostEqual(plugin.widget_throttle.display_throttle, 92.0, places=2)
+        self.assertAlmostEqual(plugin.widget_abs.display_abs, sensors.ecu_abs_active * 100.0, places=2)
+        self.assertAlmostEqual(plugin.widget_tc.display_tc, max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0, places=2)
+        self.assertAlmostEqual(plugin.widget_gear_speed.display_speed, 50.0 * 3.6, places=2)
+        self.assertAlmostEqual(plugin.widget_aero.display_aero, sensors.aero_load * 100.0, places=2)
+        self.assertAlmostEqual(plugin.widget_tires.disp_fl_lock, 0.40, places=2)
+        self.assertAlmostEqual(plugin.widget_tires.disp_rl_spin, 0.60, places=2)
+
+        # Step 2: sudden drop to 0 - must be 0 immediately on the next frame without inertia
+        sensors_zero = VehicleSensors(
+            unfiltered_brake=0.0,
+            unfiltered_throttle=0.0,
+            vehicle_speed=0.0,
+            explicit_aero_load=0.0,
+        )
+        plugin.paint_hud(painter, 640, 300, sensors_zero)
+        self.assertAlmostEqual(plugin.widget_brake.display_brake, 0.0, places=2)
+        self.assertAlmostEqual(plugin.widget_throttle.display_throttle, 0.0, places=2)
+        self.assertAlmostEqual(plugin.widget_gear_speed.display_speed, 0.0, places=2)
+        self.assertAlmostEqual(plugin.widget_aero.display_aero, 0.0, places=2)
+
+        painter.end()
+
+    def test_cockpit_hud_background_and_pimped_gauges(self):
+        """Verify background rect calculation and toggles."""
+        from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudPlugin
+        plugin = OfficialCockpitHudPlugin()
+
+        # Background enabled by default
+        self.assertTrue(plugin.config.show_background)
+        rect = plugin._get_background_rect(640.0, 300.0)
+        self.assertGreater(rect.width(), 400.0)
+        self.assertGreater(rect.height(), 200.0)
+
+        # Render with and without background
+        img = QImage(640, 300, QImage.Format.Format_ARGB32)
+        painter = QPainter(img)
+
+        sensors = VehicleSensors(unfiltered_brake=0.95, unfiltered_throttle=1.0, ecu_abs_level=5, ecu_tc_level=3)
+        plugin.config.show_background = True
+        plugin.paint_hud(painter, 640, 300, sensors)
+
+        plugin.config.show_background = False
+        plugin.paint_hud(painter, 640, 300, sensors)
+        painter.end()
+
 
 if __name__ == "__main__":
     unittest.main()

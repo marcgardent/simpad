@@ -91,12 +91,12 @@
           "pit_slow_speed_threshold_kmh": 20.0
         },
         "pace_notes": {
-          "enable_brake": true,
-          "enable_turn_in": true,
-          "enable_turn": true,
+          "enable_brake": false,
+          "enable_turn_in": false,
+          "enable_turn": false,
           "enable_gear": true,
-          "anticipation_time_sec": 0.8,
-          "min_lead_distance_m": 15.0,
+          "anticipation_time_sec": 0.2,
+          "min_lead_distance_m": 20.0,
           "max_lead_distance_m": 75.0
         },
         "traffic_jam": {

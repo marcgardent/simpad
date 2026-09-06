@@ -223,14 +223,10 @@ class TelemetryBus(QObject):
             timestamp=now
         )
 
-        # 1. Dispatch raw packet to observers via Qt Signal
-        self.packet_received.emit(packet)
-
-        # 2. Process high-level telemetry domain representations and delta calculations
+        # 1. Process high-level telemetry domain representations and delta calculations first
+        # so state.delta is completely up-to-date for observers during dispatch_packet
+        delta_pkt: Optional[LapDeltaPacket] = None
         if data is not None:
-            delta_pkt: Optional[LapDeltaPacket] = None
-
-            # Process in ReferenceLapManager
             if isinstance(data, TelemInfo):
                 delta_pkt = self.reference_lap_mgr.update_physics(
                     veh_speed_ms=float(data.speed_mps),
@@ -244,6 +240,11 @@ class TelemetryBus(QObject):
                 )
             elif isinstance(data, (CompactScoring, FullScoringSession, dict)):
                 delta_pkt = self.reference_lap_mgr.update_scoring(data)
+
+        # 2. Dispatch raw packet to observers via Qt Signal (triggers PluginManager.dispatch_packet -> on_* hooks)
+        self.packet_received.emit(packet)
+
+        if data is not None:
 
             if override_sensors is not None:
                 sensors = override_sensors

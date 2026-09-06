@@ -255,6 +255,29 @@ class TestTelemetryStateStore(unittest.TestCase):
         for _ in range(30):
             bus.mock_generator._step()
 
+    def test_delta_slot_and_properties(self):
+        """Verify TelemetryStateStore ingests LapDeltaPacket and exposes delta properties."""
+        from simpulse.core.reference_lap import LapDeltaPacket
+
+        pkt = LapDeltaPacket(
+            live_delta=-0.352,
+            display_delta=-0.352,
+            delta_str="-0.352",
+            has_reference=True,
+            player_dist=1245.5,
+            track_length=5000.0,
+            track_name="Spa",
+        )
+        self.store.update_delta(pkt, timestamp=100.0)
+
+        self.assertEqual(self.store.delta.data, pkt)
+        self.assertAlmostEqual(self.store.player_lap_dist, 1245.5, places=1)
+        self.assertAlmostEqual(self.store.lap_dist, 1245.5, places=1)
+        self.assertAlmostEqual(self.store.live_delta, -0.352, places=3)
+        self.assertAlmostEqual(self.store.display_delta, -0.352, places=3)
+        self.assertEqual(self.store.delta_str, "-0.352")
+        self.assertTrue(self.store.has_delta_reference)
+
 
 if __name__ == "__main__":
     unittest.main()

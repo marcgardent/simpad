@@ -35,11 +35,11 @@ class OfficialHudPreviewCanvas(QWidget):
             w = float(self.width())
             h = float(self.height())
 
-            # Dark cockpit background container with subtle grid / border
+            # Dark preview viewport backdrop
             bg_rect = QRectF(0, 0, w, h)
-            painter.setPen(QPen(QColor(30, 41, 59, 180), 1.5))
-            painter.setBrush(QBrush(QColor(10, 14, 20, 240)))
-            painter.drawRoundedRect(bg_rect, 8.0, 8.0)
+            painter.setPen(QPen(QColor(15, 23, 42, 100), 1.0))
+            painter.setBrush(QBrush(QColor(6, 9, 15, 255)))
+            painter.drawRoundedRect(bg_rect, 6.0, 6.0)
 
             # Paint HUD widgets inside local coordinate bounds
             self.plugin.paint_hud(painter, w, h, self.plugin.latest_sensors)

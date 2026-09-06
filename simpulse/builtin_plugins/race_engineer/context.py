@@ -184,16 +184,28 @@ class EngineerContext:
         return self.is_qualifying_session()
 
     def get_track_name(self) -> str:
-        """Returns active track name from scoring packet or reference profile."""
-        if self.scoring is not None and self.scoring.track_name:
-            name = self.scoring.track_name.strip()
+        """Returns active track name from scoring packet, reference profile, or state store."""
+        if self.scoring is not None and getattr(self.scoring, "track_name", None):
+            name = str(self.scoring.track_name).strip()
             if name:
                 return name
 
-        if self.reference_profile is not None:
-            ref_name = self.reference_profile.track_name
+        if self.reference_profile is not None and self.reference_profile.track_name:
+            ref_name = str(self.reference_profile.track_name).strip()
             if ref_name:
                 return ref_name
+
+        if self.store is not None or TelemetryStateStore._instance is not None:
+            store = self.state_store
+            if store.compact_scoring.data is not None and getattr(store.compact_scoring.data, "track_name", None):
+                name = str(store.compact_scoring.data.track_name).strip()
+                if name:
+                    return name
+
+            if store.delta.data is not None and store.delta.data.track_name:
+                name = str(store.delta.data.track_name).strip()
+                if name:
+                    return name
         try:
             from simpulse.core.telemetry.lmu_parser import LMUParser
             delta_eng = LMUParser._delta_engine
@@ -337,9 +349,29 @@ class EngineerContext:
 
     def get_track_length(self) -> float:
         """Returns total track length in meters."""
-        if self.scoring is not None and self.scoring.lap_dist > 500.0:
+        if self.scoring is not None and getattr(self.scoring, "lap_dist", 0.0) > 500.0:
             return float(self.scoring.lap_dist)
+        if self.state_store.delta.data is not None and self.state_store.delta.data.track_length > 500.0:
+            return float(self.state_store.delta.data.track_length)
+        if self.state_store.compact_scoring.data is not None and getattr(self.state_store.compact_scoring.data, "lap_dist", 0.0) > 500.0:
+            return float(self.state_store.compact_scoring.data.lap_dist)
+        if self.reference_profile is not None and self.reference_profile.track_length > 500.0:
+            return float(self.reference_profile.track_length)
         return 5000.0  # Fallback default
+
+    def get_player_lap_dist(self) -> float:
+        """Authoritative continuous player lap distance in meters (from state store / delta dead-reckoning)."""
+        player_veh = self.get_player_vehicle()
+        if player_veh is not None and player_veh.lap_dist > 0.0:
+            return float(player_veh.lap_dist)
+        return self.state_store.lap_dist
+
+    def get_player_total_laps(self) -> int:
+        """Authoritative player total laps completed."""
+        player_veh = self.get_player_vehicle()
+        if player_veh is not None:
+            return int(player_veh.total_laps)
+        return self.state_store.total_laps
 
     def get_player_vehicle(self) -> Optional[VehicleScoring]:
         """Extracts player vehicle from scoring session."""

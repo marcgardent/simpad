@@ -586,7 +586,7 @@ class DeltaEngine:
         if is_flying_lap:
             # Delta calculation with exact game telemetry
             self._calculate_delta(player_dist, time_into)
-        else:
+        elif lap_flag != 2 or in_garage or in_pits:
             # Out-lap / Pits / Pre-start: no flying lap delta
             self._live_delta = 0.0
             self._last_checkpoint_idx = -1
@@ -594,6 +594,8 @@ class DeltaEngine:
                 f"[SCORING_NOT_FLYING] dist={player_dist:.1f}m, t_into={time_into:.3f}s, flag={lap_flag}, "
                 f"sec={curr_sec}, laps={laps_comp}, in_pits={in_pits}, in_garage={in_garage}"
             )
+        # Note: When lap_flag == 2 (flying lap) but time_into is unavailable (e.g. CompactScoring),
+        # do NOT overwrite _live_delta; let update_physics maintain continuous 100Hz delta.
 
     def update_physics(
         self,

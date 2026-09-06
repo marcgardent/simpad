@@ -192,6 +192,12 @@ class OfficialCockpitHudTabWidget(QWidget):
         self.chk_energy.toggled.connect(lambda v: self._update_flag("show_energy", v))
         m_layout.addWidget(self.chk_energy, 3, 0)
 
+        # Cockpit Background Panel
+        self.chk_bg = QCheckBox("Cockpit Chassis Dark Background", mod_group)
+        self.chk_bg.setChecked(self.plugin.config.show_background)
+        self.chk_bg.toggled.connect(lambda v: self._update_flag("show_background", v))
+        m_layout.addWidget(self.chk_bg, 3, 1)
+
         layout.addWidget(mod_group)
         layout.addStretch()
 

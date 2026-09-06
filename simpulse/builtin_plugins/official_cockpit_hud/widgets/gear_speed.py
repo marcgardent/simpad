@@ -29,10 +29,10 @@ class QtGearSpeedWidget(BaseQtHudWidget):
         g = context.sensors.gear
         gear_str = "R" if g == -1 else ("N" if g == 0 else str(g))
 
-        # 2. Speed with responsive LERP smoothing (0.70)
+        # 2. Speed with instant direct response (no LERP)
         scale = 0.621371 if context.speed_unit == "mph" else 1.0
         raw_speed = context.sensors.vehicle_speed * 3.6 * scale
-        self.display_speed = lerp(self.display_speed, raw_speed, 0.70)
+        self.display_speed = raw_speed
         speed_int = max(0, int(round(self.display_speed)))
         speed_str = str(speed_int)
 

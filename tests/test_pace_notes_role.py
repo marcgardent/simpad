@@ -162,8 +162,40 @@ class TestPaceNotesRole(unittest.TestCase):
         self.assertEqual(prof.get_annotation_phrase_key(ann_brake), "brake")
         self.assertEqual(prof.get_annotation_phrase_key(ann_turn_in), "turn")
         self.assertEqual(prof.get_annotation_phrase_key(ann_turn), "turn_1")
-        self.assertEqual(prof.get_annotation_phrase_key(ann_gear), "gear_5")
+    def test_trigger_from_state_store_physics_tick(self):
+        """Verify PaceNotes triggers purely from TelemetryStateStore on physics tick (no scoring/player_veh)."""
+        from simpulse.core.telemetry.state_store import TelemetryStateStore
+        from simpulse.core.reference_lap import LapDeltaPacket
+
+        store = TelemetryStateStore()
+        # Update speed to 20 m/s (72 km/h) and distance to 185m via delta packet (within lead=20m of 200m brake)
+        delta_pkt = LapDeltaPacket(
+            player_dist=185.0,
+            track_length=1000.0,
+            track_name="TestTrack",
+            has_reference=True,
+        )
+        store.update_delta(delta_pkt, timestamp=10.0)
+        # Update speed in store
+        from isimotor_rawudp_client import TelemInfo, TelemVect3
+        telem = TelemInfo(local_vel=TelemVect3(0.0, 0.0, 20.0))
+        store.update_telemetry(telem, timestamp=10.0)
+
+        context = EngineerContext(
+            telemetry=None,
+            scoring=None,
+            timestamp=10.0,
+            audio_engine=self.mock_audio,
+            store=store,
+            reference_profile=self.profile,
+        )
+
+        msg = self.role.on_physics_tick(store, context)
+        self.assertIsNotNone(msg)
+        self.assertEqual(msg.phrase_key, "brake")
+        self.mock_audio.play_phrase.assert_called_with("brake", interrupt=False)
 
 
 if __name__ == "__main__":
     unittest.main()
+

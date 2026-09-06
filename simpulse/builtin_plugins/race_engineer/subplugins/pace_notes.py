@@ -142,18 +142,20 @@ class PaceNotesRole(BaseRole):
 
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
         """Retrieves active reference profile with strict per-track isolation."""
-        scoring_track = ""
-        if context and context.scoring:
-            scoring_track = str(context.scoring.track_name).strip()
-
         if self._custom_profile is not None:
-            ref_track = self._custom_profile.track_name
             # If scoring packet explicitly indicates a different track, invalidate stale profile
-            if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
-                logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")
-                self._custom_profile = None
+            if context and context.scoring and getattr(context.scoring, "track_name", None):
+                scoring_track = str(context.scoring.track_name).strip()
+                ref_track = self._custom_profile.track_name
+                if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
+                    logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")
+                    self._custom_profile = None
+                else:
+                    return self._custom_profile
             else:
                 return self._custom_profile
+
+        scoring_track = context.get_track_name() if context else ""
 
         if context:
             ctx_prof = context.get_reference_profile()
@@ -239,23 +241,26 @@ class PaceNotesRole(BaseRole):
         """
         Evaluates player position relative to track markers on each tick.
         """
-        # Retrieve player vehicle and position info
-        player_veh = context.get_player_vehicle()
-        if not player_veh:
-            return None
-
         if context.is_player_in_garage() or context.is_player_in_pits():
             return None
-
-        # Reset triggered markers on new lap
-        laps_comp = player_veh.total_laps
-        if self._last_laps_completed >= 0 and laps_comp != self._last_laps_completed:
-            self._triggered_ann_ids.clear()
-        self._last_laps_completed = laps_comp
 
         profile = self.get_reference_profile(context)
         if not profile or not profile.annotations:
             return None
+
+        # Authoritative distance and completed laps from StateStore or VehicleScoring fallback
+        player_veh = context.get_player_vehicle()
+        if player_veh is not None:
+            laps_comp = player_veh.total_laps
+            raw_dist = player_veh.lap_dist
+        else:
+            laps_comp = context.get_player_total_laps()
+            raw_dist = context.get_player_lap_dist()
+
+        # Reset triggered markers on new lap
+        if self._last_laps_completed >= 0 and laps_comp != self._last_laps_completed:
+            self._triggered_ann_ids.clear()
+        self._last_laps_completed = laps_comp
 
         # Dynamic detection if marker list or positions changed in real-time
         curr_ann_signature = [(a.id, round(a.distance, 1), a.type.value, a.gear) for a in profile.annotations]
@@ -267,7 +272,7 @@ class PaceNotesRole(BaseRole):
         if (track_len <= 0.0 or track_len == 5000.0) and profile.track_length > 0.0:
             track_len = profile.track_length
 
-        player_dist = player_veh.lap_dist % track_len
+        player_dist = (raw_dist % track_len) if track_len > 0.0 else raw_dist
         player_speed = context.get_player_speed_mps()
 
         # If player is nearly stopped (< 2 m/s), do not anticipate

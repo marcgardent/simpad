@@ -73,8 +73,8 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
 
-        font_size = max(14, int(round(32.0 * scale_y)))
-        y_pos = 170.0 * scale_y
+        font_size = max(14, int(round(28.0 * scale_y)))
+        y_pos = 166.0 * scale_y
 
         font = QFont(self.font_family)
         font.setPixelSize(font_size)

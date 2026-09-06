@@ -19,8 +19,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QPainter, QFontDatabase
+from PySide6.QtCore import QSize, QRectF, QPointF
+from PySide6.QtGui import QPainter, QFontDatabase, QColor, QBrush, QPen, QLinearGradient
 from PySide6.QtWidgets import QWidget
 
 from simpulse_sdk import (
@@ -161,7 +161,10 @@ class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
 
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
         """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
-        pass
+        if state.delta.data is not None:
+            self.latest_delta = state.delta.data
+            if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
+                self._active_tab_widget.update_delta_ui(state.delta.data)
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
         """Called directly on scoring update (10Hz) from central state store."""
@@ -198,6 +201,77 @@ class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
     def is_hud_visible(self) -> bool:
         return self.config.hud_enabled
 
+    def _get_background_rect(self, width: float, height: float) -> QRectF:
+        """Compute bounding rectangle encompassing all displayed HUD widgets."""
+        scale_x = width / 800.0
+        scale_y = (height * 2.0) / 600.0
+        center_x = width / 2.0
+
+        min_x = center_x - (145.0 * scale_x)
+        max_x = center_x + (145.0 * scale_x)
+
+        if getattr(self.config, "show_energy", True):
+            max_x = max(max_x, width - (12.0 * scale_x))
+            min_x = min(min_x, 12.0 * scale_x)
+
+        if getattr(self.config, "show_assists", True):
+            min_x = min(min_x, center_x - (276.0 * scale_x))
+            max_x = max(max_x, center_x + (276.0 * scale_x))
+        elif getattr(self.config, "show_pedals", True):
+            min_x = min(min_x, center_x - (258.0 * scale_x))
+            max_x = max(max_x, center_x + (258.0 * scale_x))
+        elif getattr(self.config, "show_tires", True):
+            min_x = min(min_x, center_x - (224.0 * scale_x))
+            max_x = max(max_x, center_x + (224.0 * scale_x))
+
+        top_y = 6.0 * scale_y
+        bottom_y = height - (4.0 * scale_y)
+
+        min_x = max(3.0, min_x)
+        max_x = min(width - 3.0, max_x)
+
+        return QRectF(min_x, top_y, max_x - min_x, bottom_y - top_y)
+
+    @staticmethod
+    def _paint_hud_background(painter: QPainter, rect: QRectF) -> None:
+        """Render high-tech semi-transparent dark carbon/acrylic chassis container."""
+        painter.save()
+        radius = 10.0
+
+        # Frosted dark motorsport gradient
+        grad = QLinearGradient(rect.left(), rect.top(), rect.left(), rect.bottom())
+        grad.setColorAt(0.0, QColor(15, 23, 42, 225))
+        grad.setColorAt(0.5, QColor(10, 15, 26, 240))
+        grad.setColorAt(1.0, QColor(6, 9, 16, 250))
+
+        painter.setBrush(QBrush(grad))
+        painter.setPen(QPen(QColor(51, 65, 85, 200), 1.5))
+        painter.drawRoundedRect(rect, radius, radius)
+
+        # Neon cyan top edge accent
+        top_glow = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.top())
+        top_glow.setColorAt(0.0, QColor(0, 210, 255, 0))
+        top_glow.setColorAt(0.3, QColor(0, 210, 255, 80))
+        top_glow.setColorAt(0.5, QColor(56, 189, 248, 140))
+        top_glow.setColorAt(0.7, QColor(0, 210, 255, 80))
+        top_glow.setColorAt(1.0, QColor(0, 210, 255, 0))
+
+        glow_pen = QPen(QBrush(top_glow), 2.0)
+        painter.setPen(glow_pen)
+        painter.drawLine(
+            QPointF(rect.left() + radius, rect.top() + 1.0),
+            QPointF(rect.right() - radius, rect.top() + 1.0)
+        )
+
+        # Bottom bezel highlight line
+        painter.setPen(QPen(QColor(30, 41, 59, 130), 1.0))
+        painter.drawLine(
+            QPointF(rect.left() + radius, rect.bottom() - 1.0),
+            QPointF(rect.right() - radius, rect.bottom() - 1.0)
+        )
+
+        painter.restore()
+
     def paint_hud(
         self,
         painter: QPainter,
@@ -209,6 +283,11 @@ class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
         Vector rendering routine for the official SimPulse HUD overlay suite.
         Maps the 800x600 modular widgets perfectly into the allocated slot rect.
         """
+        # 0. Encompassing Dark Cockpit Chassis Background
+        if getattr(self.config, "show_background", True):
+            bg_rect = self._get_background_rect(width, height)
+            self._paint_hud_background(painter, bg_rect)
+
         # Virtual canvas scaling: base 800x600 widgets use top half (0..300)
         canvas_w = width
         canvas_h = height * 2.0

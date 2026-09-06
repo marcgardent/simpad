@@ -17,6 +17,10 @@ from simpulse_sdk.models.delta import (
     SectorInfo,
     DeltaReferenceMode,
 )
+from simpulse_sdk.models.scoring import (
+    BaseTimingState,
+    FullGridScoringState,
+)
 from simpulse_sdk.models.state_store import (
     TelemetryStateStore,
     PacketSlot,
@@ -59,6 +63,8 @@ __all__ = [
     "LapDeltaPacket",
     "SectorInfo",
     "DeltaReferenceMode",
+    "BaseTimingState",
+    "FullGridScoringState",
     "TelemetryStateStore",
     "PacketSlot",
     "TimingStatus",

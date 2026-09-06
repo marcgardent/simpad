@@ -52,14 +52,14 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         center_x = canvas_w / 2.0
 
         sector_w = 90.0 * scale_x
-        sector_h = 28.0 * scale_y
+        sector_h = 24.0 * scale_y
         sector_spacing = 8.0 * scale_x
 
         total_width = (sector_w * 3.0) + (sector_spacing * 2.0)
         start_x = center_x - (total_width / 2.0)
-        sector_y = 210.0 * scale_y
+        sector_y = 198.0 * scale_y
 
-        font_size = max(10, int(round(14.0 * scale_y)))
+        font_size = max(9, int(round(13.0 * scale_y)))
         font = QFont(self.font_family)
         font.setPixelSize(font_size)
         font.setBold(True)

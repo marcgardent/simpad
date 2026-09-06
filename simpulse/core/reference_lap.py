@@ -332,6 +332,11 @@ class ReferenceLapManager(QObject):
 
         packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
         self._last_emitted_packet = packet
+        try:
+            from simpulse.core.telemetry.state_store import TelemetryStateStore
+            TelemetryStateStore.get_instance().update_delta(packet)
+        except Exception:
+            pass
         self.delta_updated.emit(packet)
         return packet
 
@@ -351,6 +356,11 @@ class ReferenceLapManager(QObject):
 
         packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
         self._last_emitted_packet = packet
+        try:
+            from simpulse.core.telemetry.state_store import TelemetryStateStore
+            TelemetryStateStore.get_instance().update_delta(packet)
+        except Exception:
+            pass
 
         # Check lap completion
         if cur_laps > prev_laps and prev_laps >= 0:

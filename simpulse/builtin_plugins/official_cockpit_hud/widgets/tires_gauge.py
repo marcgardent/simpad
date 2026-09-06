@@ -83,30 +83,29 @@ class QtTiresGaugeWidget(BaseQtHudWidget):
         context: CockpitWidgetContext,
     ) -> None:
         sensors = context.sensors
-        alpha = 0.65
-        # 1. Longitudinal Lock (Over-Braking)
-        self.disp_fl_lock = lerp(self.disp_fl_lock, sensors.front_left_lock, alpha)
-        self.disp_fr_lock = lerp(self.disp_fr_lock, sensors.front_right_lock, alpha)
-        self.disp_rl_lock = lerp(self.disp_rl_lock, sensors.rear_left_lock, alpha)
-        self.disp_rr_lock = lerp(self.disp_rr_lock, sensors.rear_right_lock, alpha)
+        # 1. Longitudinal Lock (Over-Braking) - Instant direct response (no LERP)
+        self.disp_fl_lock = float(sensors.front_left_lock)
+        self.disp_fr_lock = float(sensors.front_right_lock)
+        self.disp_rl_lock = float(sensors.rear_left_lock)
+        self.disp_rr_lock = float(sensors.rear_right_lock)
 
         # 2. Longitudinal Spin (Over-Acceleration)
-        self.disp_fl_spin = lerp(self.disp_fl_spin, sensors.front_left_spin, alpha)
-        self.disp_fr_spin = lerp(self.disp_fr_spin, sensors.front_right_spin, alpha)
-        self.disp_rl_spin = lerp(self.disp_rl_spin, sensors.rear_left_spin, alpha)
-        self.disp_rr_spin = lerp(self.disp_rr_spin, sensors.rear_right_spin, alpha)
+        self.disp_fl_spin = float(sensors.front_left_spin)
+        self.disp_fr_spin = float(sensors.front_right_spin)
+        self.disp_rl_spin = float(sensors.rear_left_spin)
+        self.disp_rr_spin = float(sensors.rear_right_spin)
 
         # 3. Lateral Scrub (Magnitude)
-        self.disp_fl_lat = lerp(self.disp_fl_lat, sensors.front_left_lat_slip, alpha)
-        self.disp_fr_lat = lerp(self.disp_fr_lat, sensors.front_right_lat_slip, alpha)
-        self.disp_rl_lat = lerp(self.disp_rl_lat, sensors.rear_left_lat_slip, alpha)
-        self.disp_rr_lat = lerp(self.disp_rr_lat, sensors.rear_right_lat_slip, alpha)
+        self.disp_fl_lat = float(sensors.front_left_lat_slip)
+        self.disp_fr_lat = float(sensors.front_right_lat_slip)
+        self.disp_rl_lat = float(sensors.rear_left_lat_slip)
+        self.disp_rr_lat = float(sensors.rear_right_lat_slip)
 
         # 4. Lateral Scrub Signed (Left -1.0 to Right +1.0)
-        self.disp_fl_lat_s = lerp(self.disp_fl_lat_s, sensors.front_left_lat_signed, alpha)
-        self.disp_fr_lat_s = lerp(self.disp_fr_lat_s, sensors.front_right_lat_signed, alpha)
-        self.disp_rl_lat_s = lerp(self.disp_rl_lat_s, sensors.rear_left_lat_signed, alpha)
-        self.disp_rr_lat_s = lerp(self.disp_rr_lat_s, sensors.rear_right_lat_signed, alpha)
+        self.disp_fl_lat_s = float(sensors.front_left_lat_signed)
+        self.disp_fr_lat_s = float(sensors.front_right_lat_signed)
+        self.disp_rl_lat_s = float(sensors.rear_left_lat_signed)
+        self.disp_rr_lat_s = float(sensors.rear_right_lat_signed)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
