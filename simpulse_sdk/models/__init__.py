@@ -10,7 +10,6 @@ from simpulse_sdk.models.telemetry import (
     TelemetryRawPacket,
     ChannelSample,
     TelemetryPayload,
-    TelemetryWakeReason,
     LmuTelemetryData,
 )
 from simpulse_sdk.models.delta import (
@@ -61,7 +60,6 @@ __all__ = [
     "TelemetryRawPacket",
     "ChannelSample",
     "TelemetryPayload",
-    "TelemetryWakeReason",
     "LmuTelemetryData",
     "LapDeltaPacket",
     "SectorInfo",

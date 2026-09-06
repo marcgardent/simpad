@@ -839,7 +839,7 @@ class EventHookSpyPlugin(SimPulsePlugin):
 def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     """Test that PluginManager dispatches typed polymorphic event hooks to plugins reading from TelemetryStateStore."""
     from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl, SystemEvent
-    from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+    from simpulse.core.telemetry.state_store import TelemetryStateStore
 
 
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
@@ -883,10 +883,6 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
 
     assert len(spy.weather_updates) == 1
     assert spy.weather_updates[0] is True
-
-    # 5. Direct dispatch via dispatch_telemetry_event
-    pm.dispatch_telemetry_event(TelemetryWakeReason.PHYSICS_TICK, store)
-    assert len(spy.physics_ticks) == 2
 
 
 def test_plugin_manager_widget_inspector_on_right(qapp, tmp_path):

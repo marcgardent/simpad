@@ -34,7 +34,7 @@ from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, ITelemetryStateSubscriber,
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
-    LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryWakeReason
+    LapDeltaPacket, VehicleSensors, TelemetryStateStore
 )
 from .base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus
 from .manager import RaceEngineer
@@ -1064,67 +1064,61 @@ class RaceEngineerPlugin(
         pass
 
     # =========================================================================
-    # Polymorphic Telemetry State Event Hooks (Every channel has a dedicated on_ hook)
+    # Polymorphic Telemetry State Event Hooks (channel → evaluation)
     # =========================================================================
+    # Each channel-specific hook triggers a single consolidated evaluation; role code
+    # gates itself on the unified state. (No wake_reason enum: the hook name already
+    # identifies the event, and this plugin no longer reads raw UDP slots.)
 
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """High-frequency physics tick: announce to roles via consolidated view."""
-        self._dispatch_engineer_event(TelemetryWakeReason.PHYSICS_TICK, state)
+        """High-frequency physics tick."""
+        self._evaluate(state)
 
     def on_opponents_tick(self, state: TelemetryStateStore) -> None:
         """Opponent vehicle dynamics tick."""
-        self._dispatch_engineer_event(TelemetryWakeReason.OPPONENTS_TICK, state)
+        self._evaluate(state)
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
         """Compact scoring update (10Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.SCORING_UPDATE, state)
+        self._evaluate(state)
 
     def on_grid_update(self, state: TelemetryStateStore) -> None:
         """Full grid update (2-5Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.GRID_UPDATE, state)
+        self._evaluate(state)
 
     def on_weather_update(self, state: TelemetryStateStore) -> None:
         """Weather update (~1Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.WEATHER_UPDATE, state)
+        self._evaluate(state)
 
     def on_extended_state_update(self, state: TelemetryStateStore) -> None:
         """Vehicle electronics and flags update (5Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
+        self._evaluate(state)
 
     def on_session_event(self, state: TelemetryStateStore) -> None:
         """System / session event."""
-        self._dispatch_engineer_event(TelemetryWakeReason.SYSTEM_EVENT, state)
+        self._evaluate(state)
 
     def on_ffb_update(self, state: TelemetryStateStore) -> None:
         """Force feedback frame."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
+        self._evaluate(state)
 
     def on_graphics_update(self, state: TelemetryStateStore) -> None:
         """Camera / graphics frame."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
+        self._evaluate(state)
 
     def on_track_rules_update(self, state: TelemetryStateStore) -> None:
         """Track rules update."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
+        self._evaluate(state)
 
     def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
         """Pit menu update."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
+        self._evaluate(state)
 
-    def _dispatch_engineer_event(
-        self,
-        wake_reason: TelemetryWakeReason,
-        state: TelemetryStateStore,
-        trigger_packet: Optional[TelemetryTriggerPacket] = None,
-    ) -> None:
+    def _evaluate(self, state: TelemetryStateStore) -> None:
         if not self.engineer.enabled:
             return
 
-        emitted_messages = self.engineer.update(
-            store=state,
-            wake_reason=wake_reason,
-            trigger_packet=trigger_packet,
-        )
+        emitted_messages = self.engineer.update(store=state)
 
         for msg in emitted_messages:
             self._radio_bridge.radio_message.emit(msg)

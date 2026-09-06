@@ -35,7 +35,6 @@ from simpulse_sdk import (
     VehicleSensors,
     TelemetryStateStore,
     TelemetryPluginView,
-    TelemetryWakeReason,
 )
 
 
@@ -372,17 +371,6 @@ class PluginManager(QObject):
         TelemetryChannel.PIT_MENU: ("update_pit_menu", "on_pit_menu_update"),
     }
 
-    # Declarative wake reason routing: wake_reason -> plugin_hook_name
-    WAKE_REASON_ROUTING: Dict[TelemetryWakeReason, str] = {
-        TelemetryWakeReason.PHYSICS_TICK: "on_physics_tick",
-        TelemetryWakeReason.OPPONENTS_TICK: "on_opponents_tick",
-        TelemetryWakeReason.SCORING_UPDATE: "on_scoring_update",
-        TelemetryWakeReason.GRID_UPDATE: "on_grid_update",
-        TelemetryWakeReason.WEATHER_UPDATE: "on_weather_update",
-        TelemetryWakeReason.SYSTEM_EVENT: "on_session_event",
-        TelemetryWakeReason.STATE_CHANGE: "on_extended_state_update",
-    }
-
     def dispatch_packet(self, packet: TelemetryRawPacket) -> None:
         """
         Ingests a specific channel raw packet into the central TelemetryStateStore
@@ -435,35 +423,6 @@ class PluginManager(QObject):
                         hook(store)
                     else:
                         hook(TelemetryPluginView(store))
-                    self._error_counts[pid] = 0
-                except Exception as e:
-                    self._handle_plugin_error(pid, plugin_hook_name, e)
-
-    def dispatch_telemetry_event(
-        self,
-        wake_reason: TelemetryWakeReason,
-        state: Optional[TelemetryStateStore] = None,
-    ) -> None:
-        """
-        Directly dispatch a typed telemetry event to all active plugins using O(1) table routing.
-        """
-        plugin_hook_name = self.WAKE_REASON_ROUTING.get(wake_reason)
-        if not plugin_hook_name:
-            return
-
-        active_store = state or TelemetryStateStore.get_instance()
-
-        for pid, p in list(self._plugins.items()):
-            if p.state != PluginState.ENABLED:
-                continue
-
-            hook = getattr(p, plugin_hook_name, None)
-            if hook is not None:
-                try:
-                    if getattr(p, "_REQUIRE_RAW_INGEST", False):
-                        hook(active_store)
-                    else:
-                        hook(TelemetryPluginView(active_store))
                     self._error_counts[pid] = 0
                 except Exception as e:
                     self._handle_plugin_error(pid, plugin_hook_name, e)

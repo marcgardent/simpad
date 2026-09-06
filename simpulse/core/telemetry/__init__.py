@@ -1,7 +1,7 @@
 """Package telemetry."""
 
 from .sensors import VehicleSensors
-from .state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
+from .state_store import TelemetryStateStore, PacketSlot
 from .lmu_parser import LMUParser, TelemetryData, format_time_sec
 from .delta_engine import DeltaEngine, DeltaReferenceMode, format_lap_time
 from .udp_server import UDPServer
@@ -27,7 +27,6 @@ from isimotor_rawudp_client import (
 __all__ = [
     "VehicleSensors",
     "TelemetryStateStore",
-    "TelemetryWakeReason",
     "PacketSlot",
     "LMUParser",
     "TelemetryData",

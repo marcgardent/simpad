@@ -1,10 +1,10 @@
 """
-Unit tests for SimPulse Central TelemetryStateStore and TelemetryWakeReason pipeline.
+Unit tests for SimPulse Central TelemetryStateStore and its pipeline.
 """
 
 import time
 import unittest
-from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason, PacketSlot
+from simpulse.core.telemetry.state_store import TelemetryStateStore, PacketSlot
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
 from isimotor_rawudp_client import (
@@ -95,23 +95,22 @@ class TestTelemetryStateStore(unittest.TestCase):
         self.assertTrue(self.store.is_on_track)
         self.assertEqual(self.store.lap_flag, 1)  # Still under investigation
 
-    def test_engineer_context_wake_reason_dispatch(self):
-        """Verify EngineerContext and RaceEngineer dispatch wake reasons correctly."""
+    def test_engineer_context_ingests_direct_packets(self):
+        """Verify RaceEngineer voluntary ingestion populates the consolidated store."""
         played = []
         engineer = RaceEngineer(audio_engine=lambda pk, interrupt=False: played.append(pk), auto_load_builtin_roles=False)
 
-        # Process with wake_reason
-        ctx_telem = engineer.update(
+        # Telemetry (voluntary ingest path)
+        engineer.update(
             telemetry=TelemInfo(local_vel=TelemVect3(x=0.0, y=0.0, z=30.0)),
             store=self.store,
-            wake_reason=TelemetryWakeReason.PHYSICS_TICK,
         )
         self.assertEqual(self.store.telemetry.is_fresh(), True)
 
-        ctx_scoring = engineer.update(
+        # Scoring (voluntary ingest path)
+        engineer.update(
             scoring=CompactScoring(count_lap_flag=2),
             store=self.store,
-            wake_reason=TelemetryWakeReason.SCORING_UPDATE,
         )
     def test_lap_validity_stateless_transitions(self):
         """Verify TelemetryStateStore processes lap validity transitions and exposes clean shared properties."""

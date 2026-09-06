@@ -27,18 +27,6 @@ from .delta import LapDeltaPacket
 T = TypeVar("T")
 
 
-class TelemetryWakeReason(Enum):
-    """Specifies which UDP channel / event woke up the processing pipeline."""
-    PHYSICS_TICK = "physics_tick"              # TelemInfo (120Hz)
-    OPPONENTS_TICK = "opponents_tick"          # Opponent TelemInfo (10-20Hz)
-    SCORING_UPDATE = "scoring_update"          # CompactScoring (10Hz)
-    GRID_UPDATE = "grid_update"                # FullScoringSession (2-5Hz)
-    WEATHER_UPDATE = "weather_update"          # WeatherControl (1-2Hz)
-    SYSTEM_EVENT = "session_event"             # SystemEvents
-    STATE_CHANGE = "state_change"              # ExtendedState / Graphics / FFB
-    MANUAL_EVALUATION = "manual_evaluation"    # Triggered manually / in tests
-
-
 class TimingStatus(str, Enum):
     """Authoritative lap timing validity status according to game flag."""
     TIMING_IN_PROGRESS = "timing_in_progress"

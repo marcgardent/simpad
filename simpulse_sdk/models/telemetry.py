@@ -23,7 +23,6 @@ from isimotor_rawudp_client import (
     SystemEvent,
 )
 
-from simpulse_sdk.models.state_store import TelemetryWakeReason
 from simpulse_sdk.models.delta import SectorInfo
 
 

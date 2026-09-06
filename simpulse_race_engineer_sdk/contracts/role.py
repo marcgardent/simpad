@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, List, Tuple, Callable, Union, Any, TYPE_CHECKING
 from simpulse_sdk import (
     TelemetryStateStore,
-    TelemetryWakeReason,
     ChannelRequirement,
     RoleParam,
     ParamScalarValue,
@@ -107,35 +106,6 @@ class BaseRole(ABC):
     ) -> Optional[EngineerMessage]:
         """Hook called on track limits violations."""
         return None
-
-    def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
-        """
-        Default polymorphic dispatcher. Routes evaluation to the specific event hook
-        based on context.wake_reason.
-        """
-        wake = context.wake_reason
-        store = context.state_store
-        if wake is not None:
-            if wake == TelemetryWakeReason.PHYSICS_TICK:
-                return self.on_physics_tick(store, context)
-            elif wake == TelemetryWakeReason.SCORING_UPDATE:
-                return self.on_scoring_update(store, context)
-            elif wake == TelemetryWakeReason.GRID_UPDATE:
-                return self.on_grid_update(store, context)
-            elif wake == TelemetryWakeReason.WEATHER_UPDATE:
-                return self.on_weather_update(store, context)
-            elif wake == TelemetryWakeReason.SYSTEM_EVENT:
-                return self.on_session_event(store, context)
-            elif wake == TelemetryWakeReason.LAP_TRANSITION:
-                return self.on_lap_transition(store, context)
-            elif wake == TelemetryWakeReason.TRACK_LIMITS:
-                return self.on_track_limits(store, context)
-
-        # Fallback evaluation for manual/unspecified triggers
-        msg = self.on_physics_tick(store, context)
-        if msg is not None:
-            return msg
-        return self.on_scoring_update(store, context)
 
     def reset(self) -> None:
         """Resets internal role state."""

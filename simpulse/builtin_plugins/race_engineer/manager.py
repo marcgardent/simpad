@@ -14,19 +14,13 @@ from isimotor_rawudp_client import TelemInfo, FullScoringSession, CompactScoring
 from .base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus, AudioEngineType
 from .context import EngineerContext, TelemetryTriggerPacket
 from .factory import RoleFactory
-from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 from simpulse.core.telemetry_channels import ChannelRequirement, TelemetryChannel
 from .params import ParamScalarValue
 from simpulse.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger(__name__)
-
-_PACKET_WAKE_REASONS = {
-    TelemInfo: TelemetryWakeReason.PHYSICS_TICK,
-    FullScoringSession: TelemetryWakeReason.GRID_UPDATE,
-    CompactScoring: TelemetryWakeReason.SCORING_UPDATE,
-}
 
 _SCORING_STORE_UPDATERS = {
     FullScoringSession: lambda store, s, now: store.update_full_scoring(s, now),
@@ -316,13 +310,11 @@ class RaceEngineer:
         telemetry: Optional[TelemInfo] = None,
         scoring: Optional[Union[FullScoringSession, CompactScoring]] = None,
         store: Optional[TelemetryStateStore] = None,
-        wake_reason: Optional[TelemetryWakeReason] = None,
-        trigger_packet: Optional[TelemetryTriggerPacket] = None,
     ) -> List[EngineerMessage]:
         """
-        Main evaluation tick called upon incoming telemetry/scoring packets.
-        Synchronizes state, evaluates all roles by descending priority, arbitrates audio,
-        and returns list of emitted messages.
+        Main evaluation tick. Ingest state (optional direct packets), then evaluate all
+        roles by descending priority over the consolidated EngineerContext.
+        (No wake_reason: the invocation site already identifies which event arrived.)
         """
         if not self.enabled:
             return []
@@ -338,20 +330,9 @@ class RaceEngineer:
             if updater:
                 updater(active_store, scoring, now)
 
-        if wake_reason is None:
-            if trigger_packet is not None:
-                wake_reason = _PACKET_WAKE_REASONS.get(type(trigger_packet), TelemetryWakeReason.MANUAL_EVALUATION)
-            elif telemetry is not None:
-                wake_reason = TelemetryWakeReason.PHYSICS_TICK
-            elif scoring is not None:
-                wake_reason = _PACKET_WAKE_REASONS.get(type(scoring), TelemetryWakeReason.SCORING_UPDATE)
-            else:
-                wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
-
         # Context is assembled only from consolidated inputs. Raw scoring/telemetry are
         # never re-read from the store here: PluginManager already ingested the frame
-        # before calling the polymorphic hook (update_*), and roles consume timing/grid
-        # façades through EngineerContext instead of raw packet references.
+        # before calling the polymorphic hook, and roles consume timing/grid façades.
         context = EngineerContext(
             telemetry=telemetry,
             scoring=scoring,
@@ -359,8 +340,6 @@ class RaceEngineer:
             audio_engine=self.audio_engine,
             reference_profile=self._get_active_reference_profile(),
             store=active_store,
-            wake_reason=wake_reason,
-            trigger_packet=trigger_packet,
         )
 
         emitted_messages: List[EngineerMessage] = []

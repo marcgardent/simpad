@@ -15,7 +15,6 @@ from isimotor_rawudp_client import (
 )
 from simpulse_sdk import (
     TelemetryStateStore,
-    TelemetryWakeReason,
     TelemetryRawPacket,
 )
 from .message import EngineerMessage
@@ -37,9 +36,6 @@ class EngineerContext:
 
     # Normalized telemetry timestamp
     timestamp: float = 0.0
-
-    # Wake reason for the pipeline tick
-    wake_reason: Optional[TelemetryWakeReason] = None
 
     # Reference profile for track annotations / line
     reference_profile: Optional[Any] = None

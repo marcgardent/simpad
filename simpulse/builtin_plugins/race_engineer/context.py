@@ -18,7 +18,7 @@ from isimotor_rawudp_client import (
 )
 
 from .base import AudioEngineType
-from simpulse.core.telemetry.state_store import TelemetryStateStore, TelemetryWakeReason
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 from simpulse.core.telemetry_channels import TelemetryRawPacket
 
@@ -54,7 +54,6 @@ class EngineerContext:
     audio_engine: Optional[AudioEngineType] = None
     reference_profile: Optional[ReferenceLapProfile] = None
     store: Optional[TelemetryStateStore] = None
-    wake_reason: TelemetryWakeReason = TelemetryWakeReason.MANUAL_EVALUATION
     trigger_packet: Optional[TelemetryTriggerPacket] = None
 
     @property
