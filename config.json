@@ -5,7 +5,7 @@
     "overlay_enabled": true,
     "mock_telemetry": false,
     "hud_debug_boxes": false,
-    "delta_reference_mode": "all_time_best",
+    "delta_reference_mode": "session_best",
     "delta_freeze_duration": 3.5,
     "delta_ema_samples": 0,
     "abs_threshold": 0.15,

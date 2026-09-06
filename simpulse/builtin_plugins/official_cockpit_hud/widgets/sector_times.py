@@ -7,6 +7,42 @@ from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
 from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
+# IHM-only presentation: the model may deliver the same frozen split under either
+# '38.437' (parser seconds form) or '00:38.437' (delta engine). Both mean the same
+# time. The model is not forced to a format; the widget canonicalises the drawn
+# string itself so a frozen box never changes width for the same value.
+_EMPTY_TIME_VALUES = ("", "--", "--:--.---")
+
+
+def _present_split_time(value: str) -> str:
+    """Paint helper: render a frozen sector split time in MM:ss.mmm form."""
+    raw = (value or "").strip()
+    if raw in _EMPTY_TIME_VALUES:
+        return "--" if raw in ("", "--") else raw
+    # Already in an M:ss.mmm or MM:ss.mmm spelling (minutes present) -> unchanged,
+    # this spelling is stable beween both authors.
+    if ":" in raw:
+        try:
+            head, _, tail = raw.partition(":")
+            float(tail)
+            int(head)
+            return raw
+        except ValueError:
+            pass
+    # Pure seconds "ss.mmm" (LMUParser compact form) -> present as MM:ss.mmm.
+    try:
+        total = float(raw)
+    except ValueError:
+        return raw  # unknown literal: pass through untouched (no width guarantee)
+    if total <= 0.0:
+        return "--"
+    mins = int(total // 60)
+    rest = total % 60.0
+    if mins > 0:
+        return f"{mins}:{rest:06.3f}"
+    return f"00:{rest:06.3f}"
+
+
 class QtSectorTimesWidget(BaseQtHudWidget):
     """
     Lap Sectors S1, S2, S3 (Positioned below Delta and Gear).
@@ -25,6 +61,10 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     ) -> None:
         sensors = context.sensors
         sectors = sensors.sectors_list
+
+        _cap_text: list = []   # exact strings painted, per box 0..2 (diagnostic)
+        _cap_mode: list = []   # 'live' | 'frozen' per box (diagnostic)
+        _cap_bg: list = []     # (r,g,b) background painted per box (diagnostic)
 
         curr_sec = sensors.current_sector
         if curr_sec != self._last_rendered_sector:
@@ -87,8 +127,9 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
             else:
-                # Sector completed or waiting -> Display frozen sector time
-                disp_text = s_time
+                # Sector completed or waiting -> frozen split time, presented in a
+                # stable IHM format whatever the model spelling ('38.437' or '00:38.437').
+                disp_text = _present_split_time(s_time)
                 if s_status == "invalid":
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
@@ -98,11 +139,17 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                 elif s_status == "purple":
                     bg_color = QColor(147, 51, 234, 255)
                     border_color = QColor(168, 85, 247, 255)
+                elif s_status == "pink":
+                    bg_color = QColor(236, 72, 153, 255)
+                    border_color = QColor(255, 105, 180, 255)
                 else:
                     bg_color = QColor(15, 23, 42, 255)
                     border_color = QColor(51, 65, 85, 255)
 
             # Marked white border for current active sector
+            _cap_text.append(disp_text)
+            _cap_mode.append("live" if (is_current and delta_str != "--") else "frozen")
+            _cap_bg.append((int(bg_color.red()), int(bg_color.green()), int(bg_color.blue())))
             if is_current:
                 border_color = QColor(255, 255, 255, 255)
                 pen_width = 2
@@ -118,3 +165,11 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             # Time text
             painter.setPen(QPen(QColor(255, 255, 255, 255)))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, disp_text)
+
+        # --- diagnostic paint logger (opt-in, no behaviour change) ---
+        try:
+            if _cap_text:
+                from simpulse.builtin_plugins.official_cockpit_hud.widgets.sector_paint_recorder import record
+                record(int(sensors.current_sector), tuple(_cap_text), tuple(_cap_mode), tuple(_cap_bg))
+        except Exception:
+            pass

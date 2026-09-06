@@ -104,12 +104,37 @@ class TestSectorTimeFreeze(unittest.TestCase):
         self.assertNotIn(self.engine._last_sector1_time, ("--", "--:--.---"))
         self.assertNotIn(self.engine._last_sector3_time, ("--", "--:--.---"))
 
-    def test_status_green_when_under_personal_best(self):
-        """A current-lap split better than the personal best S1 is colored 'green'."""
+    def test_status_split_beats_personal_fixture_is_pink(self):
+        """A split better than the personal best (single/personal-only reference)
+        shows pink; purple is reserved for when a genuine session best is stricter
+        than the personal best (i.e. only when another car improved it)."""
         self.engine.update_scoring(_mk_scoring(sec=1, cur_s1=0.0))
         self.engine.update_scoring(_mk_scoring(sec=2, cur_s1=9.0, cur_s2=0.0, best_s1=19.0))
-        self.assertEqual(self.engine._last_sector1_status, "green")
+        self.assertEqual(self.engine._last_sector1_status, "pink")
         self.assertEqual(self.engine._last_sector1_time, "00:09.000")
+
+
+class TestFrozenBoxStableSpelling(unittest.TestCase):
+    """IHM presentation: a frozen box must never change width for the same value.
+    Model may spell the same 38.437 s as '38.437' or '00:38.437' depending on the
+    emitting path; the widget formatter renders both identically."""
+
+    def test_same_value_same_presentation(self):
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets.sector_times import _present_split_time
+        self.assertEqual(_present_split_time("38.437"), "00:38.437")
+        self.assertEqual(_present_split_time("00:38.437"), "00:38.437")
+
+    def test_over_minute_seconds_form_over_minute_and_unchanged(self):
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets.sector_times import _present_split_time
+        self.assertEqual(_present_split_time("92.410"), "1:32.410")
+        self.assertEqual(_present_split_time("125.008"), "2:05.008")
+        self.assertEqual(_present_split_time("1:05.300"), "1:05.300")
+
+    def test_sentinels_and_empty_kept(self):
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets.sector_times import _present_split_time
+        self.assertEqual(_present_split_time("--"), "--")
+        self.assertEqual(_present_split_time(""), "--")
+        self.assertEqual(_present_split_time("--:--.---"), "--:--.---")
 
 
 if __name__ == "__main__":

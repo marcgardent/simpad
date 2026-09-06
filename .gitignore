@@ -29,6 +29,7 @@ dist/
 
 # CLI & Internal Tools
 .antigravitycli/
+.codewhale/
 
 # Data & Log Dumps
 *.log

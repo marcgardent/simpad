@@ -278,12 +278,14 @@ class LMUParser:
 
     @classmethod
     def _calculate_sector_status(cls, val: float, best_val: float, session_best: float) -> str:
-        """Determines sector time status color (purple, green, or default)."""
-        if session_best < 999900.0 and val <= (session_best + 0.001):
-            return "purple"
-        elif best_val > 0.0 and val <= (best_val + 0.001):
-            return "green"
-        return "default"
+        """Determines sector split colour using the single shared rule.
+
+        Kept as a thin helper for existing call sites; the decision now lives in
+        core.telemetry.sector_colors.sector_split_status so every consumer of a
+        completed sector box yields the same colour for the same split.
+        """
+        from .sector_colors import sector_split_status
+        return sector_split_status(val, personal_best=best_val, session_best=session_best, source="lmu")
 
     @classmethod
     def _calculate_session_bests(cls, vehicles: list) -> Tuple[float, float, float]:
