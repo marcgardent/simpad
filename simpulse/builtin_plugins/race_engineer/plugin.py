@@ -955,13 +955,6 @@ class RaceEngineerPlugin(
     and dispatches telemetry and raw packets to all sub-plugins.
     """
 
-    # Ingest-layer capability: this plugin is the official channel ingest point for the
-    # engineer roles. It drops the current decoded packet straight into the engineer
-    # manager (idempotent re-ingest already consolidated by PluginManager before the
-    # hook). Granting raw access is an explicit, deliberate declaration - everything
-    # else consumed below goes through the consolidated view.
-    _REQUIRE_RAW_INGEST = True
-
     def __init__(self):
         super().__init__(PluginMetadata(
             id="simpulse.builtin.race_engineer",
@@ -1075,48 +1068,48 @@ class RaceEngineerPlugin(
     # =========================================================================
 
     def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on high-frequency physics tick (100-120Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.PHYSICS_TICK, state, state.telemetry.data)
+        """High-frequency physics tick: announce to roles via consolidated view."""
+        self._dispatch_engineer_event(TelemetryWakeReason.PHYSICS_TICK, state)
 
     def on_opponents_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on opponent vehicle dynamics tick (10-20Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.OPPONENTS_TICK, state, state.opponent_telemetry.data)
+        """Opponent vehicle dynamics tick."""
+        self._dispatch_engineer_event(TelemetryWakeReason.OPPONENTS_TICK, state)
 
     def on_scoring_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on compact scoring update (10Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.SCORING_UPDATE, state, state.compact_scoring.data)
+        """Compact scoring update (10Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.SCORING_UPDATE, state)
 
     def on_grid_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on full grid update (2-5Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.GRID_UPDATE, state, state.full_scoring.data)
+        """Full grid update (2-5Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.GRID_UPDATE, state)
 
     def on_weather_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on weather update (~1Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.WEATHER_UPDATE, state, state.weather.data)
+        """Weather update (~1Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.WEATHER_UPDATE, state)
 
     def on_extended_state_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on vehicle electronics and flags update (5Hz)."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.extended_state.data)
+        """Vehicle electronics and flags update (5Hz)."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
 
     def on_session_event(self, state: TelemetryStateStore) -> None:
-        """Called directly on system / session event."""
-        self._dispatch_engineer_event(TelemetryWakeReason.SYSTEM_EVENT, state, state.system.data)
+        """System / session event."""
+        self._dispatch_engineer_event(TelemetryWakeReason.SYSTEM_EVENT, state)
 
     def on_ffb_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on force feedback frame."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.force_feedback.data)
+        """Force feedback frame."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
 
     def on_graphics_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on camera / graphics frame."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.graphics.data)
+        """Camera / graphics frame."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
 
     def on_track_rules_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on track rules update."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.track_rules.data)
+        """Track rules update."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
 
     def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
-        """Called directly on pit menu update."""
-        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state, state.pit_menu.data)
+        """Pit menu update."""
+        self._dispatch_engineer_event(TelemetryWakeReason.STATE_CHANGE, state)
 
     def _dispatch_engineer_event(
         self,

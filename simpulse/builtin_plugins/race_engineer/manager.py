@@ -348,12 +348,13 @@ class RaceEngineer:
             else:
                 wake_reason = TelemetryWakeReason.MANUAL_EVALUATION
 
-        effective_telem = telemetry if telemetry is not None else active_store.telemetry.data
-        effective_scoring = scoring if scoring is not None else (active_store.full_scoring.data or active_store.compact_scoring.data)
-
+        # Context is assembled only from consolidated inputs. Raw scoring/telemetry are
+        # never re-read from the store here: PluginManager already ingested the frame
+        # before calling the polymorphic hook (update_*), and roles consume timing/grid
+        # façades through EngineerContext instead of raw packet references.
         context = EngineerContext(
-            telemetry=effective_telem,
-            scoring=effective_scoring,
+            telemetry=telemetry,
+            scoring=scoring,
             timestamp=now,
             audio_engine=self.audio_engine,
             reference_profile=self._get_active_reference_profile(),

@@ -209,11 +209,8 @@ class EngineerContext:
 
     @property
     def has_scoring_packet(self) -> bool:
-        """True if the raw scoring ingress slot received a packet (existence probe only)."""
-        store = self._resolve_state_store()
-        if store is None:
-            return False
-        return store.compact_scoring.data is not None or store.full_scoring.data is not None
+        """True when consolidated scoring state is present (view-safe; no raw slot access)."""
+        return self.scoring_available
 
     def get_session_type(self) -> int:
         """
