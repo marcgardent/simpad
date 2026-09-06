@@ -45,14 +45,21 @@ class EngineerContext:
     reference_profile: Optional[Any] = None
 
     def get_track_name(self) -> str:
-        """Returns clean track name from active scoring or reference profile."""
+        """Returns clean track name from the unified state (timing/grid/delta) or reference profile."""
         if self.state_store:
-            cs = self.state_store.compact_scoring.data
-            if cs and cs.track_name:
-                return cs.track_name
-            fs = self.state_store.full_scoring.data
-            if fs and fs.track_name:
-                return fs.track_name
+            store = self.state_store
+            if store.timing is not None and getattr(store.timing, "track_name", ""):
+                name = str(store.timing.track_name).strip()
+                if name:
+                    return name
+            if store.grid is not None and getattr(store.grid, "track_name", ""):
+                name = str(store.grid.track_name).strip()
+                if name:
+                    return name
+            if store.delta.data is not None and getattr(store.delta.data, "track_name", ""):
+                name = str(store.delta.data.track_name).strip()
+                if name:
+                    return name
         if self.reference_profile and getattr(self.reference_profile, "track_name", None):
             return str(self.reference_profile.track_name)
         return ""

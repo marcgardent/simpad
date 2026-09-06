@@ -143,9 +143,9 @@ class PaceNotesRole(BaseRole):
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
         """Retrieves active reference profile with strict per-track isolation."""
         if self._custom_profile is not None:
-            # If scoring packet explicitly indicates a different track, invalidate stale profile
-            if context and context.scoring and getattr(context.scoring, "track_name", None):
-                scoring_track = str(context.scoring.track_name).strip()
+            # If the unified session state explicitly indicates a different track, invalidate stale profile
+            if context is not None:
+                scoring_track = context.get_track_name()
                 ref_track = self._custom_profile.track_name
                 if scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track):
                     logger.warning(f"[PaceNotesRole] Invalidating custom profile for '{ref_track}' because active circuit is '{scoring_track}'")

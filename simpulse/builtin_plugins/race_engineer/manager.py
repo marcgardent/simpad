@@ -294,7 +294,7 @@ class RaceEngineer:
             return 0, 0
 
     def _get_active_reference_profile(self) -> Optional[ReferenceLapProfile]:
-        """Resolves active reference lap profile from Core ReferenceLapManager."""
+        """Resolves the active reference lap profile from Core ReferenceLapManager (unified engine)."""
         try:
             from simpulse.core.reference_lap import ReferenceLapManager
             ref_mgr = ReferenceLapManager.get_instance()
@@ -302,14 +302,11 @@ class RaceEngineer:
                 prof = ref_mgr.get_active_profile()
                 if prof:
                     return prof
-        except Exception:
-            pass
-
-        try:
-            from simpulse.core.telemetry.lmu_parser import LMUParser
-            delta_eng = LMUParser._delta_engine
-            if delta_eng:
-                return delta_eng.all_time_best_profile or delta_eng.current_profile
+                engine = getattr(ref_mgr, "delta_engine", None)
+                if engine is not None:
+                    prof = engine.all_time_best_profile or engine.current_profile
+                    if prof:
+                        return prof
         except Exception:
             pass
         return None

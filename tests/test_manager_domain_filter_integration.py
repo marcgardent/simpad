@@ -118,10 +118,10 @@ def test_manager_injects_reference_profile_into_context():
 
     scoring_normal = _scoring_both_in_domain()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
-        MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
-        MockLMU._delta_engine = mock_delta_engine
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
+        ref_mgr_mock = MockRefMgr.get_instance.return_value
+        ref_mgr_mock.delta_engine = mock_delta_engine
+        ref_mgr_mock.get_active_profile.return_value = profile
 
         # Les deux dans le domaine → doit être filtré (pas d'alerte)
         messages = engineer.update(scoring=scoring_normal)
@@ -157,10 +157,10 @@ def test_manager_domain_filter_allows_anomaly():
 
     scoring_crash = _scoring_player_crashed()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
-        MockRefMgr.get_instance.return_value.get_active_profile.return_value = profile
-        MockLMU._delta_engine = mock_delta_engine
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
+        ref_mgr_mock = MockRefMgr.get_instance.return_value
+        ref_mgr_mock.delta_engine = mock_delta_engine
+        ref_mgr_mock.get_active_profile.return_value = profile
 
         # Joueur hors domaine → l'alerte DOIT passer
         messages = engineer.update(scoring=scoring_crash)
@@ -193,10 +193,10 @@ def test_manager_no_profile_bypasses_filter():
 
     scoring = _scoring_both_in_domain()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr, \
-         patch("simpulse.core.telemetry.lmu_parser.LMUParser") as MockLMU:
-        MockRefMgr.get_instance.return_value.get_active_profile.return_value = None
-        MockLMU._delta_engine = mock_delta_engine
+    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
+        ref_mgr_mock = MockRefMgr.get_instance.return_value
+        ref_mgr_mock.delta_engine = mock_delta_engine
+        ref_mgr_mock.get_active_profile.return_value = None
 
         # Sans profil, le filtre est bypassé → l'alerte passe (fail-open)
         messages = engineer.update(scoring=scoring)

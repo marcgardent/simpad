@@ -123,3 +123,4 @@ class FullGridScoringState(BaseTimingState):
     num_vehicles: int = 0
     vehicles: List[VehicleScoring] = field(default_factory=list)
     leaderboard: List[VehicleScoring] = field(default_factory=list)
+    player_vehicle: Optional[VehicleScoring] = None

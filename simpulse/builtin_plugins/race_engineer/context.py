@@ -156,20 +156,52 @@ class EngineerContext:
         """Authoritative brake percentage (0-100%)."""
         return self.state_store.brake_pct
 
+    # ------------------------------------------------------------------ #
+    # Unified scoring façade (roles NEVER read the raw scoring packets)
+    # ------------------------------------------------------------------ #
+
+    @property
+    def active_session(self) -> Optional[int]:
+        """Authoritative session code from the unified timing state.
+        Returns None when this context has no scoring source (does not read the global
+        singleton residue of unrelated contexts).
+        """
+        if self.scoring is None and self.store is None:
+            return None
+        # state_store syncs the context-scoring into the unified models before reading.
+        store = self.state_store
+        # BaseTimingState is fed by CompactScoring (10 Hz) and also re-derived from a
+        # FullScoringSession when only Full is available; it is the common session source.
+        base = store.timing if store.timing is not None else store.grid
+        if base is None:
+            return None
+        return int(getattr(base, "session", 0))
+
+    @property
+    def grid_available(self) -> bool:
+        """True when a FullScoringSession (grid/leaderboard) has been ingested."""
+        return self.state_store.grid is not None
+
+    @property
+    def scoring_available(self) -> bool:
+        """True when any scoring timing state has been ingested (Compact or Full)."""
+        store = self.state_store
+        return (store.timing is not None and bool(store.timing.track_name)) or store.grid is not None
+
+    @property
+    def has_scoring_packet(self) -> bool:
+        """True if at least one raw scoring packet was received during this session."""
+        store = self.state_store
+        return store.compact_scoring.data is not None or store.full_scoring.data is not None
 
     def get_session_type(self) -> int:
         """
-        Returns session code received from scoring packet (LMU / rF2):
-        0 = TestDay
-        1..4 = Practice (FP1 to FP4)
-        5..8 = Qualifying (Q1 to Q4 / Hyperpole / Private Qual)
-        9 = Warmup
-        10..13 = Race (Race 1 to 4)
-        Returns -1 if unavailable.
+        Returns session code from the unified scoring state (LMU / rF2):
+        0 = TestDay, 1..4 = Practice, 5..8 = Qualifying, 9 = Warmup,
+        10..13 = Race. Returns -1 when unavailable.
         """
-        if self.scoring is not None:
-            return self.scoring.session
-        return -1
+        sess = self.active_session
+        return sess if sess is not None else -1
 
     def is_qualifying_session(self) -> bool:
         """Indicates whether active session is a qualifying session (session between 5 and 8 inclusive)."""
@@ -184,35 +216,27 @@ class EngineerContext:
         return self.is_qualifying_session()
 
     def get_track_name(self) -> str:
-        """Returns active track name from scoring packet, reference profile, or state store."""
-        if self.scoring is not None and getattr(self.scoring, "track_name", None):
-            name = str(self.scoring.track_name).strip()
-            if name:
-                return name
+        """Returns active track name from the unified state (timing/grid/delta) or reference profile."""
+        if self.store is not None or TelemetryStateStore._instance is not None:
+            store = self.state_store
+            # Unifi timing is the 10 Hz source of truth for the track name.
+            if store.timing is not None and getattr(store.timing, "track_name", ""):
+                name = str(store.timing.track_name).strip()
+                if name:
+                    return name
+            if store.grid is not None and getattr(store.grid, "track_name", ""):
+                name = str(store.grid.track_name).strip()
+                if name:
+                    return name
+            if store.delta.data is not None and store.delta.data.track_name:
+                name = str(store.delta.data.track_name).strip()
+                if name:
+                    return name
 
         if self.reference_profile is not None and self.reference_profile.track_name:
             ref_name = str(self.reference_profile.track_name).strip()
             if ref_name:
                 return ref_name
-
-        if self.store is not None or TelemetryStateStore._instance is not None:
-            store = self.state_store
-            if store.compact_scoring.data is not None and getattr(store.compact_scoring.data, "track_name", None):
-                name = str(store.compact_scoring.data.track_name).strip()
-                if name:
-                    return name
-
-            if store.delta.data is not None and store.delta.data.track_name:
-                name = str(store.delta.data.track_name).strip()
-                if name:
-                    return name
-        try:
-            from simpulse.core.telemetry.lmu_parser import LMUParser
-            delta_eng = LMUParser._delta_engine
-            if delta_eng and delta_eng.track_name:
-                return delta_eng.track_name
-        except Exception:
-            pass
         return ""
 
     def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
@@ -229,19 +253,23 @@ class EngineerContext:
             return self.reference_profile
 
         try:
-            from simpulse.core.telemetry.lmu_parser import LMUParser
-            delta_eng = LMUParser._delta_engine
-            if delta_eng:
-                # Track engineer (traffic, markers) always uses all-time best reference lap
-                prof = delta_eng.all_time_best_profile or delta_eng.current_profile
-                if prof:
-                    ref_track = prof.track_name
-                    if scoring_track and ref_track:
-                        t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
-                        t2 = "".join(c for c in ref_track if c.isalnum()).lower()
-                        if t1 and t2 and t1 != t2:
-                            return None
-                    return prof
+            from simpulse.core.reference_lap import ReferenceLapManager
+            ref_mgr = ReferenceLapManager.get_instance()
+            # The unified live engine is the source of truth for reference lap profiles.
+            engine = getattr(ref_mgr, "delta_engine", None)
+            prof = None
+            if engine is not None:
+                prof = engine.all_time_best_profile or engine.current_profile
+            if prof is None:
+                prof = ref_mgr.get_active_profile()
+            if prof:
+                ref_track = prof.track_name
+                if scoring_track and ref_track:
+                    t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
+                    t2 = "".join(c for c in ref_track if c.isalnum()).lower()
+                    if t1 and t2 and t1 != t2:
+                        return None
+                return prof
         except Exception:
             pass
         return None
@@ -348,13 +376,14 @@ class EngineerContext:
         return (not player_in) or (not opp_in)
 
     def get_track_length(self) -> float:
-        """Returns total track length in meters."""
-        if self.scoring is not None and getattr(self.scoring, "lap_dist", 0.0) > 500.0:
-            return float(self.scoring.lap_dist)
-        if self.state_store.delta.data is not None and self.state_store.delta.data.track_length > 500.0:
-            return float(self.state_store.delta.data.track_length)
-        if self.state_store.compact_scoring.data is not None and getattr(self.state_store.compact_scoring.data, "lap_dist", 0.0) > 500.0:
-            return float(self.state_store.compact_scoring.data.lap_dist)
+        """Returns total track length in meters (unified timing/grid state first)."""
+        store = self.state_store
+        # Unified scoring models expose track_length (disambiguated from car lap distance).
+        base = store.grid if store.grid is not None else store.timing
+        if base is not None and getattr(base, "track_length", 0.0) > 500.0:
+            return float(base.track_length)
+        if store.delta.data is not None and store.delta.data.track_length > 500.0:
+            return float(store.delta.data.track_length)
         if self.reference_profile is not None and self.reference_profile.track_length > 500.0:
             return float(self.reference_profile.track_length)
         return 5000.0  # Fallback default
@@ -373,23 +402,43 @@ class EngineerContext:
             return int(player_veh.total_laps)
         return self.state_store.total_laps
 
+    def _grid_player_vehicle(self) -> Optional[VehicleScoring]:
+        """Returns the player vehicle from the unified grid state (full scoring)."""
+        store = self.state_store
+        grid = store.grid
+        if grid is None:
+            return None
+        if grid.player_vehicle is not None:
+            return grid.player_vehicle
+        # Fallback: locate player flag inside the full grid vehicle list.
+        for v in grid.vehicles:
+            if getattr(v, "is_player", False) or getattr(v, "control", 0) == 0:
+                return v
+        return None
+
+    def _grid_vehicles(self) -> List[VehicleScoring]:
+        """Returns the complete vehicle list of the unified grid state (empty when no grid)."""
+        grid = self.state_store.grid
+        if grid is None:
+            return []
+        return list(grid.vehicles)
+
     def get_player_vehicle(self) -> Optional[VehicleScoring]:
-        """Extracts player vehicle from scoring session."""
-        extractor = _PLAYER_VEHICLE_EXTRACTORS.get(type(self.scoring))
-        return extractor(self.scoring) if extractor else None
+        """Extracts player vehicle from the unified full-grid state (never the raw packet)."""
+        return self._grid_player_vehicle()
 
     def is_player_in_pits(self) -> bool:
         """Indicates whether player vehicle is currently in pitlane (between entry and exit)."""
-        player = self.get_player_vehicle()
+        player = self._grid_player_vehicle()
         if not player:
             return False
         return self.is_vehicle_in_pits(player)
 
     def is_player_in_garage(self) -> bool:
-        """Indicates whether player is in garage stall or menus."""
-        checker = _GARAGE_CHECKERS.get(type(self.scoring))
-        if checker is not None:
-            return checker(self.scoring)
+        """Indicates whether player is in garage stall or menus (unified state)."""
+        player = self._grid_player_vehicle()
+        if player is not None:
+            return bool(player.in_garage_stall)
         return self.state_store.in_garage
 
     @classmethod
@@ -421,11 +470,11 @@ class EngineerContext:
         Returns list of active opponent vehicles IN PITLANE (excluding garage).
         Enables distinct handling of pitlane traffic.
         """
-        if type(self.scoring) is not FullScoringSession:
+        if not self.grid_available:
             return []
 
         pit_opponents: List[VehicleScoring] = []
-        for v in self.scoring.vehicles:
+        for v in self._grid_vehicles():
             if v.is_player or v.control == 0:
                 continue
             if v.in_garage_stall:
@@ -446,12 +495,13 @@ class EngineerContext:
         Returns list of active opponent vehicles.
         Excludes player, vehicles in garage (unless include_garage=True),
         and cars in pits (unless include_pits=True).
+        Unified grid state (2-5 Hz) is the only source; gated by availability.
         """
-        if type(self.scoring) is not FullScoringSession:
+        if not self.grid_available:
             return []
 
         opponents: List[VehicleScoring] = []
-        for v in self.scoring.vehicles:
+        for v in self._grid_vehicles():
             if v.is_player or v.control == 0:
                 continue
             if not include_garage and v.in_garage_stall:

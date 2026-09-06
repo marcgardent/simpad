@@ -411,6 +411,13 @@ class TelemetryStateStore:
 
             # Player vehicle data
             player_veh = data.player_vehicle
+            # Robust fallback: locate the player when the packet exposes it through the
+            # vehicles/leaderboard lists instead of the dedicated player_vehicle slot.
+            if player_veh is None:
+                for cand in list(data.vehicles) + list(data.leaderboard or []):
+                    if getattr(cand, "is_player", False) or int(getattr(cand, "control", -1)) == 0:
+                        player_veh = cand
+                        break
             norm_sec = 1
             if player_veh is not None:
                 self._last_in_garage = player_veh.in_garage_stall
@@ -507,6 +514,7 @@ class TelemetryStateStore:
                     num_vehicles=len(data.vehicles),
                     vehicles=data.vehicles,
                     leaderboard=data.leaderboard,
+                    player_vehicle=player_veh,
                 )
 
             self._recalculate_cache()

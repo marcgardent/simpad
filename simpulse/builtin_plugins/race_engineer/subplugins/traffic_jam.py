@@ -177,7 +177,7 @@ class TrafficJamRole(BaseRole):
         return self._evaluate_traffic_jam(context.state_store, context)
 
     def _evaluate_traffic_jam(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        if not context.scoring or context.is_private_qualifying():
+        if not context.grid_available or context.is_private_qualifying():
             self._is_active_alert = False
             self._target_slow_car_info = ""
             return None
