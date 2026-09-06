@@ -955,6 +955,13 @@ class RaceEngineerPlugin(
     and dispatches telemetry and raw packets to all sub-plugins.
     """
 
+    # Ingest-layer capability: this plugin is the official channel ingest point for the
+    # engineer roles. It drops the current decoded packet straight into the engineer
+    # manager (idempotent re-ingest already consolidated by PluginManager before the
+    # hook). Granting raw access is an explicit, deliberate declaration - everything
+    # else consumed below goes through the consolidated view.
+    _REQUIRE_RAW_INGEST = True
+
     def __init__(self):
         super().__init__(PluginMetadata(
             id="simpulse.builtin.race_engineer",

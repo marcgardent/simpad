@@ -871,3 +871,45 @@ class TelemetryStateStore:
         """Full grid, multi-car leaderboard and environmental scoring state."""
         with self._mutex:
             return self.grid
+
+
+class TelemetryPluginView:
+    """
+    Read-only façade handed to telemetry plugins on each on_* event.
+
+    Deliberately hides every raw-UDP ingestion slot so that accessing the decoded
+    payload is structurally impossible from a plugin:
+      - ``state.telemetry``, ``state.compact_scoring``, ``state.full_scoring``,
+        ``.weather``, ``.system``, ``.extended_state``, ``.force_feedback``,
+        ``.graphics``, ``.track_rules``, ``.pit_menu``, ``.opponent_telemetry``
+        raise AttributeError;
+      - every other consolidated/public access (``timing``, ``grid``, ``delta``,
+        cross-channel properties, consume_* helpers) delegates to the backing store.
+
+    Only the ingest layer (parsers, callbacks that physically receive the UDP frame)
+    may dereference the real :class:`TelemetryStateStore`; those consumers declare the
+    explicit ``_REQUIRE_RAW_INGEST`` capability instead of going through this view.
+    """
+
+    _RAW_INGEST_SLOTS = frozenset({
+        "telemetry", "opponent_telemetry", "compact_scoring", "full_scoring",
+        "weather", "system", "extended_state", "force_feedback", "graphics",
+        "track_rules", "pit_menu",
+    })
+
+    def __init__(self, _backing: TelemetryStateStore) -> None:
+        object.__setattr__(self, "_backing", _backing)
+
+    def __getattr__(self, name: str):
+        if name in TelemetryPluginView._RAW_INGEST_SLOTS:
+            raise AttributeError(
+                f"{type(self).__name__}.{name} is raw UDP ingress state and is not "
+                "exposed to plugins; consume the consolidated timing/grid/delta state."
+            )
+        if name.startswith("_"):
+            raise AttributeError(
+                f"{type(self).__name__}: internal attributes are not exposed to plugins."
+            )
+        backing = object.__getattribute__(self, "_backing")
+        return getattr(backing, name)
+

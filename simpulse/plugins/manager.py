@@ -34,6 +34,7 @@ from simpulse_sdk import (
     LapDeltaPacket,
     VehicleSensors,
     TelemetryStateStore,
+    TelemetryPluginView,
     TelemetryWakeReason,
 )
 
@@ -420,7 +421,9 @@ class PluginManager(QObject):
             except Exception as e:
                 self._handle_plugin_error(pid, "on_channel_sample", e)
 
-        # 2. Dispatch polymorphic on_* hook to enabled plugins
+        # 2. Dispatch polymorphic on_* hook to enabled plugins.
+        # Plugins see the consolidated view; raw-UDP ingress is granted only to the
+        # handful of ingest-layer plugins that declare _REQUIRE_RAW_INGEST explicitly.
         for pid, p in list(self._plugins.items()):
             if p.state != PluginState.ENABLED:
                 continue
@@ -428,7 +431,10 @@ class PluginManager(QObject):
             hook = getattr(p, plugin_hook_name, None)
             if hook is not None:
                 try:
-                    hook(store)
+                    if getattr(p, "_REQUIRE_RAW_INGEST", False):
+                        hook(store)
+                    else:
+                        hook(TelemetryPluginView(store))
                     self._error_counts[pid] = 0
                 except Exception as e:
                     self._handle_plugin_error(pid, plugin_hook_name, e)
@@ -454,7 +460,10 @@ class PluginManager(QObject):
             hook = getattr(p, plugin_hook_name, None)
             if hook is not None:
                 try:
-                    hook(active_store)
+                    if getattr(p, "_REQUIRE_RAW_INGEST", False):
+                        hook(active_store)
+                    else:
+                        hook(TelemetryPluginView(active_store))
                     self._error_counts[pid] = 0
                 except Exception as e:
                     self._handle_plugin_error(pid, plugin_hook_name, e)

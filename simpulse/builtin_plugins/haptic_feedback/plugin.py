@@ -502,13 +502,8 @@ class HapticFeedbackPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber):
         return self._active_tab_widget
 
     # Polymorphic Event Hooks
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
-        raw_telem = state.telemetry.data
-        if raw_telem is not None:
-            # If normalized VehicleSensors or compatible raw data is available, evaluate haptics
-            if hasattr(raw_telem, "vehicle_speed") or hasattr(raw_telem, "speed_mps"):
-                pass
+    # (The haptic engine is driven entirely by normalized VehicleSensors frames via
+    # ITelemetrySubscriber.on_telemetry_frame below - no raw UDP access is needed.)
 
     # ITelemetrySubscriber Protocol
     def on_telemetry_frame(self, sensors: VehicleSensors) -> None:
