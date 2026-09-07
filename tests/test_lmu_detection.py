@@ -75,6 +75,9 @@ def test_lmu_sector3_detection():
         cur_sector2=110.5,
     )
     session = FullScoringSession(in_realtime=True, vehicles=[player])
+    # LMUParser only *reads* the sector DeltaEngine already latched; drive the engine
+    # first, mirroring what telemetry_bus.py does before routing to LMUParser.
+    LMUParser._delta_engine.update_scoring(session)
     res = LMUParser.process_full_scoring(session)
     assert res is not None
     assert res.current_sector == 3, f"sector=0 must map to current_sector=3, got {res.current_sector}"

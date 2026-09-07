@@ -397,16 +397,11 @@ class LMUParser:
         cls._last_engine_rpm = float(telem.engine_rpm)
         cls._last_engine_max_rpm = float(telem.engine_max_rpm) if telem.engine_max_rpm > 1000.0 else 7500.0
 
-        cls._delta_engine.update_physics(
-            veh_speed_ms=telem.speed_mps,
-            throttle=telem.unfiltered_throttle,
-            brake=telem.unfiltered_brake,
-            steering=telem.unfiltered_steering,
-            gear=telem.gear,
-            dt=telem.delta_time,
-            elapsed_time=telem.elapsed_time,
-            lap_start_et=telem.lap_start_et,
-        )
+        # NOTE: does NOT call cls._delta_engine.update_physics() here — TelemetryBus
+        # already fed this exact TelemInfo to ReferenceLapManager.update_physics()
+        # (same shared DeltaEngine instance) before routing here; calling it again
+        # double-processed every physics tick (double EMA smoothing, wasted CPU).
+        # This only *reads* the already-authoritative engine state.
         cls._last_delta_time = cls._delta_engine.display_delta
         cls._last_sector1_delta = cls._delta_engine.sector1_delta
         cls._last_sector2_delta = cls._delta_engine.sector2_delta
@@ -544,14 +539,19 @@ class LMUParser:
             b3 = (scoring.best_lap_time - scoring.best_sector2) if (scoring.best_lap_time > 0 and scoring.best_sector2 > 0) else -1.0
             cls._last_sector3_status = cls._calculate_sector_status(scoring.last_sector3_individual, b3, -1.0)
 
-        cls._delta_engine.update_scoring(scoring)
+        # NOTE: does NOT call cls._delta_engine.update_scoring() here — TelemetryBus
+        # already fed this exact CompactScoring packet to ReferenceLapManager.update_scoring()
+        # (same shared DeltaEngine instance) before routing here; calling it again
+        # double-processed every scoring tick. This only *reads* the already-authoritative
+        # engine state, including its jitter-guarded current_sector (see delta_engine.py
+        # _handle_sector_transition) instead of re-deriving a naive, unguarded one here.
         cls._last_delta_time = cls._delta_engine.display_delta
         cls._last_sector1_delta = cls._delta_engine.sector1_delta
         cls._last_sector2_delta = cls._delta_engine.sector2_delta
         cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
         raw_sec = int(scoring.sector)
-        cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+        cls._last_current_sector = cls._delta_engine.current_sector
         try:
             from .overlay_anomaly_logger import OverlayAnomalyLogger
             OverlayAnomalyLogger.get_instance().check_sector_update(
@@ -581,7 +581,11 @@ class LMUParser:
                 speed_kmh=float(cls._last_telem_info.speed_mps * 3.6) if cls._last_telem_info else 0.0,
                 raw_data_summary=f"count_lap_flag={scoring.count_lap_flag} in_rt={scoring.in_realtime} in_garage={scoring.in_garage_stall} sector={scoring.sector} total_laps={scoring.total_laps}",
             )
-            TelemetryStateStore.get_instance().update_compact_scoring(scoring)
+            # NOTE: does NOT call TelemetryStateStore.update_compact_scoring() here —
+            # PluginManager.dispatch_packet() already does this correctly (with the real
+            # packet timestamp) on telemetry_bus.packet_received. The call that used to be
+            # here passed only 1 of 2 required positional args and always raised TypeError,
+            # silently swallowed by this except clause; it never actually updated the store.
         except Exception:
             pass
 
@@ -648,15 +652,18 @@ class LMUParser:
                 pass
 
             cls._update_player_sector_times_from_model(player_veh, session_bests)
-            cls._delta_engine.update_scoring(session)
-
+            # NOTE: does NOT call cls._delta_engine.update_scoring() here — TelemetryBus
+            # already fed this exact FullScoringSession to ReferenceLapManager.update_scoring()
+            # (same shared DeltaEngine instance) before routing here; calling it again
+            # double-processed every grid tick. This only *reads* the already-authoritative
+            # engine state, including its jitter-guarded current_sector.
             cls._last_delta_time = cls._delta_engine.display_delta
             cls._last_sector1_delta = cls._delta_engine.sector1_delta
             cls._last_sector2_delta = cls._delta_engine.sector2_delta
             cls._last_sector3_delta = cls._delta_engine.sector3_delta
 
             raw_sec = int(player_veh.sector)
-            cls._last_current_sector = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+            cls._last_current_sector = cls._delta_engine.current_sector
             try:
                 from .overlay_anomaly_logger import OverlayAnomalyLogger
                 OverlayAnomalyLogger.get_instance().check_sector_update(
@@ -681,10 +688,11 @@ class LMUParser:
         if 0 < session.max_laps < 1000:
             cls._last_total_laps = int(session.max_laps)
 
-        try:
-            TelemetryStateStore.get_instance().update_full_scoring(session)
-        except Exception:
-            pass
+        # NOTE: does NOT call TelemetryStateStore.update_full_scoring() here —
+        # PluginManager.dispatch_packet() already does this correctly (with the real
+        # packet timestamp) on telemetry_bus.packet_received. The call that used to be
+        # here passed only 1 of 2 required positional args and always raised TypeError,
+        # silently swallowed by a bare except; it never actually updated the store.
 
         return cls._build_telemetry_snapshot()
 

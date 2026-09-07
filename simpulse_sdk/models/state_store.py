@@ -161,6 +161,21 @@ class TelemetryStateStore:
         self._hit_count_current_lap = 0
         self._recalculate_cache()
 
+    def _resolve_current_sector(self, raw_sector: int) -> int:
+        """Single source of truth for the displayed current sector.
+
+        Prefers the authoritative, jitter-guarded value already computed by
+        DeltaEngine (delivered here through ``update_delta`` as
+        ``LapDeltaPacket.current_sector``) over a naive per-packet remap of the
+        raw isiMotor sector code. CompactScoring and FullScoringSession can
+        disagree on the raw code for a frame or two around a timing line;
+        recomputing it naively here duplicated (and disagreed with) the guard
+        DeltaEngine already applies, which is what actually reaches the HUD.
+        """
+        if self.delta.data is not None and self.delta.is_fresh(2.0):
+            return int(self.delta.data.current_sector)
+        return 3 if raw_sector == 0 else (raw_sector if raw_sector in (1, 2, 3) else 1)
+
     def reset(self) -> None:
         """Resets all packet slots and persistent state memory."""
         with self._mutex:
@@ -337,7 +352,7 @@ class TelemetryStateStore:
             self._last_total_laps = new_laps
 
             raw_sec = data.sector
-            norm_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+            norm_sec = self._resolve_current_sector(raw_sec)
             self._last_current_sector = norm_sec
 
             # Construct unified BaseTimingState (continuous 10Hz)
@@ -413,7 +428,7 @@ class TelemetryStateStore:
                 self._last_total_laps = player_veh.total_laps
                 self._last_lap_dist = player_veh.lap_dist
                 raw_sec = player_veh.sector
-                norm_sec = 3 if raw_sec == 0 else (raw_sec if raw_sec in (1, 2, 3) else 1)
+                norm_sec = self._resolve_current_sector(raw_sec)
                 self._last_current_sector = norm_sec
                 if player_veh.lmu:
                     self._last_track_limits_steps = player_veh.lmu.track_limits_steps

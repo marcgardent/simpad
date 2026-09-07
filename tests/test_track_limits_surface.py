@@ -46,14 +46,17 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
         LMUParser._delta_engine._track_length = 5781.0
         LMUParser._delta_engine._apply_active_profile()
 
-        # 1. FullScoring arrives: car is at dist=935m
+        # 1. FullScoring arrives: car is at dist=935m — drive the engine first
+        # (LMUParser only *reads* it now), mirroring telemetry_bus.py's call order.
         v = VehicleScoring(is_player=1, lap_dist=935.0, time_into_lap=15.0, count_lap_flag=1, total_laps=3, sector=1)
         session = FullScoringSession(lap_dist=5781.0, track_name="Monza", vehicles=[v])
+        LMUParser._delta_engine.update_scoring(session)
         LMUParser.process_full_scoring(session)
         self.assertEqual(LMUParser._delta_engine.last_scoring_dist, 935.0)
 
         # 2. CompactScoring arrives with lap_dist=5781.0m (track length)
         compact = CompactScoring(lap_dist=5781.0, count_lap_flag=1, total_laps=3, sector=1, current_et=120.0)
+        LMUParser._delta_engine.update_scoring(compact)
         LMUParser.process_compact_scoring(compact)
 
         # DeltaEngine last_scoring_dist MUST STILL BE 935.0m (NOT 5781.0m!)
@@ -62,6 +65,7 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
         # 3. TelemInfo arrives: advances 10m at 50 m/s with dt=0.2s
         from isimotor_rawudp_client.models.common import TelemVect3
         telem = TelemInfo(local_vel=TelemVect3(x=0.0, y=0.0, z=50.0), delta_time=0.2, elapsed_time=120.2, lap_start_et=105.0)
+        LMUParser._delta_engine.update_physics(telem)
         LMUParser.process_telemetry(telem)
 
         # Distance smoothly advances by 50 * 0.2 = 10m -> 945.0m!

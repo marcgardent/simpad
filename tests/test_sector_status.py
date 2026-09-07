@@ -84,14 +84,17 @@ class TestSectorStatusCalculations(unittest.TestCase):
 
         LMUParser._last_full_scoring = None
 
-        # 1. Scoring définit le secteur 2
+        # 1. Scoring définit le secteur 2 — drive the engine first (LMUParser only
+        # *reads* its already-latched sector), mirroring telemetry_bus.py's call order.
         scoring = CompactScoring(sector=2)
+        LMUParser._delta_engine.update_scoring(scoring)
         snap_sc = LMUParser.process_compact_scoring(scoring)
         self.assertEqual(snap_sc.current_sector, 2)
         self.assertEqual(LMUParser._last_current_sector, 2)
 
         # 2. Arrivée d'un paquet physique TelemInfo avec current_sector=0
         telem = TelemInfo(current_sector=0)
+        LMUParser._delta_engine.update_physics(telem)
         snap_telem = LMUParser.process_telemetry(telem)
         self.assertIsNotNone(snap_telem)
         self.assertEqual(snap_telem.current_sector, 2)  # Le secteur 2 doit être préservé !

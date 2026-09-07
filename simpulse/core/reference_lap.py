@@ -152,6 +152,12 @@ class ReferenceLapManager(QObject):
         self.config_manager = config_manager
         self.delta_engine = DeltaEngine()
         try:
+            # Alias LMUParser's engine reference onto this authoritative instance.
+            # LMUParser only *reads* cls._delta_engine (display_delta, current_sector,
+            # etc.) to assemble its VehicleSensors snapshot — TelemetryBus is the sole
+            # writer, feeding this same engine once via update_physics()/update_scoring()
+            # before routing the packet to LMUParser. Without this alias, LMUParser would
+            # read its own separate, never-updated DeltaEngine() default instance.
             from simpulse.core.telemetry.lmu_parser import LMUParser
             LMUParser._delta_engine = self.delta_engine
         except Exception:
