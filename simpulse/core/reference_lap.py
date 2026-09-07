@@ -39,7 +39,7 @@ from simpulse.core.telemetry.delta_engine import (
 )
 # Canonical types (single source of truth — do not redefine locally, the SDK
 # contracts (IDeltaSubscriber.on_delta_frame etc.) type-hint against these).
-from simpulse_sdk.models.delta import LapDeltaPacket, SectorInfo
+from simpulse_sdk.models.delta import LapDeltaPacket
 from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
 
 logger = logging.getLogger("simpulse.core.reference_lap")
@@ -275,7 +275,7 @@ class ReferenceLapManager(QObject):
     def update_scoring(self, scoring_data: ScoringPacketType) -> LapDeltaPacket:
         """Process scoring packet in DeltaEngine, detect lap/sector transitions and return LapDeltaPacket."""
         prev_laps = self.delta_engine._last_laps_completed
-        prev_sector = self.delta_engine._last_current_sector
+        prev_sector = self.delta_engine.current_sector
         prev_prof = self.delta_engine.current_profile
 
         self.delta_engine.update_scoring(scoring_data)
@@ -284,7 +284,7 @@ class ReferenceLapManager(QObject):
             self.reference_profile_changed.emit(self.current_profile)
 
         cur_laps = self.delta_engine._last_laps_completed
-        cur_sector = self.delta_engine._last_current_sector
+        cur_sector = self.delta_engine.current_sector
 
         packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
         self._last_emitted_packet = packet
@@ -319,7 +319,7 @@ class ReferenceLapManager(QObject):
         dispatches the raw packet to the Store before calling this) instead of a raw packet.
         """
         prev_laps = self.delta_engine._last_laps_completed
-        prev_sector = self.delta_engine._last_current_sector
+        prev_sector = self.delta_engine.current_sector
         prev_prof = self.delta_engine.current_profile
 
         self.delta_engine.update_scoring_from_view(timing, grid)
@@ -328,7 +328,7 @@ class ReferenceLapManager(QObject):
             self.reference_profile_changed.emit(self.current_profile)
 
         cur_laps = self.delta_engine._last_laps_completed
-        cur_sector = self.delta_engine._last_current_sector
+        cur_sector = self.delta_engine.current_sector
 
         packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
         self._last_emitted_packet = packet
@@ -368,30 +368,8 @@ class ReferenceLapManager(QObject):
         ref_time = de.ref_lap_time
         ref_time_str = format_lap_time(ref_time) if (de.has_reference and ref_time < 999900.0) else "--:--.---"
 
-        # Construct sectors list
-        sec_list = [
-            SectorInfo(
-                time=de._last_sector1_time,
-                status=de._last_sector1_status,
-                delta=de.sector1_delta,
-                delta_str=f"{de.sector1_delta:+.3f}" if de.sector1_delta != 0.0 else "--",
-                is_current=(de._last_current_sector == 1),
-            ),
-            SectorInfo(
-                time=de._last_sector2_time,
-                status=de._last_sector2_status,
-                delta=de.sector2_delta,
-                delta_str=f"{de.sector2_delta:+.3f}" if de.sector2_delta != 0.0 else "--",
-                is_current=(de._last_current_sector == 2),
-            ),
-            SectorInfo(
-                time=de._last_sector3_time,
-                status=de._last_sector3_status,
-                delta=de.sector3_delta,
-                delta_str=f"{de.sector3_delta:+.3f}" if de.sector3_delta != 0.0 else "--",
-                is_current=(de._last_current_sector == 3),
-            ),
-        ]
+        # Nicer aggregate view (one SectorInfo per box) — see DeltaEngine.sectors / SectorEngine.
+        sec_list = de.sectors
 
         return LapDeltaPacket(
             live_delta=de.live_delta,
@@ -404,16 +382,16 @@ class ReferenceLapManager(QObject):
             estimated_lap_time=de.estimated_lap_time,
             estimated_lap_time_str=de.estimated_lap_time_str,
             expected_status=de.expected_lap_status,
-            current_sector=de._last_current_sector,
+            current_sector=de.current_sector,
             sector1_delta=de.sector1_delta,
             sector2_delta=de.sector2_delta,
             sector3_delta=de.sector3_delta,
-            sector1_time=de._last_sector1_time,
-            sector1_status=de._last_sector1_status,
-            sector2_time=de._last_sector2_time,
-            sector2_status=de._last_sector2_status,
-            sector3_time=de._last_sector3_time,
-            sector3_status=de._last_sector3_status,
+            sector1_time=de.sector1_time_str,
+            sector1_status=de.sector1_status,
+            sector2_time=de.sector2_time_str,
+            sector2_status=de.sector2_status,
+            sector3_time=de.sector3_time_str,
+            sector3_status=de.sector3_status,
             sectors_list=sec_list,
             last_lap_time=de.last_completed_lap_time,
             last_lap_time_str=de.last_completed_lap_time_str,

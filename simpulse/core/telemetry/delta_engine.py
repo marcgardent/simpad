@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Union
 
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
-from simpulse_sdk.models.delta import DeltaReferenceMode
+from simpulse_sdk.models.delta import DeltaReferenceMode, SectorInfo
 from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
 from .reference_profile import (
     ReferenceLapProfile,
@@ -37,6 +37,7 @@ from .reference_profile import (
     find_telemetry_filepath_for_track,
     clean_name_identifier,
 )
+from .sector_engine import SectorEngine
 
 logger = logging.getLogger(__name__)
 
@@ -170,22 +171,14 @@ class DeltaEngine:
         self._last_scoring_dist: float = 0.0
         self._last_scoring_time_into: float = 0.0
         self._last_scoring_timestamp: float = 0.0
-        self._last_current_sector: int = 1
-        self._sector_primed: bool = False
-        # Session split bests (shared green/purple rule, see sector_colors).
-        self._session_split_best_s1: float = 0.0
-        self._session_split_best_s2: float = 0.0
-        self._session_split_best_s3: float = 0.0
         self._last_lap_start_et: float = 0.0
-
-        # Dynamic sector checkpoints (driver time & distance at S1/S2 splits)
-        self._s1_captured: bool = False
-        self._s2_captured: bool = False
-        self._player_s1_time: float = 0.0
-        self._player_s1_dist: float = 0.0
-        self._player_s2_time: float = 0.0
-        self._player_s2_dist: float = 0.0
         self._last_checkpoint_idx: int = -1
+
+        # Current-sector tracking, S1/S2 checkpoint capture, HUD split display and
+        # per-sector deltas: all factored into SectorEngine (see its docstring).
+        # The `_last_current_sector`/`_s1_captured`/`_last_sector1_time`/... names
+        # below stay available as thin delegating properties for existing callers.
+        self._sectors = SectorEngine()
 
         # Delta & Lap Time freeze at finish line
         self._frozen_final_delta: float = 0.0
@@ -199,15 +192,179 @@ class DeltaEngine:
 
         # Last calculated values
         self._live_delta: float = 0.0
-        self._sector1_delta: float = 0.0
-        self._sector2_delta: float = 0.0
-        self._sector3_delta: float = 0.0
-        self._last_sector1_time: str = "--"
-        self._last_sector1_status: str = "default"
-        self._last_sector2_time: str = "--"
-        self._last_sector2_status: str = "default"
-        self._last_sector3_time: str = "--"
-        self._last_sector3_status: str = "default"
+
+    # ---- Back-compat delegators to SectorEngine ---------------------------------
+    # All current-sector tracking, S1/S2 capture, HUD split display and per-sector
+    # deltas now live in ``self._sectors`` (see sector_engine.SectorEngine). These
+    # properties keep the historical private names resolving to that single home so
+    # every existing internal reference (and the tests that reach into them) keeps
+    # working unchanged; new code should prefer ``self.sectors`` / ``self._sectors``.
+    @property
+    def _last_current_sector(self) -> int:
+        return self._sectors.last_current_sector
+
+    @_last_current_sector.setter
+    def _last_current_sector(self, value: int) -> None:
+        self._sectors.last_current_sector = value
+
+    @property
+    def _sector_primed(self) -> bool:
+        return self._sectors.sector_primed
+
+    @_sector_primed.setter
+    def _sector_primed(self, value: bool) -> None:
+        self._sectors.sector_primed = value
+
+    @property
+    def _s1_captured(self) -> bool:
+        return self._sectors.s1_captured
+
+    @_s1_captured.setter
+    def _s1_captured(self, value: bool) -> None:
+        self._sectors.s1_captured = value
+
+    @property
+    def _s2_captured(self) -> bool:
+        return self._sectors.s2_captured
+
+    @_s2_captured.setter
+    def _s2_captured(self, value: bool) -> None:
+        self._sectors.s2_captured = value
+
+    @property
+    def _player_s1_time(self) -> float:
+        return self._sectors.player_s1_time
+
+    @_player_s1_time.setter
+    def _player_s1_time(self, value: float) -> None:
+        self._sectors.player_s1_time = value
+
+    @property
+    def _player_s1_dist(self) -> float:
+        return self._sectors.player_s1_dist
+
+    @_player_s1_dist.setter
+    def _player_s1_dist(self, value: float) -> None:
+        self._sectors.player_s1_dist = value
+
+    @property
+    def _player_s2_time(self) -> float:
+        return self._sectors.player_s2_time
+
+    @_player_s2_time.setter
+    def _player_s2_time(self, value: float) -> None:
+        self._sectors.player_s2_time = value
+
+    @property
+    def _player_s2_dist(self) -> float:
+        return self._sectors.player_s2_dist
+
+    @_player_s2_dist.setter
+    def _player_s2_dist(self, value: float) -> None:
+        self._sectors.player_s2_dist = value
+
+    @property
+    def _session_split_best_s1(self) -> float:
+        return self._sectors.session_split_best_s1
+
+    @_session_split_best_s1.setter
+    def _session_split_best_s1(self, value: float) -> None:
+        self._sectors.session_split_best_s1 = value
+
+    @property
+    def _session_split_best_s2(self) -> float:
+        return self._sectors.session_split_best_s2
+
+    @_session_split_best_s2.setter
+    def _session_split_best_s2(self, value: float) -> None:
+        self._sectors.session_split_best_s2 = value
+
+    @property
+    def _session_split_best_s3(self) -> float:
+        return self._sectors.session_split_best_s3
+
+    @_session_split_best_s3.setter
+    def _session_split_best_s3(self, value: float) -> None:
+        self._sectors.session_split_best_s3 = value
+
+    @property
+    def _sector1_delta(self) -> float:
+        return self._sectors.sector1_delta
+
+    @_sector1_delta.setter
+    def _sector1_delta(self, value: float) -> None:
+        self._sectors.sector1_delta = value
+
+    @property
+    def _sector2_delta(self) -> float:
+        return self._sectors.sector2_delta
+
+    @_sector2_delta.setter
+    def _sector2_delta(self, value: float) -> None:
+        self._sectors.sector2_delta = value
+
+    @property
+    def _sector3_delta(self) -> float:
+        return self._sectors.sector3_delta
+
+    @_sector3_delta.setter
+    def _sector3_delta(self, value: float) -> None:
+        self._sectors.sector3_delta = value
+
+    @property
+    def _last_sector1_time(self) -> str:
+        return self._sectors.last_sector1_time
+
+    @_last_sector1_time.setter
+    def _last_sector1_time(self, value: str) -> None:
+        self._sectors.last_sector1_time = value
+
+    @property
+    def _last_sector1_status(self) -> str:
+        return self._sectors.last_sector1_status
+
+    @_last_sector1_status.setter
+    def _last_sector1_status(self, value: str) -> None:
+        self._sectors.last_sector1_status = value
+
+    @property
+    def _last_sector2_time(self) -> str:
+        return self._sectors.last_sector2_time
+
+    @_last_sector2_time.setter
+    def _last_sector2_time(self, value: str) -> None:
+        self._sectors.last_sector2_time = value
+
+    @property
+    def _last_sector2_status(self) -> str:
+        return self._sectors.last_sector2_status
+
+    @_last_sector2_status.setter
+    def _last_sector2_status(self, value: str) -> None:
+        self._sectors.last_sector2_status = value
+
+    @property
+    def _last_sector3_time(self) -> str:
+        return self._sectors.last_sector3_time
+
+    @_last_sector3_time.setter
+    def _last_sector3_time(self, value: str) -> None:
+        self._sectors.last_sector3_time = value
+
+    @property
+    def _last_sector3_status(self) -> str:
+        return self._sectors.last_sector3_status
+
+    @_last_sector3_status.setter
+    def _last_sector3_status(self, value: str) -> None:
+        self._sectors.last_sector3_status = value
+
+    @property
+    def sectors(self) -> List[SectorInfo]:
+        """Nicer aggregate view of the S1/S2/S3 boxes (time/status/delta/is_current)
+        — one list, one shape per box — instead of the flat sector1_*/sector2_*/
+        sector3_* trio kept below for backward compatibility."""
+        return self._sectors.snapshot()
 
     @property
     def reference_mode(self) -> DeltaReferenceMode:
@@ -318,9 +475,7 @@ class DeltaEngine:
             self._calculate_delta(self._last_scoring_dist, self._last_scoring_time_into)
         else:
             self._live_delta = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
+            self._sectors.clear_deltas()
 
     def _find_player_vehicle(self, vehicles: list) -> Optional[dict]:
         """SLAP Helper: Finds player vehicle in scoring vehicles list."""
@@ -355,16 +510,7 @@ class DeltaEngine:
             print(f"[DeltaEngine] Session reset: lap counter reset to {laps_comp}", flush=True)
             log_delta_debug(f"[SESSION_RESET] laps_completed went from {self._last_laps_completed} to {laps_comp}")
             self._current_lap_samples = []
-            self._sector_primed = False
-            self._s1_captured = False
-            self._s2_captured = False
-            self._player_s1_time = 0.0
-            self._player_s1_dist = 0.0
-            self._player_s2_time = 0.0
-            self._player_s2_dist = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
+            self._sectors.reset_lap_capture(clear_primed=True)
             self._last_laps_completed = laps_comp
             return
 
@@ -414,76 +560,26 @@ class DeltaEngine:
                 in_pits=in_pits,
             )
             self._current_lap_samples = []
-            self._s1_captured = False
-            self._s2_captured = False
-            self._player_s1_time = 0.0
-            self._player_s1_dist = 0.0
-            self._player_s2_time = 0.0
-            self._player_s2_dist = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
+            self._sectors.reset_lap_capture(clear_primed=False)
 
         self._last_laps_completed = laps_comp
 
     def _handle_sector_transition(self, curr_sec: int, time_into: float = 0.0, player_dist: float = 0.0, lap_crossed: Optional[bool] = None) -> None:
         """SLAP Helper: Memorizes exact time and distance when crossing S1/S2 splits.
 
-        Guard clause — display stability of the current sector (fixes the one-frame
-        flicker where a non-current sector box briefly lights up as "current"):
-
-        The authoritative ``current_sector`` is written here by every scoring / physics
-        packet that reports a sector id. isiMotor keeps several lane states while a
-        split is reached (``sector == 0`` on inter-loop gaps) and Compact / Full scoring
-        packets can even disagree for a few milliseconds around a timing line. The raw
-        ``mSector``/``sector`` value is therefore *not* a monotonic run counter by
-        itself. We only ever advance the HUD sector by a single forward step along the
-        lap (1 -> 2 -> 3 -> 1). Repeat samples are no-ops and any backward/jumped echo
-        (2->1, 3->2, 1->3 while still inside the same sector) is rejected so it cannot
-        light up a neighbouring box for one 10 Hz packet.
-
-        The 3 -> 1 wrap additionally requires ``lap_crossed`` (the scoring packet that
-        reports sector 1 must have completed a lap); a stale FullScoring echo that
-        "returns" to S1 while the active lap still shows S3 is dropped.
+        Thin delegator — the guard logic (one-way forward-step, jitter rejection,
+        3->1 wrap qualification) now lives in SectorEngine.handle_transition;
+        see its docstring for the full rationale.
         """
-        if curr_sec not in (1, 2, 3):
-            return
-        prev_sec = self._last_current_sector
-        if curr_sec == prev_sec:
-            self._sector_primed = True
-            return  # repeated packet: nothing to advance
-        # First authoritative observation (join mid-session, session reset...): accept
-        # it whatever sector it reports so the HUD catches up immediately.
-        if not self._sector_primed:
-            self._sector_primed = True
-            self._advance_current_sector(curr_sec, time_into=time_into, player_dist=player_dist)
-            return
-        is_forward_step = (curr_sec == ((prev_sec % 3) + 1)) if prev_sec in (1, 2, 3) else True
-        is_wrap_qualified = not (prev_sec == 3 and curr_sec == 1) or lap_crossed is not False
-        if not is_forward_step or not is_wrap_qualified:
-            log_delta_debug(
-                f"[SECTOR_JITTER_IGNORED] packet reported S{curr_sec} while HUD was on "
-                f"S{prev_sec} (lap_crossed={lap_crossed}); rejected (would blink a "
-                f"non-current box for 1 frame)"
-            )
-            return
-        self._advance_current_sector(curr_sec, time_into=time_into, player_dist=player_dist)
-
-    def _advance_current_sector(self, curr_sec: int, time_into: float = 0.0, player_dist: float = 0.0) -> None:
-        """Latches the current sector and records the S1/S2 split crossing once."""
-        effective_time = time_into if time_into > 0.0 else self._last_scoring_time_into
-        effective_dist = player_dist if player_dist > 0.0 else self._last_scoring_dist
-        if curr_sec == 2 and not self._s1_captured and effective_time > 0.0:
-            self._player_s1_time = effective_time
-            self._player_s1_dist = effective_dist
-            self._s1_captured = True
-            log_delta_debug(f"[SECTOR_CUT_S1] t_into={effective_time:.3f}s, dist={effective_dist:.1f}m")
-        elif curr_sec == 3 and not self._s2_captured and effective_time > 0.0:
-            self._player_s2_time = effective_time
-            self._player_s2_dist = effective_dist
-            self._s2_captured = True
-            log_delta_debug(f"[SECTOR_CUT_S2] t_into={effective_time:.3f}s, dist={effective_dist:.1f}m")
-        self._last_current_sector = curr_sec
+        self._sectors.handle_transition(
+            curr_sec,
+            time_into=time_into,
+            player_dist=player_dist,
+            lap_crossed=lap_crossed,
+            fallback_time=self._last_scoring_time_into,
+            fallback_dist=self._last_scoring_dist,
+            log=log_delta_debug,
+        )
 
     def _refresh_display_sector_times(
         self,
@@ -503,52 +599,24 @@ class DeltaEngine:
         """
         Keeps the HUD per-sector times stable across packets.
 
-        isiMotor exposes both current-lap cumulative timing splits (cur_*) and the
-        splits of the previous fully completed lap (last_*). While a split of the
-        current lap has not been crossed yet (cur_* == 0.0) we keep showing the last
-        completed split so the sector boxes never flick back to '--' in the middle of
-        a lap. Once crossed inside the current lap, cur_* freezes at the split value
-        and becomes the displayed time.
-
-        All values arrive at 10 Hz (CompactScoring or FullScoringSession) which is
-        faster than a human can read a whole sector, so this refresh is visually crisp.
+        Thin delegator to SectorEngine.refresh_display_times — see its docstring for
+        the cur_*/last_* composition rule that keeps a split from flicking to '--'
+        mid-lap. The paddock (other cars) violet-highlight inputs come from this
+        engine's own rival-tracking state, so they're passed through as parameters.
         """
-        # S1: current lap when already crossed, otherwise the last completed lap split.
-        s1_cur = cur_sector1 if cur_sector1 > 0.0 else last_sector1
-
-        # -- Sector 1 box --
-        if s1_cur > 0.0:
-            self._last_sector1_time = sector_time_display_str(s1_cur)
-            self._last_sector1_status = sector_display_status(s1_cur, best_sector1, session_best_s1)
-            if cur_sector1 > 0.0 and self._paddock_known and self._paddock_cum_s1 < 999900.0:
-                # new lap crossing: violet when better/equal paddock best S1
-                if s1_cur <= self._paddock_cum_s1 + 0.001:
-                    self._last_sector1_status = "purple"
-
-        # -- Sector 2 box (standalone: cumulated S1+S2 minus S1) --
-        # Compose exclusively from the current lap once its split is crossed, otherwise
-        # fall back to the previous lap splits. Never mix current & last references.
-        indiv_s2 = 0.0
-        if cur_sector2 > 0.0 and cur_sector1 > 0.0 and cur_sector2 > cur_sector1:
-            indiv_s2 = cur_sector2 - cur_sector1
-        elif last_sector2 > 0.0 and last_sector1 > 0.0 and last_sector2 > last_sector1:
-            indiv_s2 = last_sector2 - last_sector1
-        if indiv_s2 > 0.0:
-            self._last_sector2_time = sector_time_display_str(indiv_s2)
-            best_indiv_s2 = (best_sector2 - best_sector1) if (best_sector2 > 0.0 and best_sector1 > 0.0) else 0.0
-            self._last_sector2_status = sector_display_status(indiv_s2, best_indiv_s2, session_best_s2)
-            if cur_sector2 > 0.0 and self._paddock_known and self._paddock_cum_s2 < 999900.0:
-                # new S2 crossing: violet (better-or-equal paddock cumulative S2)
-                if cur_sector2 <= self._paddock_cum_s2 + 0.001:
-                    self._last_sector2_status = "purple"
-
-        # -- Sector 3 box (standalone remainder of the last completed lap) --
-        s3_cum_base = last_sector2
-        if last_lap_time > 0.0 and s3_cum_base > 0.0 and last_lap_time > s3_cum_base:
-            indiv_s3 = last_lap_time - s3_cum_base
-            best_indiv_s3 = (best_lap_time - best_sector2) if (best_lap_time > 0.0 and best_sector2 > 0.0) else 0.0
-            self._last_sector3_time = sector_time_display_str(indiv_s3)
-            self._last_sector3_status = sector_display_status(indiv_s3, best_indiv_s3, session_best_s3)
+        self._sectors.refresh_display_times(
+            cur_sector1=cur_sector1,
+            cur_sector2=cur_sector2,
+            last_sector1=last_sector1,
+            last_sector2=last_sector2,
+            last_lap_time=last_lap_time,
+            best_sector1=best_sector1,
+            best_sector2=best_sector2,
+            best_lap_time=best_lap_time,
+            paddock_known=self._paddock_known,
+            paddock_cum_s1=self._paddock_cum_s1,
+            paddock_cum_s2=self._paddock_cum_s2,
+        )
 
     def _collect_lap_sample(
         self,
@@ -796,33 +864,9 @@ class DeltaEngine:
         # Updated on whole-session packets (Full/dict expose every car); Compact
         # scoring falls back to the most recently observed session splits so status
         # of a given frozen split does not flip green/purple frame-to-frame.
-        def _veh_bs(v):
-            return (float(v.get("mBestSector1", v.get("bestSector1", 0.0))),
-                    float(v.get("mBestSector2", v.get("bestSector2", 0.0))),
-                    float(v.get("mBestLapTime", v.get("bestLapTime", 0.0))))
+        self._sectors.update_session_bests(vehicles_src)
 
         if vehicles_src:
-            sess_s1 = sess_s2 = sess_s3 = 0.0
-            for v in vehicles_src:
-                bs1, bs2, blap = _veh_bs(v) if isinstance(v, dict) else (
-                    float(getattr(v, "best_sector1", 0.0) or 0.0),
-                    float(getattr(v, "best_sector2", 0.0) or 0.0),
-                    float(getattr(v, "best_lap_time", 0.0) or 0.0))
-                if 0.0 < bs1 < 999900.0:
-                    sess_s1 = bs1 if sess_s1 == 0.0 else min(sess_s1, bs1)
-                if bs2 > 0.0 and bs1 > 0.0 and bs2 > bs1:
-                    indiv = bs2 - bs1
-                    sess_s2 = indiv if sess_s2 == 0.0 else min(sess_s2, indiv)
-                if blap > 0.0 and bs2 > 0.0 and blap > bs2:
-                    indiv3 = blap - bs2
-                    sess_s3 = indiv3 if sess_s3 == 0.0 else min(sess_s3, indiv3)
-            if sess_s1:
-                self._session_split_best_s1 = sess_s1
-            if sess_s2:
-                self._session_split_best_s2 = sess_s2
-            if sess_s3:
-                self._session_split_best_s3 = sess_s3
-
             # ----- paddock scalar: best full-lap of the OTHER cars this session -----
             def _is_player(v):
                 if isinstance(v, dict):
@@ -871,9 +915,6 @@ class DeltaEngine:
             best_sector1=best_s1,
             best_sector2=best_s2,
             best_lap_time=best_lap,
-            session_best_s1=self._session_split_best_s1,
-            session_best_s2=self._session_split_best_s2,
-            session_best_s3=self._session_split_best_s3,
         )
 
         # Session/track/vehicle change
@@ -887,16 +928,7 @@ class DeltaEngine:
             self._current_lap_samples = []
             self._last_laps_completed = laps_comp
             self._last_checkpoint_idx = -1
-            self._s1_captured = False
-            self._s2_captured = False
-            self._player_s1_time = 0.0
-            self._player_s1_dist = 0.0
-            self._player_s2_time = 0.0
-            self._player_s2_dist = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
-            self._sector_primed = False
+            self._sectors.reset_lap_capture(clear_primed=True)
             self._last_scoring_timestamp = 0.0
 
             # Reset session and stint best
@@ -1057,9 +1089,7 @@ class DeltaEngine:
         """Calculates live delta and per-sector deltas from distance and time."""
         if not self.has_reference or time_into <= 0.0 or player_dist < 0.0:
             self._live_delta = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
+            self._sectors.clear_deltas()
             log_delta_debug(
                 f"[DELTA_NO_REF] dist={player_dist:.1f}m, t_into={time_into:.3f}s, has_ref={self.has_reference}, "
                 f"flag={self._last_lap_flag}, mode={self._ref_mode.value}"
@@ -1069,9 +1099,7 @@ class DeltaEngine:
         ref_time = self._get_ref_time_at_dist(player_dist)
         if ref_time is None:
             self._live_delta = 0.0
-            self._sector1_delta = 0.0
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
+            self._sectors.clear_deltas()
             log_delta_debug(
                 f"[DELTA_REF_LOOKUP_FAIL] dist={player_dist:.1f}m, t_into={time_into:.3f}s, "
                 f"ref_num_points={self._ref_num_points}"
@@ -1097,24 +1125,7 @@ class DeltaEngine:
         self._frozen_checkpoint_delta = self._live_delta
 
         # Dynamic calculation of sector deltas against ACTIVE profile
-        ref_s1 = self._get_ref_time_at_dist(self._player_s1_dist) if self._s1_captured else None
-        ref_s2 = self._get_ref_time_at_dist(self._player_s2_dist) if self._s2_captured else None
-
-        delta_s1_end = (self._player_s1_time - ref_s1) if (self._s1_captured and ref_s1 is not None) else 0.0
-        delta_s2_end = (self._player_s2_time - ref_s2) if (self._s2_captured and ref_s2 is not None) else 0.0
-
-        if self._last_current_sector == 1:
-            self._sector1_delta = self._live_delta
-            self._sector2_delta = 0.0
-            self._sector3_delta = 0.0
-        elif self._last_current_sector == 2:
-            self._sector1_delta = delta_s1_end
-            self._sector2_delta = self._live_delta - delta_s1_end
-            self._sector3_delta = 0.0
-        elif self._last_current_sector == 3:
-            self._sector1_delta = delta_s1_end
-            self._sector2_delta = delta_s2_end - delta_s1_end
-            self._sector3_delta = self._live_delta - delta_s2_end
+        self._sectors.compute_split_deltas(self._live_delta, self._get_ref_time_at_dist)
 
         log_delta_debug(
             f"[DELTA_CALC] dist={player_dist:.1f}m, t_into={time_into:.3f}s, ref_t={ref_time:.3f}s, "
