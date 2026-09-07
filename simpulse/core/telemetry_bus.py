@@ -22,6 +22,7 @@ from simpulse.core.telemetry_channels import (
 )
 from simpulse.core.reference_lap import ReferenceLapManager, LapDeltaPacket
 from simpulse.core.mock_telemetry import MockTelemetryGenerator
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 from isimotor_rawudp_client import (
     TelemInfo,
     CompactScoring,
@@ -223,8 +224,14 @@ class TelemetryBus(QObject):
             timestamp=now
         )
 
-        # 1. Process high-level telemetry domain representations and delta calculations first
-        # so state.delta is completely up-to-date for observers during dispatch_packet
+        # 1. Dispatch raw packet to observers via Qt Signal first (direct Qt connection:
+        # this synchronously runs PluginManager.dispatch_packet -> TelemetryStateStore.update_*
+        # -> on_* hooks). The Store is the single point of ingestion; by the time this
+        # call returns, store.timing/.grid are fully up to date for this packet.
+        self.packet_received.emit(packet)
+
+        # 2. Process high-level telemetry domain representations and delta calculations
+        # from the consolidated View — never by re-parsing the raw packet a second time.
         delta_pkt: Optional[LapDeltaPacket] = None
         if data is not None:
             if isinstance(data, TelemInfo):
@@ -238,67 +245,61 @@ class TelemetryBus(QObject):
                     elapsed_time=float(data.elapsed_time),
                     lap_start_et=float(data.lap_start_et),
                 )
-            elif isinstance(data, (CompactScoring, FullScoringSession, dict)):
+            elif isinstance(data, (CompactScoring, FullScoringSession)):
+                store = TelemetryStateStore.get_instance()
+                delta_pkt = self.reference_lap_mgr.update_scoring_from_view(store.timing, store.grid)
+            elif isinstance(data, dict):
+                # Defensive-only path: TelemetryPayload never carries a raw dict in
+                # production (UDP packets always decode to typed isimotor_rawudp_client
+                # objects), so this never reaches the Store via CHANNEL_ROUTING. Kept for
+                # callers that still hand-build a JSON-shaped scoring dict directly.
                 delta_pkt = self.reference_lap_mgr.update_scoring(data)
-
-        # 2. Dispatch raw packet to observers via Qt Signal (triggers PluginManager.dispatch_packet -> on_* hooks)
-        self.packet_received.emit(packet)
 
         if data is not None:
 
             if override_sensors is not None:
                 sensors = override_sensors
-                if delta_pkt is not None:
-                    sensors.delta_time = delta_pkt.display_delta
-                    sensors.sector1_delta = delta_pkt.sector1_delta
-                    sensors.sector2_delta = delta_pkt.sector2_delta
-                    sensors.sector3_delta = delta_pkt.sector3_delta
-                    sensors.sector1_time = delta_pkt.sector1_time
-                    sensors.sector1_status = delta_pkt.sector1_status
-                    sensors.sector2_time = delta_pkt.sector2_time
-                    sensors.sector2_status = delta_pkt.sector2_status
-                    sensors.sector3_time = delta_pkt.sector3_time
-                    sensors.sector3_status = delta_pkt.sector3_status
-                    sensors.last_lap_time = delta_pkt.last_lap_time
-                    sensors.last_lap_time_str = delta_pkt.last_lap_time_str
-                    sensors.last_lap_status = delta_pkt.last_lap_status
-                    sensors.is_lap_freeze_active = delta_pkt.is_lap_freeze_active
-                    sensors.has_delta_reference = delta_pkt.has_reference
-                    sensors.estimated_lap_time = delta_pkt.estimated_lap_time
-                    sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
-                    sensors.expected_status = getattr(delta_pkt, 'expected_status', 'white') or 'white'
-                    sensors.is_pit_lap = delta_pkt.is_pit_lap
-                    sensors.lap_flag = delta_pkt.lap_flag
-                    sensors.current_sector = delta_pkt.current_sector
+                delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
                 self.process_frame(sensors, delta_pkt)
             elif isinstance(data, VehicleSensors):
                 self.process_frame(data, delta_pkt)
             else:
                 snap = LMUParser.process_packet(data)
                 sensors = snap.to_sensors() if snap is not None else self._latest_sensors
-                if delta_pkt is not None:
-                    sensors.delta_time = delta_pkt.display_delta
-                    sensors.sector1_delta = delta_pkt.sector1_delta
-                    sensors.sector2_delta = delta_pkt.sector2_delta
-                    sensors.sector3_delta = delta_pkt.sector3_delta
-                    sensors.sector1_time = delta_pkt.sector1_time
-                    sensors.sector1_status = delta_pkt.sector1_status
-                    sensors.sector2_time = delta_pkt.sector2_time
-                    sensors.sector2_status = delta_pkt.sector2_status
-                    sensors.sector3_time = delta_pkt.sector3_time
-                    sensors.sector3_status = delta_pkt.sector3_status
-                    sensors.last_lap_time = delta_pkt.last_lap_time
-                    sensors.last_lap_time_str = delta_pkt.last_lap_time_str
-                    sensors.last_lap_status = delta_pkt.last_lap_status
-                    sensors.is_lap_freeze_active = delta_pkt.is_lap_freeze_active
-                    sensors.has_delta_reference = delta_pkt.has_reference
-                    sensors.estimated_lap_time = delta_pkt.estimated_lap_time
-                    sensors.estimated_lap_time_str = delta_pkt.estimated_lap_time_str
-                    sensors.expected_status = getattr(delta_pkt, 'expected_status', 'white') or 'white'
-                    sensors.is_pit_lap = delta_pkt.is_pit_lap
-                    sensors.lap_flag = delta_pkt.lap_flag
-                    sensors.current_sector = delta_pkt.current_sector
+                delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
                 self.process_frame(sensors, delta_pkt)
+
+    def _apply_delta_fields(self, sensors: VehicleSensors, delta_pkt: Optional[LapDeltaPacket]) -> LapDeltaPacket:
+        """Stamps sensors' delta/timing/sector fields from the single authoritative
+        LapDeltaPacket (ReferenceLapManager/DeltaEngine) — falling back to the most
+        recently emitted one when this particular raw packet didn't trigger a fresh
+        recompute (e.g. Weather/ExtendedState/SystemEvent, which never touch the
+        engine). This is the ONLY place VehicleSensors gets these fields; the parser
+        (LMUParser) neither computes nor carries them.
+        """
+        effective = delta_pkt if delta_pkt is not None else self.reference_lap_mgr.latest_packet
+        sensors.delta_time = effective.display_delta
+        sensors.sector1_delta = effective.sector1_delta
+        sensors.sector2_delta = effective.sector2_delta
+        sensors.sector3_delta = effective.sector3_delta
+        sensors.sector1_time = effective.sector1_time
+        sensors.sector1_status = effective.sector1_status
+        sensors.sector2_time = effective.sector2_time
+        sensors.sector2_status = effective.sector2_status
+        sensors.sector3_time = effective.sector3_time
+        sensors.sector3_status = effective.sector3_status
+        sensors.last_lap_time = effective.last_lap_time
+        sensors.last_lap_time_str = effective.last_lap_time_str
+        sensors.last_lap_status = effective.last_lap_status
+        sensors.is_lap_freeze_active = effective.is_lap_freeze_active
+        sensors.has_delta_reference = effective.has_reference
+        sensors.estimated_lap_time = effective.estimated_lap_time
+        sensors.estimated_lap_time_str = effective.estimated_lap_time_str
+        sensors.expected_status = getattr(effective, 'expected_status', 'white') or 'white'
+        sensors.is_pit_lap = effective.is_pit_lap
+        sensors.lap_flag = effective.lap_flag
+        sensors.current_sector = effective.current_sector
+        return effective
 
     def process_frame(self, sensors: VehicleSensors, delta_packet: Optional[LapDeltaPacket] = None) -> None:
         """Handle incoming high-level telemetry frame and broadcast to observers."""

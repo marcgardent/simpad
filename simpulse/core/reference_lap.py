@@ -39,6 +39,7 @@ from simpulse.core.telemetry.delta_engine import (
 # Canonical types (single source of truth — do not redefine locally, the SDK
 # contracts (IDeltaSubscriber.on_delta_frame etc.) type-hint against these).
 from simpulse_sdk.models.delta import LapDeltaPacket, SectorInfo
+from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
 
 logger = logging.getLogger("simpulse.core.reference_lap")
 
@@ -269,6 +270,50 @@ class ReferenceLapManager(QObject):
         prev_prof = self.delta_engine.current_profile
 
         self.delta_engine.update_scoring(scoring_data)
+
+        if self.delta_engine.current_profile != prev_prof:
+            self.reference_profile_changed.emit(self.current_profile)
+
+        cur_laps = self.delta_engine._last_laps_completed
+        cur_sector = self.delta_engine._last_current_sector
+
+        packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
+        self._last_emitted_packet = packet
+        try:
+            from simpulse.core.telemetry.state_store import TelemetryStateStore
+            TelemetryStateStore.get_instance().update_delta(packet)
+        except Exception:
+            pass
+
+        # Check lap completion
+        if cur_laps > prev_laps and prev_laps >= 0:
+            self.lap_completed.emit(packet)
+
+        # Check sector transition
+        if cur_sector != prev_sector:
+            sec_num = prev_sector
+            sec_time = self.delta_engine.sector_1_time if sec_num == 1 else self.delta_engine.sector_2_time
+            sec_delta = self.delta_engine.sector1_delta if sec_num == 1 else self.delta_engine.sector2_delta
+            self.sector_completed.emit(sec_num, sec_time, sec_delta, "default")
+
+        self.delta_updated.emit(packet)
+        return packet
+
+    def update_scoring_from_view(
+        self,
+        timing: BaseTimingState,
+        grid: Optional[FullGridScoringState] = None,
+    ) -> LapDeltaPacket:
+        """Process the consolidated View in DeltaEngine, detect lap/sector transitions and
+        return LapDeltaPacket. Same orchestration as update_scoring(), sourced from
+        TelemetryStateStore.timing/.grid (already up to date at this point — the caller
+        dispatches the raw packet to the Store before calling this) instead of a raw packet.
+        """
+        prev_laps = self.delta_engine._last_laps_completed
+        prev_sector = self.delta_engine._last_current_sector
+        prev_prof = self.delta_engine.current_profile
+
+        self.delta_engine.update_scoring_from_view(timing, grid)
 
         if self.delta_engine.current_profile != prev_prof:
             self.reference_profile_changed.emit(self.current_profile)

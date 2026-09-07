@@ -26,6 +26,7 @@ from typing import Optional, List, Tuple, Dict, Union
 
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
 from simpulse_sdk.models.delta import DeltaReferenceMode
+from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -138,9 +139,12 @@ class DeltaEngine:
         self._ref_lap_time: float = 999999.0
         self._all_time_best_lap_time: float = 999999.0
         self._session_best_lap_time: float = 999999.0
-        # Paddock scalar (best LAP of the OTHER cars this session) for the expected
-        # colour.  None/0 until a Full/dict scoring packet proves other cars exist.
+        # Paddock bests (OTHER cars, this session).  ``lap`` and cumulative split
+        # clocks are recorded from Full/dict scoring packets that list the rivals.
+        # S2 here is the cumulative time at loop 2 (comparable to cur_sector2).
         self._paddock_best_lap: float = 999999.0
+        self._paddock_cum_s1: float = 999900.0
+        self._paddock_cum_s2: float = 999900.0
         self._paddock_known: bool = False
         self._stint_best_lap_time: float = 999999.0
         self._last_lap_time: float = 999999.0
@@ -516,6 +520,10 @@ class DeltaEngine:
         if s1_cur > 0.0:
             self._last_sector1_time = sector_time_display_str(s1_cur)
             self._last_sector1_status = sector_display_status(s1_cur, best_sector1, session_best_s1)
+            if cur_sector1 > 0.0 and self._paddock_known and self._paddock_cum_s1 < 999900.0:
+                # new lap crossing: violet when better/equal paddock best S1
+                if s1_cur <= self._paddock_cum_s1 + 0.001:
+                    self._last_sector1_status = "purple"
 
         # -- Sector 2 box (standalone: cumulated S1+S2 minus S1) --
         # Compose exclusively from the current lap once its split is crossed, otherwise
@@ -529,6 +537,10 @@ class DeltaEngine:
             self._last_sector2_time = sector_time_display_str(indiv_s2)
             best_indiv_s2 = (best_sector2 - best_sector1) if (best_sector2 > 0.0 and best_sector1 > 0.0) else 0.0
             self._last_sector2_status = sector_display_status(indiv_s2, best_indiv_s2, session_best_s2)
+            if cur_sector2 > 0.0 and self._paddock_known and self._paddock_cum_s2 < 999900.0:
+                # new S2 crossing: violet (better-or-equal paddock cumulative S2)
+                if cur_sector2 <= self._paddock_cum_s2 + 0.001:
+                    self._last_sector2_status = "purple"
 
         # -- Sector 3 box (standalone remainder of the last completed lap) --
         s3_cum_base = last_sector2
@@ -650,10 +662,8 @@ class DeltaEngine:
             best_s2 = float(player_veh.get("mBestSector2", player_veh.get("bestSector2", 0.0)))
             best_lap = float(player_veh.get("mBestLapTime", player_veh.get("bestLapTime", 0.0)))
 
-        # ----- Session split bests (single rule shared with parser for status) -----
-        # Updated on whole-session packets (Full/dict expose every car); Compact
-        # scoring falls back to the most recently observed session splits so status
-        # of a given frozen split does not flip green/purple frame-to-frame.
+        # Session split bests / paddock scan need every car listed in this packet;
+        # CompactScoring carries none (only the player), Full/dict expose the grid.
         vehicles_src: list = []
         if isinstance(scoring_js, FullScoringSession):
             vehicles_src = list(scoring_js.vehicles)
@@ -661,6 +671,131 @@ class DeltaEngine:
             scoring_info = scoring_js.get("mScoringInfo", scoring_js) if isinstance(scoring_js, dict) else {}
             vehicles_src = list(scoring_info.get("mVehicles", scoring_info.get("vehicles", [])))
 
+        self._apply_scoring_update(
+            now=now, track_name=track_name, track_len=track_len, current_et=current_et,
+            veh_name=veh_name, veh_class=veh_class, laps_comp=laps_comp,
+            lap_start_et=lap_start_et, time_into_lap=time_into_lap, player_dist=player_dist,
+            raw_sec=raw_sec, in_garage=in_garage, in_pits=in_pits, lap_flag=lap_flag,
+            last_lap_time=last_lap_time, cur_s1=cur_s1, cur_s2=cur_s2, last_s1=last_s1,
+            last_s2=last_s2, best_s1=best_s1, best_s2=best_s2, best_lap=best_lap,
+            vehicles_src=vehicles_src,
+        )
+
+    def update_scoring_from_view(
+        self,
+        timing: BaseTimingState,
+        grid: Optional[FullGridScoringState] = None,
+    ) -> None:
+        """
+        Processes the consolidated View (``TelemetryStateStore.timing``/``.grid``)
+        instead of re-parsing a raw packet. Same processing core as update_scoring()
+        (``_apply_scoring_update``) — this is only a typed field extraction.
+
+        ``grid`` (FullGridScoringState) mirrors update_scoring()'s FullScoringSession/
+        dict branch (multi-car session, player pit/lap-start specifics); when it is
+        None, only ``timing`` (BaseTimingState) is available, mirroring the
+        CompactScoring branch — including its dead-reckoned player_dist (CompactScoring
+        never carries car position, only DeltaEngine's own 100Hz integration does) and
+        its vehicle name/class kept from engine state (CompactScoring carries neither).
+        """
+        now = time.time()
+        if grid is not None:
+            track_name = grid.track_name
+            track_len = grid.track_length
+            current_et = grid.current_et
+            veh_name = grid.vehicle_name
+            veh_class = grid.vehicle_class
+            laps_comp = grid.total_laps
+            lap_start_et = grid.lap_start_et
+            time_into_lap = grid.time_into_lap
+            player_dist = grid.car_lap_dist
+            raw_sec = grid.sector
+            in_garage = grid.in_garage
+            in_pits = grid.in_pits
+            lap_flag = grid.count_lap_flag
+            last_lap_time = grid.last_lap_time
+            cur_s1 = grid.cur_sector1
+            cur_s2 = grid.cur_sector2
+            last_s1 = grid.last_sector1
+            last_s2 = grid.last_sector2
+            best_s1 = grid.best_sector1
+            best_s2 = grid.best_sector2
+            best_lap = grid.best_lap_time
+            vehicles_src = list(grid.vehicles)
+        else:
+            track_name = timing.track_name
+            track_len = timing.track_length
+            current_et = timing.current_et
+            veh_name = self._vehicle_name
+            veh_class = self._vehicle_class
+            laps_comp = timing.total_laps
+            lap_start_et = 0.0
+            time_into_lap = 0.0
+            # CompactScoring.lap_dist represents total track length (e.g. 5781m), NOT
+            # car position — already disambiguated into timing.track_length above.
+            player_dist = self._last_scoring_dist
+            raw_sec = timing.sector
+            in_garage = timing.in_garage
+            in_pits = False
+            lap_flag = timing.count_lap_flag
+            last_lap_time = timing.last_lap_time
+            cur_s1 = timing.cur_sector1
+            cur_s2 = timing.cur_sector2
+            last_s1 = timing.last_sector1
+            last_s2 = timing.last_sector2
+            best_s1 = timing.best_sector1
+            best_s2 = timing.best_sector2
+            best_lap = timing.best_lap_time
+            vehicles_src = []
+
+        self._apply_scoring_update(
+            now=now, track_name=track_name, track_len=track_len, current_et=current_et,
+            veh_name=veh_name, veh_class=veh_class, laps_comp=laps_comp,
+            lap_start_et=lap_start_et, time_into_lap=time_into_lap, player_dist=player_dist,
+            raw_sec=raw_sec, in_garage=in_garage, in_pits=in_pits, lap_flag=lap_flag,
+            last_lap_time=last_lap_time, cur_s1=cur_s1, cur_s2=cur_s2, last_s1=last_s1,
+            last_s2=last_s2, best_s1=best_s1, best_s2=best_s2, best_lap=best_lap,
+            vehicles_src=vehicles_src,
+        )
+
+    def _apply_scoring_update(
+        self,
+        *,
+        now: float,
+        track_name: str,
+        track_len: float,
+        current_et: float,
+        veh_name: str,
+        veh_class: str,
+        laps_comp: int,
+        lap_start_et: float,
+        time_into_lap: float,
+        player_dist: float,
+        raw_sec: int,
+        in_garage: bool,
+        in_pits: bool,
+        lap_flag: int,
+        last_lap_time: float,
+        cur_s1: float,
+        cur_s2: float,
+        last_s1: float,
+        last_s2: float,
+        best_s1: float,
+        best_s2: float,
+        best_lap: float,
+        vehicles_src: list,
+    ) -> None:
+        """
+        Single shared scoring-update core: sector/lap transitions, delta calculation,
+        paddock & session bests. Fed by either update_scoring() (raw packet) or
+        update_scoring_from_view() (consolidated View) — this is the only place this
+        logic is implemented; the two callers only differ in how they extract these
+        fields from their respective source.
+        """
+        # ----- Session split bests (single rule shared with parser for status) -----
+        # Updated on whole-session packets (Full/dict expose every car); Compact
+        # scoring falls back to the most recently observed session splits so status
+        # of a given frozen split does not flip green/purple frame-to-frame.
         def _veh_bs(v):
             return (float(v.get("mBestSector1", v.get("bestSector1", 0.0))),
                     float(v.get("mBestSector2", v.get("bestSector2", 0.0))),
@@ -699,19 +834,32 @@ class DeltaEngine:
                 return bool(getattr(v, "is_player", False)) or (getattr(v, "control", None) == 0)
 
             min_other_lap = 999900.0
+            min_other_s1 = 999900.0
+            min_other_s2 = 999900.0
             for v in vehicles_src:
                 if _is_player(v):
                     continue
-                blap = (
-                    float(v.get("mBestLapTime", v.get("bestLapTime", 0.0)) or 0.0)
-                    if isinstance(v, dict)
-                    else float(getattr(v, "best_lap_time", 0.0) or 0.0)
-                )
+                if isinstance(v, dict):
+                    bs1 = float(v.get("mBestSector1", v.get("bestSector1", 0.0)) or 0.0)
+                    bs2 = float(v.get("mBestSector2", v.get("bestSector2", 0.0)) or 0.0)
+                    blap = float(v.get("mBestLapTime", v.get("bestLapTime", 0.0)) or 0.0)
+                else:
+                    bs1 = float(getattr(v, "best_sector1", 0.0) or 0.0)
+                    bs2 = float(getattr(v, "best_sector2", 0.0) or 0.0)
+                    blap = float(getattr(v, "best_lap_time", 0.0) or 0.0)
                 if 0.0 < blap < min_other_lap:
                     min_other_lap = blap
+                # cumulative loop clocks from a *coherent* timed lap of that rival
+                if bs1 > 0.0 and bs2 > bs1:
+                    if bs1 < min_other_s1:
+                        min_other_s1 = bs1
+                    if bs2 < min_other_s2:
+                        min_other_s2 = bs2
             if min_other_lap < 999900.0:
                 self._paddock_best_lap = min_other_lap
                 self._paddock_known = True
+                self._paddock_cum_s1 = min_other_s1
+                self._paddock_cum_s2 = min_other_s2
 
         # Refresh stable per-sector HUD display (keeps intermediate sectors frozen).
         self._refresh_display_sector_times(
@@ -1306,6 +1454,19 @@ class DeltaEngine:
 
         # 2. Case without timed lap but with marks file (.marks.json) existing for track
         if marks_filepath and marks_filepath.exists():
+            # Race guard: if we already hold a *valid* all-time (telemetry) reference and
+            # the JSON merely appears marks-only (e.g. mid-write / transient partial read),
+            # never replace the good profile with a 999999s placeholder.
+            if self._all_time_best_lap_time < 999900.0 and self._all_time_best_lap_time > 0.0:
+                logger.info(
+                    f"[DeltaEngine] Kept valid all-time ({self._all_time_best_lap_time:.3f}s) while "
+                    f"{filepath.name} read marks-only (likely partial write); flags loaded from "
+                    f"{marks_filepath.name}."
+                )
+                log_delta_debug(
+                    f"[REF_LOAD_MARKS_KEEP_BEST] file='{filepath.name}', kept={self._all_time_best_lap_time:.3f}s"
+                )
+                return
             placeholder = ReferenceLapProfile(
                 track_name=self._track_name,
                 vehicle_name=self._vehicle_name,
@@ -1419,6 +1580,36 @@ class DeltaEngine:
     def current_sector(self) -> int:
         """Returns current sector index (1, 2, or 3)."""
         return self._last_current_sector
+
+    @property
+    def sector1_time_str(self) -> str:
+        """Display string ('MM:ss.mmm' or '--') for the S1 box — see _refresh_display_sector_times."""
+        return self._last_sector1_time
+
+    @property
+    def sector1_status(self) -> str:
+        """Display colour ('default'/'green'/'purple'/'pink'...) for the S1 box."""
+        return self._last_sector1_status
+
+    @property
+    def sector2_time_str(self) -> str:
+        """Display string for the S2 box."""
+        return self._last_sector2_time
+
+    @property
+    def sector2_status(self) -> str:
+        """Display colour for the S2 box."""
+        return self._last_sector2_status
+
+    @property
+    def sector3_time_str(self) -> str:
+        """Display string for the S3 box."""
+        return self._last_sector3_time
+
+    @property
+    def sector3_status(self) -> str:
+        """Display colour for the S3 box."""
+        return self._last_sector3_status
 
     @property
     def sector_1_dist(self) -> float:

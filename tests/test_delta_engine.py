@@ -721,6 +721,123 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertAlmostEqual(self.engine.live_delta, 1.0, delta=0.05)
 
 
+class TestUpdateScoringFromView(unittest.TestCase):
+    """update_scoring_from_view() must reproduce update_scoring()'s exact behaviour when
+    fed the View-typed equivalent of the same packet — Phase 2 of the SRP telemetry
+    refactor (engines consume TelemetryStateStore.timing/.grid instead of re-parsing
+    the raw packet). Both callers share the same core (_apply_scoring_update); these
+    tests lock the two field-extraction paths (CompactScoring<->BaseTimingState-only,
+    FullScoringSession<->FullGridScoringState) against each other.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_ref_dir = delta_engine_module._REF_LAPS_DIR
+        delta_engine_module._REF_LAPS_DIR = Path(self.temp_dir)
+
+    def tearDown(self):
+        delta_engine_module._REF_LAPS_DIR = self.original_ref_dir
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _state(eng):
+        return (
+            eng.current_sector,
+            round(eng.live_delta, 6),
+            round(eng.sector1_delta, 6),
+            round(eng.sector2_delta, 6),
+            eng._last_laps_completed,
+        )
+
+    def test_compact_equivalent_matches_raw_compact_scoring(self):
+        """grid=None path (BaseTimingState only) must match feeding the equivalent
+        CompactScoring packet directly — including the dead-reckoned player_dist
+        CompactScoring never carries (kept in sync manually here, exactly like the
+        engine's own 100Hz update_physics would)."""
+        from isimotor_rawudp_client import CompactScoring
+        from simpulse_sdk.models.scoring import BaseTimingState
+
+        raw_engine = DeltaEngine()
+        view_engine = DeltaEngine()
+        raw_engine._vehicle_name = view_engine._vehicle_name = "TestCar"
+        raw_engine._vehicle_class = view_engine._vehicle_class = "GT3"
+
+        def compact(sec):
+            return CompactScoring(
+                track_name="TestTrack", lap_dist=5000.0, current_et=13.0,
+                total_laps=2, sector=sec, count_lap_flag=2, in_garage_stall=False,
+                last_lap_time=100.0, cur_sector1=0.0, cur_sector2=0.0,
+                last_sector1=30.0, last_sector2=75.0, best_sector1=19.0,
+                best_sector2=37.5, best_lap_time=55.0,
+            )
+
+        def timing(sec):
+            return BaseTimingState(
+                track_name="TestTrack", track_length=5000.0, current_et=13.0,
+                total_laps=2, sector=sec, count_lap_flag=2, in_garage=False,
+                last_lap_time=100.0, cur_sector1=0.0, cur_sector2=0.0,
+                last_sector1=30.0, last_sector2=75.0, best_sector1=19.0,
+                best_sector2=37.5, best_lap_time=55.0,
+            )
+
+        for sec, dist in ((1, 200.0), (2, 1800.0), (3, 4900.0)):
+            raw_engine._last_scoring_dist = dist
+            view_engine._last_scoring_dist = dist
+            raw_engine.update_scoring(compact(sec))
+            view_engine.update_scoring_from_view(timing(sec), None)
+            self.assertEqual(self._state(raw_engine), self._state(view_engine))
+        self.assertEqual(raw_engine.current_sector, 3)
+
+    def test_full_equivalent_matches_raw_full_scoring_with_paddock(self):
+        """grid path (FullGridScoringState) must match feeding the equivalent
+        FullScoringSession directly, including the paddock/session-bests scan over
+        grid.vehicles (typed VehicleScoring, no dict branch involved)."""
+        from isimotor_rawudp_client import FullScoringSession, VehicleScoring
+        from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
+
+        player = VehicleScoring(
+            id=1, is_player=True, vehicle_name="Me", vehicle_class="GT3",
+            total_laps=1, sector=2, count_lap_flag=2, lap_dist=100.0,
+            time_into_lap=1.0, cur_sector1=9.5, cur_sector2=0.0,
+            last_sector1=20.0, last_sector2=50.0, last_lap_time=40.0,
+            best_sector1=19.0, best_sector2=49.0, best_lap_time=60.0,
+        )
+        rival = VehicleScoring(
+            id=2, is_player=False, control=1, vehicle_name="Riv", vehicle_class="GT3",
+            total_laps=3, sector=2, count_lap_flag=2, lap_dist=100.0,
+            time_into_lap=1.0, cur_sector1=0.0, cur_sector2=0.0,
+            last_sector1=10.0, last_sector2=30.0, last_lap_time=40.0,
+            best_sector1=10.0, best_sector2=30.0, best_lap_time=40.0,
+        )
+
+        raw_engine = DeltaEngine()
+        view_engine = DeltaEngine()
+
+        session = FullScoringSession(
+            track_name="T1", lap_dist=3000.0, current_et=1.0, vehicles=[player, rival],
+        )
+        raw_engine.update_scoring(session)
+
+        common = dict(
+            track_name="T1", track_length=3000.0, current_et=1.0, total_laps=1, sector=2,
+            in_garage=False, count_lap_flag=2, cur_sector1=9.5, cur_sector2=0.0,
+            last_sector1=20.0, last_sector2=50.0, last_lap_time=40.0, best_sector1=19.0,
+            best_sector2=49.0, best_lap_time=60.0,
+        )
+        grid = FullGridScoringState(
+            **common, vehicle_name="Me", vehicle_class="GT3", in_pits=False,
+            lap_start_et=0.0, time_into_lap=1.0, car_lap_dist=100.0,
+            vehicles=[player, rival],
+        )
+        view_engine.update_scoring_from_view(BaseTimingState(**common), grid)
+
+        self.assertEqual(self._state(raw_engine), self._state(view_engine))
+        self.assertEqual(raw_engine._paddock_cum_s1, view_engine._paddock_cum_s1)
+        self.assertEqual(raw_engine._paddock_cum_s1, 10.0)
+        self.assertEqual(raw_engine._last_sector1_status, view_engine._last_sector1_status)
+        self.assertEqual(raw_engine._last_sector1_status, "purple")
+
+
 if __name__ == "__main__":
     unittest.main()
 

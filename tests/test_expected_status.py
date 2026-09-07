@@ -48,5 +48,61 @@ class TestSensorCopy(unittest.TestCase):
         self.assertEqual(getattr(s, "expected_status", "white"), "white")
 
 
+class TestSectorVioletVsPaddock(unittest.TestCase):
+    """Violet sector: when your crossing of S1/S2 is better-or-equal the best
+    cumulative split of the other cars (paddock), the sector turns purple."""
+
+    def _update(self, eng, player, rival):
+        pkt = {"mTrackName": "T1", "mLapDist": 3000.0,
+               "mVehicles": [player, rival]}
+        eng.update_scoring(pkt)
+
+    def test_s1_violet_when_beat_paddock(self):
+        from simpulse.core.telemetry.delta_engine import DeltaEngine
+        eng = DeltaEngine()
+        rivals_sp = {
+            "mIsPlayer": False, "mVehicleName": "Riv", "mVehicleClass": "GT3",
+            "mTotalLaps": 3, "mTimeIntoLap": 1.0, "mLapDist": 100.0,
+            "mSector": 2, "mCountLapFlag": 2, "mLastLapTime": 40.0,
+            "mCurSector1": 0.0, "mCurSector2": 0.0,
+            "mLastSector1": 10.0, "mLastSector2": 30.0,
+            "mBestSector1": 10.0, "mBestSector2": 30.0, "mBestLapTime": 40.0,
+        }
+        player = {
+            "mIsPlayer": True, "mVehicleName": "Me", "mVehicleClass": "GT3",
+            "mTotalLaps": 1, "mTimeIntoLap": 1.0, "mLapDist": 100.0,
+            "mSector": 2, "mCountLapFlag": 2, "mLastLapTime": 40.0,
+            "mCurSector1": 9.5, "mCurSector2": 0.0,        # 9.5 < paddock 10 → violet
+            "mLastSector1": 20.0, "mLastSector2": 50.0,
+            "mBestSector1": 19.0, "mBestSector2": 49.0, "mBestLapTime": 60.0,
+        }
+        self._update(eng, player, rivals_sp)
+        self.assertEqual(eng._paddock_cum_s1, 10.0)
+        self.assertEqual(eng._last_sector1_time, "00:09.500")
+        self.assertEqual(eng._last_sector1_status, "purple")
+
+    def test_s1_not_violet_when_slower_than_paddock(self):
+        from simpulse.core.telemetry.delta_engine import DeltaEngine
+        eng = DeltaEngine()
+        rival = {
+            "mIsPlayer": False, "mVehicleName": "R", "mVehicleClass": "GT3",
+            "mTotalLaps": 2, "mTimeIntoLap": 1.0, "mLapDist": 100.0,
+            "mSector": 2, "mCountLapFlag": 2, "mLastLapTime": 40.0,
+            "mCurSector1": 0.0, "mCurSector2": 0.0, "mLastSector1": 8.0,
+            "mLastSector2": 25.0, "mBestSector1": 8.0, "mBestSector2": 25.0,
+            "mBestLapTime": 33.0,
+        }
+        player = {
+            "mIsPlayer": True, "mVehicleName": "Me", "mVehicleClass": "GT3",
+            "mTotalLaps": 1, "mTimeIntoLap": 1.0, "mLapDist": 100.0,
+            "mSector": 2, "mCountLapFlag": 2, "mLastLapTime": 40.0,
+            "mCurSector1": 11.0, "mCurSector2": 0.0,
+            "mLastSector1": 22.0, "mLastSector2": 55.0,
+            "mBestSector1": 21.0, "mBestSector2": 54.0, "mBestLapTime": 70.0,
+        }
+        self._update(eng, player, rival)
+        self.assertNotEqual(eng._last_sector1_status, "purple")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,57 +42,47 @@ def format_time_sec(seconds: float) -> str:
 
 @dataclass
 class TelemetryData:
-    """Structured representation of decoded telemetry."""
+    """Structured representation of decoded telemetry.
+
+    Deliberately holds ONLY what LMUParser itself decodes or derives from the raw
+    packet in hand (physics, wheels, garage/pits, raw lap/track-limits flags) — never
+    delta/timing/sector-status fields. Those are DeltaEngine's business data (live
+    delta, estimated lap time, sector time/colour, current sector, last-lap status,
+    lap-freeze) and reach VehicleSensors exactly once, at
+    TelemetryBus._apply_delta_fields(), sourced from the authoritative LapDeltaPacket.
+    A parser decodes; it does not carry, mirror, or invent another engine's output.
+    """
     longitudinal_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     longitudinal_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     lateral_patch_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     lateral_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     engine_rpm: float = 0.0
     engine_max_rpm: float = 7500.0
-    suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
-    suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+    suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # TODO SRP: normalized (deflection/0.10, clamped) in process_telemetry — a calibration formula, not a decode
+    suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # TODO SRP: hardcoded (0,0,0,0) placeholder in process_telemetry, never actually computed from wheel data — dead/stub field
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
     filtered_throttle: Optional[float] = None
     filtered_brake: Optional[float] = None
     unfiltered_steering: float = 0.0
-    in_realtime: bool = True
+    in_realtime: bool = True  # TODO SRP: garage/pause state machine, re-derived independently (different heuristic each time) in process_telemetry, process_compact_scoring, process_full_scoring, process_system_event and the ExtendedState branch of process_packet — see _last_in_realtime/_in_garage_trap
     gear: int = 0
     fuel: float = 0.0
     total_laps: int = 0
     laps_completed: int = 0
-    delta_time: float = 0.0
-    estimated_lap_time: float = 0.0
-    estimated_lap_time_str: str = "--:--.---"
-    sector1_time: str = "--"
-    sector1_status: str = "default"
-    sector2_time: str = "--"
-    sector2_status: str = "default"
-    sector3_time: str = "--"
-    sector3_status: str = "default"
-    aero_downforce: float = 0.0
-    current_sector: int = 1
-    sector1_delta: float = 0.0
-    sector2_delta: float = 0.0
-    sector3_delta: float = 0.0
+    aero_downforce: float = 0.0  # TODO SRP: computed (min(100, (front+rear)/50)) in process_telemetry, not decoded
     lap_flag: int = 2
-    track_cut_state: Optional[Union[str, int]] = None
+    track_cut_state: Optional[Union[str, int]] = None  # TODO MGT FUCK Union et Optionnal fait un enum ; TODO SRP: derived from lap_flag by an if/elif duplicated 3x (process_telemetry/process_compact_scoring/process_full_scoring)
     track_limits_steps: int = 0
     num_penalties: int = 0
     track_limits_steps_per_point: int = 0
     track_limits_steps_per_penalty: int = 0
-    has_delta_reference: bool = False
-    is_pit_lap: bool = False
-    last_lap_time: float = 0.0
-    last_lap_time_str: str = "--:--.---"
-    last_lap_status: str = "default"
-    is_lap_freeze_active: bool = False
     grip_fractions: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-    is_on_track: bool = True
-    wheels_on_track: int = 4
+    is_on_track: bool = True  # TODO SRP: derived (wheels_on_track > 0), not decoded
+    wheels_on_track: int = 4  # TODO SRP: aggregated from surface_types (count not in {2,3,4}), not decoded
     surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0)
     terrain_names: Tuple[str, str, str, str] = ("", "", "", "")
-    raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
+    raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None # TODO FUck Union
     raw_telemetry: Optional[TelemInfo] = None
 
     def to_sensors(self) -> VehicleSensors:
@@ -100,31 +90,13 @@ class TelemetryData:
             return VehicleSensors.from_telem_info(
                 telem=self.raw_telemetry,
                 scoring=self.raw_scoring,
-                delta_time=self.delta_time,
-                estimated_lap_time=self.estimated_lap_time,
-                estimated_lap_time_str=self.estimated_lap_time_str,
-                sector1_time=self.sector1_time,
-                sector1_status=self.sector1_status,
-                sector2_time=self.sector2_time,
-                sector2_status=self.sector2_status,
-                sector3_time=self.sector3_time,
-                sector3_status=self.sector3_status,
                 explicit_aero_load=self.aero_downforce,
-                current_sector=self.current_sector,
-                sector1_delta=self.sector1_delta,
-                sector2_delta=self.sector2_delta,
-                sector3_delta=self.sector3_delta,
                 lap_flag=self.lap_flag,
                 track_cut_state=self.track_cut_state,
-                has_delta_reference=self.has_delta_reference,
-                is_pit_lap=self.is_pit_lap,
-                last_lap_time=self.last_lap_time,
-                last_lap_time_str=self.last_lap_time_str,
-                last_lap_status=self.last_lap_status,
-                is_lap_freeze_active=self.is_lap_freeze_active,
                 in_realtime=self.in_realtime,
             )
 
+        # TODO SRP: remaining_laps is computed here (total_laps - laps_completed), not decoded
         remaining = max(0, self.total_laps - self.laps_completed) if (self.total_laps > 0 and self.total_laps < 1000) else 0
         return VehicleSensors.from_wheel_velocities(
             self.longitudinal_patch_vel,
@@ -143,28 +115,9 @@ class TelemetryData:
             filtered_brake=self.filtered_brake,
             fuel_level=self.fuel,
             remaining_laps=remaining,
-            delta_time=self.delta_time,
-            estimated_lap_time=self.estimated_lap_time,
-            estimated_lap_time_str=self.estimated_lap_time_str,
-            sector1_time=self.sector1_time,
-            sector1_status=self.sector1_status,
-            sector2_time=self.sector2_time,
-            sector2_status=self.sector2_status,
-            sector3_time=self.sector3_time,
-            sector3_status=self.sector3_status,
             explicit_aero_load=self.aero_downforce,
-            current_sector=self.current_sector,
-            sector1_delta=self.sector1_delta,
-            sector2_delta=self.sector2_delta,
-            sector3_delta=self.sector3_delta,
             lap_flag=self.lap_flag,
             track_cut_state=self.track_cut_state,
-            has_delta_reference=self.has_delta_reference,
-            is_pit_lap=self.is_pit_lap,
-            last_lap_time=self.last_lap_time,
-            last_lap_time_str=self.last_lap_time_str,
-            last_lap_status=self.last_lap_status,
-            is_lap_freeze_active=self.is_lap_freeze_active,
             grip_fractions=self.grip_fractions,
         )
 
@@ -174,6 +127,11 @@ class LMUParser:
     Standard binary SIMP UDP packet decoder (isiMotor-RawUDP / Le Mans Ultimate).
     """
 
+    # TODO SRP: garage/pause detection state machine — 5 independent, slightly different
+    # heuristics recompute these two flags (process_telemetry via speed thresholds,
+    # process_compact_scoring via in_garage_stall+speed, process_full_scoring via
+    # game_phase+speed, process_system_event via event_id, ExtendedState branch of
+    # process_packet via in_realtime_fc+speed). One state, five divergent derivations.
     _last_in_realtime: bool = True
     _in_garage_trap: bool = False
 
@@ -184,13 +142,6 @@ class LMUParser:
     _last_fuel: float = 0.0
     _last_total_laps: int = 0
     _last_laps_completed: int = 0
-    _last_delta_time: float = 0.0
-    _last_sector1_time: str = "--"
-    _last_sector1_status: str = "default"
-    _last_sector2_time: str = "--"
-    _last_sector2_status: str = "default"
-    _last_sector3_time: str = "--"
-    _last_sector3_status: str = "default"
     _last_aero_downforce: float = 0.0
 
     _last_gear: int = 1
@@ -213,10 +164,6 @@ class LMUParser:
     _last_surface_types: tuple = (0, 0, 0, 0)
     _last_terrain_names: tuple = ("", "", "", "")
 
-    _last_current_sector: int = 1
-    _last_sector1_delta: float = 0.0
-    _last_sector2_delta: float = 0.0
-    _last_sector3_delta: float = 0.0
     _last_lap_flag: int = 2
     _last_track_cut_state: Optional[Union[str, int]] = "green"
     _last_track_limits_steps: int = 0
@@ -276,86 +223,6 @@ class LMUParser:
         return VehicleSensors()
 
     @classmethod
-    def _calculate_sector_status(cls, val: float, best_val: float, session_best: float) -> str:
-        """Determines sector split colour using the single shared rule.
-
-        Kept as a thin helper for existing call sites; the decision now lives in
-        core.telemetry.sector_colors.sector_split_status so every consumer of a
-        completed sector box yields the same colour for the same split.
-        """
-        from .sector_colors import sector_split_status
-        return sector_split_status(val, personal_best=best_val, session_best=session_best, source="lmu")
-
-    @classmethod
-    def _calculate_session_bests(cls, vehicles: list) -> Tuple[float, float, float]:
-        """Computes session best sector 1, individual sector 2, and individual sector 3 times."""
-        s1, s2_indiv, s3_indiv = 999999.0, 999999.0, 999999.0
-        for v in vehicles:
-            bs1 = float(v.best_sector1)
-            bs2 = float(v.best_sector2)
-            blap = float(v.best_lap_time)
-
-            if 0.0 < bs1 < s1:
-                s1 = bs1
-            if 0.0 < bs1 and 0.0 < bs2 and (bs2 - bs1) > 0.0:
-                if (bs2 - bs1) < s2_indiv:
-                    s2_indiv = bs2 - bs1
-            if 0.0 < bs2 and 0.0 < blap and (blap - bs2) > 0.0:
-                if (blap - bs2) < s3_indiv:
-                    s3_indiv = blap - bs2
-        return s1, s2_indiv, s3_indiv
-
-    @classmethod
-    def _update_player_sector_times_from_model(
-        cls, player_veh: VehicleScoring, session_bests: Tuple[float, float, float]
-    ) -> None:
-        """Helper to extract individual sector times and color coding from VehicleScoring."""
-        session_best_s1, session_best_s2_indiv, session_best_s3_indiv = session_bests
-
-        # Sector 1
-        cur_s1 = float(player_veh.cur_sector1)
-        last_s1 = float(player_veh.last_sector1)
-        best_s1 = float(player_veh.best_sector1)
-        if cur_s1 > 0.0:
-            cls._last_sector1_time = format_time_sec(cur_s1)
-            cls._last_sector1_status = cls._calculate_sector_status(cur_s1, best_s1, session_best_s1)
-        elif last_s1 > 0.0:
-            cls._last_sector1_time = format_time_sec(last_s1)
-            cls._last_sector1_status = cls._calculate_sector_status(last_s1, best_s1, session_best_s1)
-
-        # Sector 2
-        cur_s2 = float(player_veh.cur_sector2)
-        last_s2 = float(player_veh.last_sector2)
-        best_s2 = float(player_veh.best_sector2)
-        best_indiv_s2 = (best_s2 - best_s1) if (best_s2 > 0.0 and best_s1 > 0.0) else -1.0
-        if cur_s2 > 0.0 and cur_s1 > 0.0:
-            indiv_s2 = cur_s2 - cur_s1
-            if indiv_s2 > 0.0:
-                cls._last_sector2_time = format_time_sec(indiv_s2)
-                cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
-        elif last_s2 > 0.0 and last_s1 > 0.0:
-            indiv_s2 = last_s2 - last_s1
-            if indiv_s2 > 0.0:
-                cls._last_sector2_time = format_time_sec(indiv_s2)
-                cls._last_sector2_status = cls._calculate_sector_status(indiv_s2, best_indiv_s2, session_best_s2_indiv)
-
-        # Sector 3 (Lap completion)
-        last_lap = float(player_veh.last_lap_time)
-        best_lap = float(player_veh.best_lap_time)
-        if last_lap > 0.0 and cur_s2 > 0.0:
-            indiv_s3 = last_lap - cur_s2
-            best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
-            if indiv_s3 > 0.0:
-                cls._last_sector3_time = format_time_sec(indiv_s3)
-                cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
-        elif last_lap > 0.0 and last_s2 > 0.0:
-            indiv_s3 = last_lap - last_s2
-            best_indiv_s3 = (best_lap - best_s2) if (best_lap > 0.0 and best_s2 > 0.0) else -1.0
-            if indiv_s3 > 0.0:
-                cls._last_sector3_time = format_time_sec(indiv_s3)
-                cls._last_sector3_status = cls._calculate_sector_status(indiv_s3, best_indiv_s3, session_best_s3_indiv)
-
-    @classmethod
     def process_telemetry(cls, telem: TelemInfo) -> Optional[TelemetryData]:
         """Processes a binary TelemInfo packet from isimotor_rawudp_client."""
         if cls._last_full_scoring and len(cls._last_full_scoring.vehicles) > 1:
@@ -369,6 +236,8 @@ class LMUParser:
         cls._last_telem_info = telem
         cls._last_fuel = telem.fuel
 
+        # TODO SRP: aero_downforce is COMPUTED here (front+rear downforce combined into
+        # a normalized 0-100 "load %" via an arbitrary /50 formula) — not decoded.
         f_df = abs(float(telem.front_downforce))
         r_df = abs(float(telem.rear_downforce))
         cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
@@ -380,11 +249,17 @@ class LMUParser:
             cls._last_lat_pv = tuple(float(w.lateral_patch_vel) for w in wheels[:4])
             cls._last_lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
             raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
+            # TODO SRP: suspension_travels COMPUTED (deflection/0.10, clamped 0..1) — a
+            # calibration formula guessing a max deflection, not a decode.
             cls._last_travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             cls._last_grips = tuple(float(w.grip_fraction) for w in wheels[:4])
+            # TODO SRP: suspension_velocities is a hardcoded stub, never actually derived
+            # from wheel data — dead field kept at (0,0,0,0).
             cls._last_susp_vels = (0.0, 0.0, 0.0, 0.0)
             cls._last_surface_types = tuple(int(w.surface_type) for w in wheels[:4])
             cls._last_terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
+            # TODO SRP: wheels_on_track/is_on_track COMPUTED from surface_types (business
+            # rule: which surface codes count as "off track") — not decoded.
             cls._last_wheels_on_track = sum(1 for s in cls._last_surface_types if s not in (2, 3, 4))
             cls._last_is_on_track = (cls._last_wheels_on_track > 0)
 
@@ -401,11 +276,9 @@ class LMUParser:
         # already fed this exact TelemInfo to ReferenceLapManager.update_physics()
         # (same shared DeltaEngine instance) before routing here; calling it again
         # double-processed every physics tick (double EMA smoothing, wasted CPU).
-        # This only *reads* the already-authoritative engine state.
-        cls._last_delta_time = cls._delta_engine.display_delta
-        cls._last_sector1_delta = cls._delta_engine.sector1_delta
-        cls._last_sector2_delta = cls._delta_engine.sector2_delta
-        cls._last_sector3_delta = cls._delta_engine.sector3_delta
+        # Delta/sector display state is DeltaEngine's alone; this parser neither caches
+        # nor carries it — diagnostics below read cls._delta_engine directly, and
+        # TelemetryBus._apply_delta_fields() is the single place VehicleSensors gets it.
 
         # LMU track limits / investigation state extraction
         tl_steps = 0
@@ -413,6 +286,8 @@ class LMUParser:
             tl_steps = int(telem.lmu.track_limits_steps)
             cls._last_track_limits_steps = tl_steps
 
+        # TODO SRP: track_cut_state COMPUTED from lap_flag (1 of 3 near-identical
+        # if/elif copies of this same rule — see process_compact_scoring/process_full_scoring).
         if cls._last_lap_flag == 1:
             cls._last_track_cut_state = "yellow"
         elif cls._last_lap_flag == 0:
@@ -420,6 +295,8 @@ class LMUParser:
         else:
             cls._last_track_cut_state = "green"
 
+        # TODO SRP: garage/pause detection (1 of 5 independent heuristics for the same
+        # in_realtime/_in_garage_trap state — see class docstring TODO above).
         speed = float(telem.speed_mps)
         is_strictly_in_garage_stall = False
         if cls._last_compact_scoring and cls._last_compact_scoring.in_garage_stall:
@@ -463,7 +340,7 @@ class LMUParser:
             TrackLimitsLogger.get_instance().log_telemetry_event(
                 source="TelemInfo(120Hz)",
                 lap_num=int(telem.lap_number),
-                sector=cls._last_current_sector,
+                sector=cls._delta_engine.current_sector,
                 lap_flag=cls._last_lap_flag,
                 track_limits_steps=cls._last_track_limits_steps,
                 steps_per_point=cls._last_steps_per_point,
@@ -485,7 +362,7 @@ class LMUParser:
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
                 lap_num=int(telem.lap_number),
-                sector=cls._last_current_sector,
+                sector=cls._delta_engine.current_sector,
                 lap_flag=cls._last_lap_flag,
             )
             TelemetryStateStore.get_instance().update_telemetry(telem, timestamp=time.time())
@@ -497,6 +374,8 @@ class LMUParser:
     def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
         """Processes a binary CompactScoring packet (SIMP Type 2)."""
         cls._last_compact_scoring = scoring
+        # TODO SRP: garage/pause detection (2 of 5 independent heuristics for the same
+        # in_realtime/_in_garage_trap state — see class docstring TODO above).
         current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
         is_in_garage = bool(scoring.in_garage_stall) or (not bool(scoring.in_realtime) and current_speed < 3.0)
         cls._in_garage_trap = is_in_garage
@@ -507,6 +386,8 @@ class LMUParser:
 
         cls._last_laps_completed = int(scoring.total_laps)
         cls._last_lap_flag = int(scoring.count_lap_flag)
+        # TODO SRP: track_cut_state COMPUTED from lap_flag (2 of 3 near-identical
+        # if/elif copies of this same rule).
         if cls._last_lap_flag == 1:
             cls._last_track_cut_state = "yellow"
         else:
@@ -515,63 +396,37 @@ class LMUParser:
             else:
                 cls._last_track_cut_state = "green"
 
-        # Sector 1
-        if scoring.cur_sector1 > 0.0:
-            cls._last_sector1_time = format_time_sec(scoring.cur_sector1)
-            cls._last_sector1_status = cls._calculate_sector_status(scoring.cur_sector1, scoring.best_sector1, scoring.best_sector1)
-        elif scoring.last_sector1 > 0.0:
-            cls._last_sector1_time = format_time_sec(scoring.last_sector1)
-            cls._last_sector1_status = cls._calculate_sector_status(scoring.last_sector1, scoring.best_sector1, scoring.best_sector1)
-
-        # Sector 2
-        if scoring.cur_sector2_individual > 0.0:
-            cls._last_sector2_time = format_time_sec(scoring.cur_sector2_individual)
-            b2 = (scoring.best_sector2 - scoring.best_sector1) if (scoring.best_sector2 > 0 and scoring.best_sector1 > 0) else -1.0
-            cls._last_sector2_status = cls._calculate_sector_status(scoring.cur_sector2_individual, b2, -1.0)
-        elif scoring.last_sector2_individual > 0.0:
-            cls._last_sector2_time = format_time_sec(scoring.last_sector2_individual)
-            b2 = (scoring.best_sector2 - scoring.best_sector1) if (scoring.best_sector2 > 0 and scoring.best_sector1 > 0) else -1.0
-            cls._last_sector2_status = cls._calculate_sector_status(scoring.last_sector2_individual, b2, -1.0)
-
-        # Sector 3
-        if scoring.last_sector3_individual > 0.0:
-            cls._last_sector3_time = format_time_sec(scoring.last_sector3_individual)
-            b3 = (scoring.best_lap_time - scoring.best_sector2) if (scoring.best_lap_time > 0 and scoring.best_sector2 > 0) else -1.0
-            cls._last_sector3_status = cls._calculate_sector_status(scoring.last_sector3_individual, b3, -1.0)
-
         # NOTE: does NOT call cls._delta_engine.update_scoring() here — TelemetryBus
         # already fed this exact CompactScoring packet to ReferenceLapManager.update_scoring()
         # (same shared DeltaEngine instance) before routing here; calling it again
         # double-processed every scoring tick. This only *reads* the already-authoritative
         # engine state, including its jitter-guarded current_sector (see delta_engine.py
-        # _handle_sector_transition) instead of re-deriving a naive, unguarded one here.
-        cls._last_delta_time = cls._delta_engine.display_delta
-        cls._last_sector1_delta = cls._delta_engine.sector1_delta
-        cls._last_sector2_delta = cls._delta_engine.sector2_delta
-        cls._last_sector3_delta = cls._delta_engine.sector3_delta
-
+        # _handle_sector_transition) and its already-computed sector time/colour display
+        # (see delta_engine.py _refresh_display_sector_times) — read live below, never
+        # cached or re-derived here: a parser decodes, it does not carry another engine's
+        # output.
+        de = cls._delta_engine
         raw_sec = int(scoring.sector)
-        cls._last_current_sector = cls._delta_engine.current_sector
         try:
             from .overlay_anomaly_logger import OverlayAnomalyLogger
             OverlayAnomalyLogger.get_instance().check_sector_update(
-                current_sector=cls._last_current_sector,
+                current_sector=de.current_sector,
                 raw_sector=raw_sec,
                 source="CompactScoring",
-                s1_time=cls._last_sector1_time,
-                s2_time=cls._last_sector2_time,
-                s3_time=cls._last_sector3_time,
-                s1_delta=cls._last_sector1_delta,
-                s2_delta=cls._last_sector2_delta,
-                s3_delta=cls._last_sector3_delta,
-                lap_dist=cls._delta_engine.last_scoring_dist,
+                s1_time=de.sector1_time_str,
+                s2_time=de.sector2_time_str,
+                s3_time=de.sector3_time_str,
+                s1_delta=de.sector1_delta,
+                s2_delta=de.sector2_delta,
+                s3_delta=de.sector3_delta,
+                lap_dist=de.last_scoring_dist,
                 speed_kmh=float(cls._last_telem_info.speed_mps * 3.6) if cls._last_telem_info else 0.0,
             )
             from .track_limits_logger import TrackLimitsLogger
             TrackLimitsLogger.get_instance().log_telemetry_event(
                 source="CompactScoring(10Hz)",
                 lap_num=int(scoring.total_laps),
-                sector=cls._last_current_sector,
+                sector=cls._delta_engine.current_sector,
                 lap_flag=cls._last_lap_flag,
                 track_limits_steps=cls._last_track_limits_steps,
                 steps_per_point=cls._last_steps_per_point,
@@ -596,8 +451,9 @@ class LMUParser:
         """Processes a multi-car session FullScoringSession (SIMP Type 4)."""
         cls._last_full_scoring = session
         player_veh = session.player_vehicle
-        session_bests = cls._calculate_session_bests(session.vehicles)
 
+        # TODO SRP: garage/pause detection (3 of 5 independent heuristics for the same
+        # in_realtime/_in_garage_trap state — see class docstring TODO above).
         current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
         is_in_garage = False
         if session.game_phase == 0 and current_speed < 3.0:
@@ -625,6 +481,8 @@ class LMUParser:
 
             cls._last_num_penalties = int(player_veh.num_penalties)
 
+            # TODO SRP: track_cut_state COMPUTED from lap_flag (3 of 3 near-identical
+            # if/elif copies of this same rule).
             if cls._last_lap_flag == 1:
                 cls._last_track_cut_state = "yellow"
             else:
@@ -638,7 +496,7 @@ class LMUParser:
                 TrackLimitsLogger.get_instance().log_telemetry_event(
                     source="FullScoring(5Hz)",
                     lap_num=int(player_veh.total_laps),
-                    sector=cls._last_current_sector,
+                    sector=cls._delta_engine.current_sector,
                     lap_flag=cls._last_lap_flag,
                     track_limits_steps=cls._last_track_limits_steps,
                     steps_per_point=cls._last_steps_per_point,
@@ -646,36 +504,32 @@ class LMUParser:
                     num_penalties=cls._last_num_penalties,
                     is_lap_invalid=(cls._last_lap_flag in (0, 1)),
                     speed_kmh=current_speed * 3.6,
-                    raw_data_summary=f"count_lap_flag={player_veh.count_lap_flag} flag={player_veh.flag} under_yellow={player_veh.under_yellow} pens={num_pens} tl_steps={tl_steps} in_pits={player_veh.in_pits}",
+                    raw_data_summary=f"count_lap_flag={player_veh.count_lap_flag} flag={player_veh.flag} under_yellow={player_veh.under_yellow} pens={cls._last_num_penalties} tl_steps={tl_steps} in_pits={player_veh.in_pits}",
                 )
             except Exception:
                 pass
 
-            cls._update_player_sector_times_from_model(player_veh, session_bests)
             # NOTE: does NOT call cls._delta_engine.update_scoring() here — TelemetryBus
             # already fed this exact FullScoringSession to ReferenceLapManager.update_scoring()
             # (same shared DeltaEngine instance) before routing here; calling it again
             # double-processed every grid tick. This only *reads* the already-authoritative
-            # engine state, including its jitter-guarded current_sector.
-            cls._last_delta_time = cls._delta_engine.display_delta
-            cls._last_sector1_delta = cls._delta_engine.sector1_delta
-            cls._last_sector2_delta = cls._delta_engine.sector2_delta
-            cls._last_sector3_delta = cls._delta_engine.sector3_delta
-
+            # engine state, including its jitter-guarded current_sector and its already-computed
+            # sector time/colour display — read live below, never cached or re-derived here:
+            # a parser decodes, it does not carry another engine's output.
+            de = cls._delta_engine
             raw_sec = int(player_veh.sector)
-            cls._last_current_sector = cls._delta_engine.current_sector
             try:
                 from .overlay_anomaly_logger import OverlayAnomalyLogger
                 OverlayAnomalyLogger.get_instance().check_sector_update(
-                    current_sector=cls._last_current_sector,
+                    current_sector=de.current_sector,
                     raw_sector=raw_sec,
                     source="FullScoringSession",
-                    s1_time=cls._last_sector1_time,
-                    s2_time=cls._last_sector2_time,
-                    s3_time=cls._last_sector3_time,
-                    s1_delta=cls._last_sector1_delta,
-                    s2_delta=cls._last_sector2_delta,
-                    s3_delta=cls._last_sector3_delta,
+                    s1_time=de.sector1_time_str,
+                    s2_time=de.sector2_time_str,
+                    s3_time=de.sector3_time_str,
+                    s1_delta=de.sector1_delta,
+                    s2_delta=de.sector2_delta,
+                    s3_delta=de.sector3_delta,
                     lap_dist=float(player_veh.lap_dist),
                     speed_kmh=current_speed * 3.6,
                 )
@@ -699,6 +553,8 @@ class LMUParser:
     @classmethod
     def process_system_event(cls, event: SystemEvent) -> TelemetryData:
         """Processes a session / cockpit SystemEvent (SIMP Type 3)."""
+        # TODO SRP: garage/pause detection (4 of 5 independent heuristics for the same
+        # in_realtime/_in_garage_trap state — see class docstring TODO above).
         prev_rt = cls._last_in_realtime
         if event.event_id in (1, 3):
             cls._in_garage_trap = False
@@ -735,6 +591,8 @@ class LMUParser:
             return cls.process_system_event(pkt)
         elif isinstance(pkt, ExtendedState):
             cls._last_extended_state = pkt
+            # TODO SRP: garage/pause detection (5 of 5 independent heuristics for the
+            # same in_realtime/_in_garage_trap state — see class docstring TODO above).
             if hasattr(pkt, "in_realtime_fc"):
                 is_in_realtime = bool(pkt.in_realtime_fc)
                 current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
@@ -778,32 +636,13 @@ class LMUParser:
             fuel=cls._last_fuel,
             total_laps=cls._last_total_laps,
             laps_completed=cls._last_laps_completed,
-            delta_time=cls._last_delta_time,
-            estimated_lap_time=cls._delta_engine.estimated_lap_time,
-            estimated_lap_time_str=cls._delta_engine.estimated_lap_time_str,
-            sector1_time=cls._last_sector1_time,
-            sector1_status=cls._last_sector1_status,
-            sector2_time=cls._last_sector2_time,
-            sector2_status=cls._last_sector2_status,
-            sector3_time=cls._last_sector3_time,
-            sector3_status=cls._last_sector3_status,
             aero_downforce=cls._last_aero_downforce,
-            current_sector=cls._last_current_sector,
-            sector1_delta=cls._last_sector1_delta,
-            sector2_delta=cls._last_sector2_delta,
-            sector3_delta=cls._last_sector3_delta,
             lap_flag=cls._last_lap_flag,
             track_cut_state=cls._last_track_cut_state,
             track_limits_steps=cls._last_track_limits_steps,
             num_penalties=cls._last_num_penalties,
             track_limits_steps_per_point=cls._last_steps_per_point,
             track_limits_steps_per_penalty=cls._last_steps_per_penalty,
-            has_delta_reference=cls._delta_engine.has_reference,
-            is_pit_lap=cls._delta_engine.is_pit_lap,
-            last_lap_time=cls._delta_engine.last_completed_lap_time,
-            last_lap_time_str=cls._delta_engine.last_completed_lap_time_str,
-            last_lap_status=cls._delta_engine.last_completed_lap_status,
-            is_lap_freeze_active=cls._delta_engine.is_lap_freeze_active,
             grip_fractions=cls._last_grips,
             is_on_track=cls._last_is_on_track,
             wheels_on_track=cls._last_wheels_on_track,
