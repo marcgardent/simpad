@@ -9,7 +9,7 @@ from typing import Optional, List, Type, TypeVar
 
 from simpulse_sdk.models.plugin_metadata import PluginMetadata, PluginState
 from simpulse_sdk.models.telemetry import ChannelRequirement
-from simpulse_sdk.models.state_store import TelemetryStateStore
+from simpulse_sdk.models.state_store import TelemetryStateStore, TelemetryPluginView
 from simpulse_sdk.contracts.config import IPluginConfigProvider
 
 TConfig = TypeVar("TConfig")
@@ -18,12 +18,21 @@ TConfig = TypeVar("TConfig")
 class PluginContext:
     """
     Execution context provided by the SimPulse Host to each plugin instance.
-    Offers strongly-typed configuration mapping and host logging.
+    Offers strongly-typed configuration mapping, host logging, and read-only
+    access to the consolidated telemetry View (same façade handed to the
+    polymorphic on_* state hooks) for use outside of those hooks — e.g. from
+    on_load() or from a Studio tab widget built on demand.
     """
 
-    def __init__(self, plugin_id: str, config_provider: IPluginConfigProvider):
+    def __init__(
+        self,
+        plugin_id: str,
+        config_provider: IPluginConfigProvider,
+        state_store: Optional[TelemetryStateStore] = None,
+    ):
         self.plugin_id = plugin_id
         self._config_provider = config_provider
+        self._state_store = state_store
         self.logger = logging.getLogger(f"simpulse.plugin.{plugin_id}")
 
     def get_typed_config(self, dataclass_cls: Type[TConfig]) -> TConfig:
@@ -36,6 +45,17 @@ class PluginContext:
     def save_typed_config(self, config_obj: object, auto_save: bool = True) -> None:
         """Persist a strongly-typed dataclass configuration."""
         self._config_provider.set_plugin_config_from(self.plugin_id, config_obj, auto_save=auto_save)
+
+    def get_state_view(self) -> TelemetryPluginView:
+        """
+        Return the consolidated, read-only telemetry View (timing/grid/delta and
+        cross-channel properties). Raw-UDP ingestion slots are structurally
+        unreachable through it — same guarantee as the view passed to on_scoring_
+        update()/on_grid_update()/etc. Falls back to the process-wide singleton
+        when this context was constructed without an explicit store (e.g. in tests).
+        """
+        store = self._state_store or TelemetryStateStore.get_instance()
+        return TelemetryPluginView(store)
 
 
 class SimPulsePlugin(ABC):

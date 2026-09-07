@@ -175,8 +175,10 @@ class PluginManager(QObject):
         if file_path:
             self._plugin_paths[pid] = file_path
 
-        # Create execution context with strongly-typed config manager
-        ctx = PluginContext(pid, self.config_manager)
+        # Create execution context with strongly-typed config manager and the
+        # consolidated telemetry View (ctx.get_state_view()) for use outside the
+        # polymorphic on_* state hooks.
+        ctx = PluginContext(pid, self.config_manager, state_store=TelemetryStateStore.get_instance())
 
         try:
             plugin.on_load(ctx)

@@ -154,6 +154,30 @@ def test_plugin_context_typed_config(tmp_path):
     assert reloaded.threshold == 128
 
 
+def test_plugin_context_state_view_hides_raw_ingest(tmp_path):
+    """PluginContext.get_state_view() must expose the consolidated view, never raw slots."""
+    from simpulse_sdk import TelemetryStateStore, TelemetryPluginView
+
+    cfg_file = tmp_path / "test_config_ctx_view.json"
+    cfg_mgr = ConfigManager(config_file=cfg_file)
+    store = TelemetryStateStore()
+    ctx = PluginContext("test.dummy", cfg_mgr, state_store=store)
+
+    view = ctx.get_state_view()
+    assert isinstance(view, TelemetryPluginView)
+    with pytest.raises(AttributeError):
+        _ = view.compact_scoring
+    with pytest.raises(AttributeError):
+        _ = view.telemetry
+
+    # Consolidated properties still delegate through to the backing store.
+    assert view.current_sector == store.current_sector
+
+    # Falls back to the process-wide singleton when constructed without a store.
+    ctx_no_store = PluginContext("test.dummy2", cfg_mgr)
+    assert isinstance(ctx_no_store.get_state_view(), TelemetryPluginView)
+
+
 def test_plugin_manager_lifecycle(qapp, tmp_path):
     """Test plugin registration, capabilities and state transitions."""
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")

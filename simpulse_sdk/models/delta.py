@@ -43,6 +43,7 @@ class LapDeltaPacket:
     ref_lap_time_str: str = "--:--.---"
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
+    expected_status: str = "white"   # unified colour of the projected/expected lap
     current_sector: int = 1
     sector1_delta: float = 0.0
     sector2_delta: float = 0.0

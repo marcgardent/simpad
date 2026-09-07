@@ -21,11 +21,11 @@ import os
 import time
 import json
 import logging
-from enum import Enum
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Union
 
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
+from simpulse_sdk.models.delta import DeltaReferenceMode
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -95,14 +95,6 @@ def sector_display_status(val: float, best_val: float, session_best: float | Non
     """
     from .sector_colors import sector_split_status
     return sector_split_status(val, personal_best=best_val, session_best=session_best, source="delta")
-
-
-class DeltaReferenceMode(str, Enum):
-    """Reference modes for delta calculation."""
-    ALL_TIME_BEST = "all_time_best"  # All-time best lap saved to disk
-    SESSION_BEST = "session_best"    # Best lap of current active session
-    STINT_BEST = "stint_best"        # Best lap of current stint (reset at pit stop)
-    LAST_LAP = "last_lap"            # Immediately preceding lap
 
 
 def _clean_name(name: str) -> str:
