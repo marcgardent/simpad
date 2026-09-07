@@ -24,7 +24,7 @@ from isimotor_rawudp_client import (
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
 from .presence import PresenceTracker
-from .view import TelemetryView
+from .view import TelemetryView, TrackCutState
 
 T = TypeVar("T")
 
@@ -34,6 +34,9 @@ class TimingStatus(str, Enum):
     TIMING_IN_PROGRESS = "timing_in_progress"
     TIME_DELETED = "time_deleted"
 
+    def __str__(self) -> str:
+        return self.value
+
 
 class ValidityEvent(str, Enum):
     """High-level lap validity state event."""
@@ -41,11 +44,17 @@ class ValidityEvent(str, Enum):
     TIMING_IN_PROGRESS = "TIMING_IN_PROGRESS"
     TIME_DELETED = "TIME_DELETED"
 
+    def __str__(self) -> str:
+        return self.value
+
 
 class LapStatus(str, Enum):
     """Clean vs dirty lap status."""
     CLEAN = "clean"
     DIRTY = "dirty"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass
@@ -672,7 +681,7 @@ class TelemetryStateStore:
             return "Valid" if self.lap_flag == 2 else "Invalid"
 
     @property
-    def track_cut_state(self) -> str:
+    def track_cut_state(self) -> TrackCutState:
         """User-facing track-limits state derived from lap_flag: 'yellow' (under
         investigation, count_lap_flag == 1), 'invalid' (deleted/penalty, == 0), or
         'green' (clean, == 2). Pure function of lap_flag — the single canonical
@@ -680,10 +689,10 @@ class TelemetryStateStore:
         with self._mutex:
             flag = self.lap_flag
             if flag == 1:
-                return "yellow"
+                return TrackCutState.YELLOW
             if flag == 0:
-                return "invalid"
-            return "green"
+                return TrackCutState.INVALID
+            return TrackCutState.GREEN
 
     @property
     def last_validity_event(self) -> ValidityEvent:

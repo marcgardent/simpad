@@ -23,6 +23,8 @@ from __future__ import annotations
 import time as _time
 from pathlib import Path as _Path
 
+from simpulse_sdk.models.delta import ExpectedStatus, SplitStatus
+
 _EPS = 0.001
 
 # ---- sector_eval diagnostic gating -------------------------------------
@@ -61,7 +63,7 @@ def sector_split_status(
     personal_best: float,
     session_best: float | None = None,
     *, source: str = "model",
-) -> str:
+) -> SplitStatus:
     """Colour status of an individual sector split.
 
     Racing standard:
@@ -73,9 +75,9 @@ def sector_split_status(
     try:
         val = float(value)
     except (TypeError, ValueError):
-        return "default"
+        return SplitStatus.DEFAULT
     if val <= 0.0 or val >= 999900.0:
-        return "default"
+        return SplitStatus.DEFAULT
 
     sess = 0.0
     if session_best is not None:
@@ -97,13 +99,13 @@ def sector_split_status(
     if 0.0 < sess < 999900.0 and 0.0 < best < 999900.0 and sess <= (best - _EPS):
         if val <= (sess + _EPS):
             _audit(source, val, best, sess, "purple")
-            return "purple"
+            return SplitStatus.PURPLE
 
     if 0.0 < best < 999900.0 and val <= (best + _EPS):
         _audit(source, val, best, sess, "pink")
-        return "pink"
+        return SplitStatus.PINK
     _audit(source, val, best, sess, "default")
-    return "default"
+    return SplitStatus.DEFAULT
 
 
 def expected_status(
@@ -115,7 +117,7 @@ def expected_status(
     invalid: bool = False,
     eps: float = _EPS,
     source: str = "expected",
-) -> str:
+) -> ExpectedStatus:
     """Colour of an *expected (projected) lap time* under the unified rule.
 
     The expected/estimated lap time is the projection at the current instant
@@ -137,9 +139,9 @@ def expected_status(
     except (TypeError, ValueError):
         v = 0.0
     if invalid:
-        return "invalid"
+        return ExpectedStatus.INVALID
     if not (0.0 < v < 999900.0):
-        return "white"
+        return ExpectedStatus.WHITE
 
     def _num(x):
         if x is None:
@@ -154,12 +156,12 @@ def expected_status(
     pd = _num(paddock)
     ss = _num(session)
     if ev is not None and v <= ev + eps:
-        return "pink"
+        return ExpectedStatus.PINK
     if pd is not None and v <= pd + eps:
-        return "purple"
+        return ExpectedStatus.PURPLE
     if ss is not None:
-        return "green" if v <= ss + eps else "yellow"
-    return "white"
+        return ExpectedStatus.GREEN if v <= ss + eps else ExpectedStatus.YELLOW
+    return ExpectedStatus.WHITE
 
 
 __all__ = ["sector_split_status", "expected_status", "set_sector_eval_enabled"]

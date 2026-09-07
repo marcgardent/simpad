@@ -23,8 +23,8 @@ from isimotor_rawudp_client import (
     SystemEvent,
 )
 
-from simpulse_sdk.models.delta import SectorInfo
-from simpulse_sdk.models.view import TelemetryView
+from simpulse_sdk.models.delta import ExpectedStatus, LapColorStatus, SectorInfo, SplitStatus
+from simpulse_sdk.models.view import TelemetryView, TrackCutState
 
 
 TelemetryPayload = Union[
@@ -275,25 +275,25 @@ class VehicleSensors:
     delta_time: float = 0.0
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
-    expected_status: str = "white"  # unified pink/purple/green/yellow/white of the projected lap
+    expected_status: ExpectedStatus = ExpectedStatus.WHITE  # unified pink/purple/green/yellow/white of the projected lap
     sector1_time: str = "--"
-    sector1_status: str = "default"
+    sector1_status: SplitStatus = SplitStatus.DEFAULT
     sector2_time: str = "--"
-    sector2_status: str = "default"
+    sector2_status: SplitStatus = SplitStatus.DEFAULT
     sector3_time: str = "--"
-    sector3_status: str = "default"
+    sector3_status: SplitStatus = SplitStatus.DEFAULT
     explicit_aero_load: float = 0.0
     current_sector: int = 1
     sector1_delta: float = 0.0
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     lap_flag: int = 2
-    track_cut_state: Optional[Union[str, int]] = None
+    track_cut_state: Optional[Union[TrackCutState, int]] = None
     has_delta_reference: bool = False
     is_pit_lap: bool = False
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
-    last_lap_status: str = "default"
+    last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
     is_lap_freeze_active: bool = False
 
     # On-track state and engaged gear
@@ -350,23 +350,23 @@ class VehicleSensors:
         estimated_lap_time: float = 0.0,
         estimated_lap_time_str: str = "--:--.---",
         sector1_time: str = "--",
-        sector1_status: str = "default",
+        sector1_status: SplitStatus = SplitStatus.DEFAULT,
         sector2_time: str = "--",
-        sector2_status: str = "default",
+        sector2_status: SplitStatus = SplitStatus.DEFAULT,
         sector3_time: str = "--",
-        sector3_status: str = "default",
+        sector3_status: SplitStatus = SplitStatus.DEFAULT,
         explicit_aero_load: float = 0.0,
         current_sector: int = 1,
         sector1_delta: float = 0.0,
         sector2_delta: float = 0.0,
         sector3_delta: float = 0.0,
         lap_flag: int = 2,
-        track_cut_state: Optional[Union[str, int]] = "green",
+        track_cut_state: Optional[Union[TrackCutState, int]] = TrackCutState.GREEN,
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
         last_lap_time: float = 0.0,
         last_lap_time_str: str = "--:--.---",
-        last_lap_status: str = "default",
+        last_lap_status: LapColorStatus = LapColorStatus.DEFAULT,
         is_lap_freeze_active: bool = False,
         grip_fractions: Optional[Tuple[float, float, float, float]] = None,
         ecu_abs_active_raw: Optional[bool] = None,
@@ -618,23 +618,23 @@ class VehicleSensors:
         estimated_lap_time: float = 0.0,
         estimated_lap_time_str: str = "--:--.---",
         sector1_time: str = "--",
-        sector1_status: str = "default",
+        sector1_status: SplitStatus = SplitStatus.DEFAULT,
         sector2_time: str = "--",
-        sector2_status: str = "default",
+        sector2_status: SplitStatus = SplitStatus.DEFAULT,
         sector3_time: str = "--",
-        sector3_status: str = "default",
+        sector3_status: SplitStatus = SplitStatus.DEFAULT,
         explicit_aero_load: Optional[float] = None,
         current_sector: int = 1,
         sector1_delta: float = 0.0,
         sector2_delta: float = 0.0,
         sector3_delta: float = 0.0,
         lap_flag: int = 2,
-        track_cut_state: Optional[Union[str, int]] = "green",
+        track_cut_state: Optional[Union[TrackCutState, int]] = TrackCutState.GREEN,
         has_delta_reference: bool = False,
         is_pit_lap: bool = False,
         last_lap_time: float = 0.0,
         last_lap_time_str: str = "--:--.---",
-        last_lap_status: str = "default",
+        last_lap_status: LapColorStatus = LapColorStatus.DEFAULT,
         is_lap_freeze_active: bool = False,
         in_realtime: bool = True,
     ) -> Self:

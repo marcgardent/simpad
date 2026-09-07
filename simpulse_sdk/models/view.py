@@ -29,12 +29,26 @@ read-only by convention on those nested objects too, never mutate them in place.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional, Tuple
 
 from isimotor_rawudp_client import TelemInfo
 
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
+
+
+class TrackCutState(str, Enum):
+    """User-facing track-limits state derived from lap_flag (see
+    TelemetryStateStore.track_cut_state for the rule). Defined here rather than
+    in state_store.py so this leaf module has no import-time dependency back on
+    the Store — state_store.py imports it from here instead."""
+    GREEN = "green"
+    YELLOW = "yellow"
+    INVALID = "invalid"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass(frozen=True)
@@ -64,7 +78,7 @@ class TelemetryView:
     lap_flag: int = 2
     is_lap_valid: bool = True
     is_lap_invalid: bool = False
-    track_cut_state: str = "green"
+    track_cut_state: TrackCutState = TrackCutState.GREEN
     num_penalties: int = 0
     track_limits_steps: int = 0
     steps_per_point: int = 3

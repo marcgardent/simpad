@@ -16,6 +16,9 @@ from simpulse_sdk.models.delta import (
     LapDeltaPacket,
     SectorInfo,
     DeltaReferenceMode,
+    SplitStatus,
+    LapColorStatus,
+    ExpectedStatus,
 )
 from simpulse_sdk.models.scoring import (
     BaseTimingState,
@@ -28,7 +31,7 @@ from simpulse_sdk.models.state_store import (
     ValidityEvent,
     LapStatus,
 )
-from simpulse_sdk.models.view import TelemetryView
+from simpulse_sdk.models.view import TelemetryView, TrackCutState
 from simpulse_sdk.models.reference_profile import (
     AnnotationType,
     ReferenceLapProfileView,
@@ -70,10 +73,14 @@ __all__ = [
     "LapDeltaPacket",
     "SectorInfo",
     "DeltaReferenceMode",
+    "SplitStatus",
+    "LapColorStatus",
+    "ExpectedStatus",
     "BaseTimingState",
     "FullGridScoringState",
     "TelemetryStateStore",
     "TelemetryView",
+    "TrackCutState",
     "PacketSlot",
     "TimingStatus",
     "ValidityEvent",

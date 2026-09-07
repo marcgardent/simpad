@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Union
 
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
-from simpulse_sdk.models.delta import DeltaReferenceMode, SectorInfo
+from simpulse_sdk.models.delta import DeltaReferenceMode, ExpectedStatus, LapColorStatus, SectorInfo, SplitStatus
 from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
 from .reference_profile import (
     ReferenceLapProfile,
@@ -89,7 +89,7 @@ def sector_time_display_str(seconds: float) -> str:
     return _fmt(seconds, missing="--")
 
 
-def sector_display_status(val: float, best_val: float, session_best: float | None = None) -> str:
+def sector_display_status(val: float, best_val: float, session_best: float | None = None) -> SplitStatus:
     """Color of a displayed sector split time.
 
     Thin delegation to the single shared rule (core.telemetry.sector_colors) so all
@@ -184,7 +184,7 @@ class DeltaEngine:
         self._frozen_final_delta: float = 0.0
         self._freeze_delta_until: float = 0.0
         self._last_completed_lap_time: float = 0.0
-        self._last_completed_lap_status: str = "default"
+        self._last_completed_lap_status: LapColorStatus = LapColorStatus.DEFAULT
         self._freeze_lap_until: float = 0.0
 
         # EMA smoothing
@@ -320,11 +320,11 @@ class DeltaEngine:
         self._sectors.last_sector1_time = value
 
     @property
-    def _last_sector1_status(self) -> str:
+    def _last_sector1_status(self) -> SplitStatus:
         return self._sectors.last_sector1_status
 
     @_last_sector1_status.setter
-    def _last_sector1_status(self, value: str) -> None:
+    def _last_sector1_status(self, value: SplitStatus) -> None:
         self._sectors.last_sector1_status = value
 
     @property
@@ -336,11 +336,11 @@ class DeltaEngine:
         self._sectors.last_sector2_time = value
 
     @property
-    def _last_sector2_status(self) -> str:
+    def _last_sector2_status(self) -> SplitStatus:
         return self._sectors.last_sector2_status
 
     @_last_sector2_status.setter
-    def _last_sector2_status(self, value: str) -> None:
+    def _last_sector2_status(self, value: SplitStatus) -> None:
         self._sectors.last_sector2_status = value
 
     @property
@@ -352,11 +352,11 @@ class DeltaEngine:
         self._sectors.last_sector3_time = value
 
     @property
-    def _last_sector3_status(self) -> str:
+    def _last_sector3_status(self) -> SplitStatus:
         return self._sectors.last_sector3_status
 
     @_last_sector3_status.setter
-    def _last_sector3_status(self, value: str) -> None:
+    def _last_sector3_status(self, value: SplitStatus) -> None:
         self._sectors.last_sector3_status = value
 
     @property
@@ -527,18 +527,18 @@ class DeltaEngine:
             prev_ref_time = self._ref_lap_time
 
             if lap_flag != 2 or in_pits or in_garage:
-                lap_status = "invalid"
+                lap_status = LapColorStatus.INVALID
             elif last_lap_time > 0.0:
                 if last_lap_time <= (prev_session_best + 0.001) or last_lap_time <= (prev_all_time_best + 0.001):
-                    lap_status = "purple"
+                    lap_status = LapColorStatus.PURPLE
                 elif prev_ref_time < 999900.0 and last_lap_time < prev_ref_time:
-                    lap_status = "green"
+                    lap_status = LapColorStatus.GREEN
                 elif prev_ref_time < 999900.0 and last_lap_time >= prev_ref_time:
-                    lap_status = "yellow"
+                    lap_status = LapColorStatus.YELLOW
                 else:
-                    lap_status = "purple" if (prev_session_best >= 999900.0) else "green"
+                    lap_status = LapColorStatus.PURPLE if (prev_session_best >= 999900.0) else LapColorStatus.GREEN
             else:
-                lap_status = "default"
+                lap_status = LapColorStatus.DEFAULT
 
             self._last_completed_lap_time = last_lap_time
             self._last_completed_lap_status = lap_status
@@ -1531,7 +1531,7 @@ class DeltaEngine:
         return "--:--.---"
 
     @property
-    def last_completed_lap_status(self) -> str:
+    def last_completed_lap_status(self) -> LapColorStatus:
         """Returns color status of last completed lap ('purple', 'green', 'yellow', 'invalid', 'default')."""
         return self._last_completed_lap_status
 
@@ -1551,7 +1551,7 @@ class DeltaEngine:
         return "--:--.---"
 
     @property
-    def expected_lap_status(self) -> str:
+    def expected_lap_status(self) -> ExpectedStatus:
         """Unified colour of the expected lap time (pink/purple/green/yellow/white).
 
         Compares the *projection* estimated_lap_time to the three references the
@@ -1598,7 +1598,7 @@ class DeltaEngine:
         return self._last_sector1_time
 
     @property
-    def sector1_status(self) -> str:
+    def sector1_status(self) -> SplitStatus:
         """Display colour ('default'/'green'/'purple'/'pink'...) for the S1 box."""
         return self._last_sector1_status
 
@@ -1608,7 +1608,7 @@ class DeltaEngine:
         return self._last_sector2_time
 
     @property
-    def sector2_status(self) -> str:
+    def sector2_status(self) -> SplitStatus:
         """Display colour for the S2 box."""
         return self._last_sector2_status
 
@@ -1618,7 +1618,7 @@ class DeltaEngine:
         return self._last_sector3_time
 
     @property
-    def sector3_status(self) -> str:
+    def sector3_status(self) -> SplitStatus:
         """Display colour for the S3 box."""
         return self._last_sector3_status
 

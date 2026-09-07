@@ -17,12 +17,58 @@ class DeltaReferenceMode(str, Enum):
     STINT_BEST = "stint_best"
     LAST_LAP = "last_lap"
 
+    def __str__(self) -> str:
+        return self.value
+
+
+class SplitStatus(str, Enum):
+    """Colour of a single frozen sector-split box (S1/S2/S3).
+
+    Single closed vocabulary — see core.telemetry.sector_colors.sector_split_status,
+    the only place allowed to decide it. ``str`` mixin keeps every historical
+    ``== "purple"`` comparison and dict-keyed lookup working unchanged; ``__str__``
+    is overridden so f-strings/logging still print the plain value, not
+    ``SplitStatus.PURPLE``.
+    """
+    DEFAULT = "default"
+    PINK = "pink"
+    PURPLE = "purple"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class LapColorStatus(str, Enum):
+    """Colour of a just-completed lap time (see DeltaEngine._handle_lap_transition)."""
+    DEFAULT = "default"
+    PURPLE = "purple"
+    GREEN = "green"
+    YELLOW = "yellow"
+    INVALID = "invalid"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class ExpectedStatus(str, Enum):
+    """Colour of the projected/expected lap time — see
+    core.telemetry.sector_colors.expected_status for the priority rule."""
+    WHITE = "white"
+    PINK = "pink"
+    PURPLE = "purple"
+    GREEN = "green"
+    YELLOW = "yellow"
+    INVALID = "invalid"
+
+    def __str__(self) -> str:
+        return self.value
+
 
 @dataclass(frozen=True)
 class SectorInfo:
     """Strongly-typed sector checkpoint information."""
     time: str = "--"
-    status: str = "default"
+    status: SplitStatus = SplitStatus.DEFAULT
     delta: float = 0.0
     delta_str: str = "--"
     is_current: bool = False
@@ -43,21 +89,21 @@ class LapDeltaPacket:
     ref_lap_time_str: str = "--:--.---"
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
-    expected_status: str = "white"   # unified colour of the projected/expected lap
+    expected_status: ExpectedStatus = ExpectedStatus.WHITE   # colour of the projected/expected lap
     current_sector: int = 1
     sector1_delta: float = 0.0
     sector2_delta: float = 0.0
     sector3_delta: float = 0.0
     sector1_time: str = "--"
-    sector1_status: str = "default"
+    sector1_status: SplitStatus = SplitStatus.DEFAULT
     sector2_time: str = "--"
-    sector2_status: str = "default"
+    sector2_status: SplitStatus = SplitStatus.DEFAULT
     sector3_time: str = "--"
-    sector3_status: str = "default"
+    sector3_status: SplitStatus = SplitStatus.DEFAULT
     sectors_list: List[SectorInfo] = field(default_factory=list)
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
-    last_lap_status: str = "default"
+    last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
     is_lap_freeze_active: bool = False
     lap_flag: int = 2
     is_pit_lap: bool = False

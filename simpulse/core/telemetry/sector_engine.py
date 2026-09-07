@@ -18,7 +18,7 @@ flat ``sector1_*``/``sector2_*``/``sector3_*`` trio.
 
 from typing import Callable, List, Optional
 
-from simpulse_sdk.models.delta import SectorInfo
+from simpulse_sdk.models.delta import SectorInfo, SplitStatus
 
 from .sector_colors import sector_split_status
 
@@ -31,7 +31,7 @@ def _sector_time_str(seconds: float) -> str:
     return _fmt(seconds, missing="--")
 
 
-def _sector_status(val: float, best_val: float, session_best: Optional[float] = None) -> str:
+def _sector_status(val: float, best_val: float, session_best: Optional[float] = None) -> SplitStatus:
     """Colour of a displayed sector split time — single shared green/purple rule."""
     return sector_split_status(val, personal_best=best_val, session_best=session_best, source="delta")
 
@@ -60,11 +60,11 @@ class SectorEngine:
         self.session_split_best_s3: float = 0.0
 
         self.last_sector1_time: str = "--"
-        self.last_sector1_status: str = "default"
+        self.last_sector1_status: SplitStatus = SplitStatus.DEFAULT
         self.last_sector2_time: str = "--"
-        self.last_sector2_status: str = "default"
+        self.last_sector2_status: SplitStatus = SplitStatus.DEFAULT
         self.last_sector3_time: str = "--"
-        self.last_sector3_status: str = "default"
+        self.last_sector3_status: SplitStatus = SplitStatus.DEFAULT
 
         self.reset_lap_capture(clear_primed=False)
 
@@ -261,7 +261,7 @@ class SectorEngine:
             if cur_sector1 > 0.0 and paddock_known and paddock_cum_s1 < 999900.0:
                 # new lap crossing: violet when better/equal paddock best S1
                 if s1_cur <= paddock_cum_s1 + 0.001:
-                    self.last_sector1_status = "purple"
+                    self.last_sector1_status = SplitStatus.PURPLE
 
         # -- Sector 2 box (standalone: cumulated S1+S2 minus S1) --
         # Compose exclusively from the current lap once its split is crossed, otherwise
@@ -278,7 +278,7 @@ class SectorEngine:
             if cur_sector2 > 0.0 and paddock_known and paddock_cum_s2 < 999900.0:
                 # new S2 crossing: violet (better-or-equal paddock cumulative S2)
                 if cur_sector2 <= paddock_cum_s2 + 0.001:
-                    self.last_sector2_status = "purple"
+                    self.last_sector2_status = SplitStatus.PURPLE
 
         # -- Sector 3 box (standalone remainder of the last completed lap) --
         s3_cum_base = last_sector2
