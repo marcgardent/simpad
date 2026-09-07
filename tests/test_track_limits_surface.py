@@ -11,6 +11,7 @@ from pathlib import Path
 from simpulse.core.telemetry.delta_engine import DeltaEngine
 from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 from simpulse.core.telemetry.track_limits_logger import TrackLimitsLogger
+from simpulse.core.reference_lap import ReferenceLapManager
 
 
 class TestTrackLimitsCutDebt(unittest.TestCase):
@@ -21,8 +22,7 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
         self.engine = DeltaEngine()
 
     def tearDown(self):
-        from simpulse.core.telemetry.lmu_parser import LMUParser
-        LMUParser._delta_engine.reset_session()
+        ReferenceLapManager.get_instance().delta_engine.reset_session()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
 
@@ -30,7 +30,9 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
     def test_no_compact_scoring_distance_jumping(self):
         """Verify that CompactScoring packets (where lap_dist=5781m is track length) do not corrupt car distance."""
         from isimotor_rawudp_client import CompactScoring, FullScoringSession, VehicleScoring, TelemInfo
-        from simpulse.core.telemetry.lmu_parser import LMUParser
+
+        rlm = ReferenceLapManager.get_instance()
+        de = rlm.delta_engine
 
         # Setup reference profile on 5781m track (Monza)
         prof = ReferenceLapProfile(
@@ -41,35 +43,36 @@ class TestTrackLimitsCutDebt(unittest.TestCase):
             num_points=5782,
             t_grid=[(d / 5781.0) * 95.0 for d in range(5782)],
         )
-        LMUParser._delta_engine._all_time_best_profile = prof
-        LMUParser._delta_engine._all_time_best_lap_time = 95.0
-        LMUParser._delta_engine._track_length = 5781.0
-        LMUParser._delta_engine._apply_active_profile()
+        de._all_time_best_profile = prof
+        de._all_time_best_lap_time = 95.0
+        de._track_length = 5781.0
+        de._apply_active_profile()
 
-        # 1. FullScoring arrives: car is at dist=935m — drive the engine first
-        # (LMUParser only *reads* it now), mirroring telemetry_bus.py's call order.
+        # 1. FullScoring arrives: car is at dist=935m.
         v = VehicleScoring(is_player=1, lap_dist=935.0, time_into_lap=15.0, count_lap_flag=1, total_laps=3, sector=1)
         session = FullScoringSession(lap_dist=5781.0, track_name="Monza", vehicles=[v])
-        LMUParser._delta_engine.update_scoring(session)
-        LMUParser.process_full_scoring(session)
-        self.assertEqual(LMUParser._delta_engine.last_scoring_dist, 935.0)
+        rlm.update_scoring(session)
+        self.assertEqual(de.last_scoring_dist, 935.0)
 
         # 2. CompactScoring arrives with lap_dist=5781.0m (track length)
         compact = CompactScoring(lap_dist=5781.0, count_lap_flag=1, total_laps=3, sector=1, current_et=120.0)
-        LMUParser._delta_engine.update_scoring(compact)
-        LMUParser.process_compact_scoring(compact)
+        rlm.update_scoring(compact)
 
         # DeltaEngine last_scoring_dist MUST STILL BE 935.0m (NOT 5781.0m!)
-        self.assertEqual(LMUParser._delta_engine.last_scoring_dist, 935.0)
+        self.assertEqual(de.last_scoring_dist, 935.0)
 
         # 3. TelemInfo arrives: advances 10m at 50 m/s with dt=0.2s
         from isimotor_rawudp_client.models.common import TelemVect3
         telem = TelemInfo(local_vel=TelemVect3(x=0.0, y=0.0, z=50.0), delta_time=0.2, elapsed_time=120.2, lap_start_et=105.0)
-        LMUParser._delta_engine.update_physics(telem)
-        LMUParser.process_telemetry(telem)
+        rlm.update_physics(
+            veh_speed_ms=float(telem.speed_mps),
+            dt=float(telem.delta_time),
+            elapsed_time=float(telem.elapsed_time),
+            lap_start_et=float(telem.lap_start_et),
+        )
 
         # Distance smoothly advances by 50 * 0.2 = 10m -> 945.0m!
-        self.assertAlmostEqual(LMUParser._delta_engine.last_scoring_dist, 945.0, delta=0.1)
+        self.assertAlmostEqual(de.last_scoring_dist, 945.0, delta=0.1)
 
     def test_event_driven_surface_on_off_track_logging(self):
         """Verify that leaving the road and returning to the track logs strictly on state transitions."""

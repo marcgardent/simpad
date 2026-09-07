@@ -9,7 +9,8 @@ from typing import Optional, List, Type, TypeVar
 
 from simpulse_sdk.models.plugin_metadata import PluginMetadata, PluginState
 from simpulse_sdk.models.telemetry import ChannelRequirement
-from simpulse_sdk.models.state_store import TelemetryStateStore, TelemetryPluginView
+from simpulse_sdk.models.state_store import TelemetryStateStore
+from simpulse_sdk.models.view import TelemetryView
 from simpulse_sdk.contracts.config import IPluginConfigProvider
 
 TConfig = TypeVar("TConfig")
@@ -46,16 +47,16 @@ class PluginContext:
         """Persist a strongly-typed dataclass configuration."""
         self._config_provider.set_plugin_config_from(self.plugin_id, config_obj, auto_save=auto_save)
 
-    def get_state_view(self) -> TelemetryPluginView:
+    def get_state_view(self) -> TelemetryView:
         """
-        Return the consolidated, read-only telemetry View (timing/grid/delta and
-        cross-channel properties). Raw-UDP ingestion slots are structurally
-        unreachable through it — same guarantee as the view passed to on_scoring_
-        update()/on_grid_update()/etc. Falls back to the process-wide singleton
-        when this context was constructed without an explicit store (e.g. in tests).
+        Return the consolidated, immutable telemetry View (timing/grid/delta and
+        cross-channel properties) — same frozen snapshot type handed to on_scoring_
+        update()/on_grid_update()/etc. and to Engines. Falls back to the process-wide
+        singleton when this context was constructed without an explicit store (e.g.
+        in tests).
         """
         store = self._state_store or TelemetryStateStore.get_instance()
-        return TelemetryPluginView(store)
+        return store.snapshot()
 
 
 class SimPulsePlugin(ABC):

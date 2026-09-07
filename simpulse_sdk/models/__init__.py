@@ -23,12 +23,12 @@ from simpulse_sdk.models.scoring import (
 )
 from simpulse_sdk.models.state_store import (
     TelemetryStateStore,
-    TelemetryPluginView,
     PacketSlot,
     TimingStatus,
     ValidityEvent,
     LapStatus,
 )
+from simpulse_sdk.models.view import TelemetryView
 from simpulse_sdk.models.plugin_metadata import (
     PluginMetadata,
     PluginState,
@@ -68,7 +68,7 @@ __all__ = [
     "BaseTimingState",
     "FullGridScoringState",
     "TelemetryStateStore",
-    "TelemetryPluginView",
+    "TelemetryView",
     "PacketSlot",
     "TimingStatus",
     "ValidityEvent",

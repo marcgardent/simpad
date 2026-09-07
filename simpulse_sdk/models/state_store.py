@@ -24,6 +24,7 @@ from isimotor_rawudp_client import (
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
 from .presence import PresenceTracker
+from .view import TelemetryView
 
 T = TypeVar("T")
 
@@ -316,8 +317,20 @@ class TelemetryStateStore:
     # ── Ingestion Handlers ───────────────────────────────────────────────────
 
     def update_telemetry(self, data: TelemInfo, timestamp: float, raw_bytes_len: int = 0) -> None:
-        """Ingests a 120Hz TelemInfo frame and updates physics state."""
+        """Ingests a 120Hz TelemInfo frame and updates physics state.
+
+        Strict multi-car filtering: in a multi-vehicle FullScoringSession (more
+        than one car), reject any TelemInfo whose slot_id doesn't match the
+        resolved player vehicle's id — it's an opponent/AI packet, not the
+        player's. Formerly LMUParser.process_telemetry's job; ported here since
+        this is now the single merge point for TelemInfo (see architecture plan).
+        """
         with self._mutex:
+            last_full_scoring = self.full_scoring.data
+            if last_full_scoring is not None and len(last_full_scoring.vehicles) > 1:
+                player_veh = last_full_scoring.player_vehicle
+                if player_veh is not None and int(getattr(data, "slot_id", -1)) != int(player_veh.id):
+                    return
             self.telemetry.update(data, timestamp, raw_bytes_len)
 
             self._presence.on_telemetry(getattr(data, "speed_mps", 0.0))
@@ -925,44 +938,11 @@ class TelemetryStateStore:
         with self._mutex:
             return self.grid
 
-
-class TelemetryPluginView:
-    """
-    Read-only façade handed to telemetry plugins on each on_* event.
-
-    Deliberately hides every raw-UDP ingestion slot so that accessing the decoded
-    payload is structurally impossible from a plugin:
-      - ``state.telemetry``, ``state.compact_scoring``, ``state.full_scoring``,
-        ``.weather``, ``.system``, ``.extended_state``, ``.force_feedback``,
-        ``.graphics``, ``.track_rules``, ``.pit_menu``, ``.opponent_telemetry``
-        raise AttributeError;
-      - every other consolidated/public access (``timing``, ``grid``, ``delta``,
-        cross-channel properties, consume_* helpers) delegates to the backing store.
-
-    Only the ingest layer (parsers, callbacks that physically receive the UDP frame)
-    may dereference the real :class:`TelemetryStateStore`; those consumers declare the
-    explicit ``_REQUIRE_RAW_INGEST`` capability instead of going through this view.
-    """
-
-    _RAW_INGEST_SLOTS = frozenset({
-        "telemetry", "opponent_telemetry", "compact_scoring", "full_scoring",
-        "weather", "system", "extended_state", "force_feedback", "graphics",
-        "track_rules", "pit_menu",
-    })
-
-    def __init__(self, _backing: TelemetryStateStore) -> None:
-        object.__setattr__(self, "_backing", _backing)
-
-    def __getattr__(self, name: str):
-        if name in TelemetryPluginView._RAW_INGEST_SLOTS:
-            raise AttributeError(
-                f"{type(self).__name__}.{name} is raw UDP ingress state and is not "
-                "exposed to plugins; consume the consolidated timing/grid/delta state."
-            )
-        if name.startswith("_"):
-            raise AttributeError(
-                f"{type(self).__name__}: internal attributes are not exposed to plugins."
-            )
-        backing = object.__getattribute__(self, "_backing")
-        return getattr(backing, name)
+    def snapshot(self) -> TelemetryView:
+        """Builds the single immutable TelemetryView consumed by Engines and Plugins
+        — data (raw packets still needed downstream, timing/grid) plus every derived
+        cross-channel value, plus the Engine's own latest output (delta), all as of
+        this instant. See simpulse_sdk/models/view.py for the full rationale."""
+        with self._mutex:
+            return TelemetryView.from_store(self)
 

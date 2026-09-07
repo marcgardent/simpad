@@ -2,6 +2,7 @@
 Unit and Integration Tests for the SimPulse Qt6 Strongly-Typed Plugin Architecture.
 """
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 import pytest
@@ -155,8 +156,9 @@ def test_plugin_context_typed_config(tmp_path):
 
 
 def test_plugin_context_state_view_hides_raw_ingest(tmp_path):
-    """PluginContext.get_state_view() must expose the consolidated view, never raw slots."""
-    from simpulse_sdk import TelemetryStateStore, TelemetryPluginView
+    """PluginContext.get_state_view() must expose the consolidated, immutable View,
+    never raw slots."""
+    from simpulse_sdk import TelemetryStateStore, TelemetryView
 
     cfg_file = tmp_path / "test_config_ctx_view.json"
     cfg_mgr = ConfigManager(config_file=cfg_file)
@@ -164,18 +166,20 @@ def test_plugin_context_state_view_hides_raw_ingest(tmp_path):
     ctx = PluginContext("test.dummy", cfg_mgr, state_store=store)
 
     view = ctx.get_state_view()
-    assert isinstance(view, TelemetryPluginView)
+    assert isinstance(view, TelemetryView)
+    # Raw ingest slots simply don't exist on the frozen View at all (structurally
+    # unreachable, not merely access-denied).
     with pytest.raises(AttributeError):
         _ = view.compact_scoring
     with pytest.raises(AttributeError):
         _ = view.telemetry
 
-    # Consolidated properties still delegate through to the backing store.
+    # Consolidated fields still match the backing store's state at snapshot time.
     assert view.current_sector == store.current_sector
 
     # Falls back to the process-wide singleton when constructed without a store.
     ctx_no_store = PluginContext("test.dummy2", cfg_mgr)
-    assert isinstance(ctx_no_store.get_state_view(), TelemetryPluginView)
+    assert isinstance(ctx_no_store.get_state_view(), TelemetryView)
 
 
 def test_plugin_manager_lifecycle(qapp, tmp_path):
@@ -554,10 +558,9 @@ def test_telemetry_bus_full_scoring_garage_integration(qapp, tmp_path):
     pm = PluginManager(cfg_mgr)
     bus = TelemetryBus()
     # Wire the Store: in_realtime is now fused by TelemetryStateStore's
-    # PresenceTracker, fed via PluginManager.dispatch_packet on packet_received —
-    # without this connection the Store (and hence LMUParser's presence reads)
-    # never sees these packets. Pre-existing gap surfaced by that migration; every
-    # sibling test in this file that needs correct in_realtime already wires this.
+    # PresenceTracker, fed by TelemetryBus.process_raw_packet's merge step —
+    # without this connection the Store never sees these packets. Every sibling
+    # test in this file that needs correct in_realtime already wires this.
     pm.connect_telemetry_bus(bus)
     osm = OverlayStateMachine(display_mode=OverlayDisplayMode.AUTO)
     bus.telemetry_updated.connect(osm.update_telemetry)
@@ -880,8 +883,15 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     store = TelemetryStateStore.get_instance()
     store.reset()
 
+    # dispatch_packet() no longer merges the raw packet into the Store itself —
+    # TelemetryBus.process_raw_packet() does that exactly once, before emitting
+    # packet_received (see telemetry_bus.py's _STORE_MERGE_METHODS). Tests driving
+    # dispatch_packet() directly (bypassing TelemetryBus/Qt) must merge first, same
+    # as TelemetryBus would.
+
     # 1. Physics Tick / Telemetry packet
     telem = TelemInfo(local_vel=TelemVect3(0.0, 0.0, 50.0), gear=4)
+    store.update_telemetry(telem, timestamp=time.time())
     pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.TELEMETRY, data=telem))
 
     assert len(spy.physics_ticks) == 1
@@ -893,6 +903,7 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
 
     # 2. Compact Scoring packet
     compact = CompactScoring(count_lap_flag=2, total_laps=8)
+    store.update_compact_scoring(compact, timestamp=time.time())
     pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.COMPACT_SCORING, data=compact))
 
     assert len(spy.scoring_updates) == 1
@@ -901,6 +912,7 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
 
     # 3. Full Scoring packet
     full_session = FullScoringSession(in_realtime=True, vehicles=[])
+    store.update_full_scoring(full_session, timestamp=time.time())
     pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.FULL_SCORING, data=full_session))
 
     assert len(spy.grid_updates) == 1
@@ -908,6 +920,7 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
 
     # 4. Weather packet
     weather = WeatherControl(ambient_temp_k=298.15)
+    store.update_weather(weather, timestamp=time.time())
     pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.WEATHER, data=weather))
 
 
@@ -1000,8 +1013,7 @@ def test_all_eleven_channels_have_on_hooks_and_zero_none(qapp, tmp_path):
     assert len(pm.CHANNEL_ROUTING) == 11
     for ch in TelemetryChannel:
         assert ch in pm.CHANNEL_ROUTING
-        store_method, hook_name = pm.CHANNEL_ROUTING[ch]
-        assert store_method is not None
+        hook_name = pm.CHANNEL_ROUTING[ch]
         assert hook_name is not None
         assert hook_name.startswith("on_")
 

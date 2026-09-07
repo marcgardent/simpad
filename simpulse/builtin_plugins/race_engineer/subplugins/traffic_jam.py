@@ -56,6 +56,7 @@ class TrafficJamRole(BaseRole):
         self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
         self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
         self._custom_profile: Optional[ReferenceLapProfile] = None
+        self._last_known_profile: Optional[ReferenceLapProfile] = None
 
         self._last_alert_time: float = 0.0
         self._is_active_alert: bool = False
@@ -67,19 +68,18 @@ class TrafficJamRole(BaseRole):
         self.reset()
 
     def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
-        """Retrieves active reference profile (injected or via context/DeltaEngine)."""
+        """Retrieves active reference profile (injected, or via context — the
+        sanctioned SDK path: RaceEngineerManager resolves it from Core once per
+        tick and injects it into EngineerContext; this plugin never reaches into
+        Core itself)."""
         if self._custom_profile is not None:
             return self._custom_profile
         if context:
-            return context.get_reference_profile()
-        try:
-            from simpulse.core.telemetry.lmu_parser import LMUParser
-            delta_eng = LMUParser._delta_engine
-            if delta_eng:
-                return delta_eng.all_time_best_profile or delta_eng.current_profile
-        except Exception:
-            pass
-        return None
+            self._last_known_profile = context.get_reference_profile()
+            return self._last_known_profile
+        # No context: fall back to whatever the last context-provided call
+        # resolved, rather than reaching into Core directly.
+        return self._last_known_profile
 
     @property
     def slow_speed_threshold_kmh(self) -> float:

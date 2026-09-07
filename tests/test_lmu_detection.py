@@ -6,8 +6,8 @@ import json
 import time
 import pytest
 from pathlib import Path
-from simpulse.core.telemetry.lmu_parser import LMUParser, TelemetryData
 from simpulse.core.telemetry.state_store import TelemetryStateStore
+from simpulse.core.reference_lap import ReferenceLapManager
 from simpulse.core.utils.window_utils import is_lmu_foreground, get_foreground_window_title, get_foreground_process_name
 
 
@@ -32,11 +32,8 @@ def test_lmu_scoring_garage_menu_trap():
         in_pits=True,
     )
     session = FullScoringSession(in_realtime=True, vehicles=[player])
-    # in_realtime is fused by TelemetryStateStore's PresenceTracker from this exact
-    # packet — feed the Store first, mirroring PluginManager.dispatch_packet's order.
+    # in_realtime is fused by TelemetryStateStore's PresenceTracker from this exact packet.
     TelemetryStateStore.get_instance().update_full_scoring(session, timestamp=time.time())
-    res = LMUParser.process_full_scoring(session)
-    assert res is not None
     assert TelemetryStateStore.get_instance().in_realtime is False, "Scoring packet in garage stall must evaluate in_realtime as False"
 
 
@@ -52,8 +49,6 @@ def test_lmu_scoring_game_phase_garage():
     )
     session = FullScoringSession(game_phase=0, in_realtime=True, vehicles=[player])
     TelemetryStateStore.get_instance().update_full_scoring(session, timestamp=time.time())
-    res = LMUParser.process_full_scoring(session)
-    assert res is not None
     assert TelemetryStateStore.get_instance().in_realtime is False, "game_phase=0 must evaluate in_realtime as False (Garage)"
 
 
@@ -62,8 +57,6 @@ def test_lmu_extended_state_garage_monitor():
     from isimotor_rawudp_client import ExtendedState
     ext = ExtendedState(in_realtime_fc=False)
     TelemetryStateStore.get_instance().update_extended_state(ext, timestamp=time.time())
-    res = LMUParser.process_packet(ext)
-    assert res is not None
     assert TelemetryStateStore.get_instance().in_realtime is False
 
 
@@ -72,8 +65,6 @@ def test_lmu_system_event_exit_realtime():
     from isimotor_rawudp_client import SystemEvent
     evt = SystemEvent(event_id=2)
     TelemetryStateStore.get_instance().update_system_events(evt, timestamp=time.time())
-    res = LMUParser.process_system_event(evt)
-    assert res is not None
     assert TelemetryStateStore.get_instance().in_realtime is False
 
 
@@ -91,13 +82,14 @@ def test_lmu_sector3_detection():
         cur_sector2=110.5,
     )
     session = FullScoringSession(in_realtime=True, vehicles=[player])
-    # LMUParser only *reads* the sector DeltaEngine already latched; drive the engine
-    # first, mirroring what telemetry_bus.py does before routing to LMUParser.
-    LMUParser._delta_engine.update_scoring(session)
-    res = LMUParser.process_full_scoring(session)
-    assert res is not None
-    assert LMUParser._delta_engine.current_sector == 3, (
-        f"sector=0 must map to current_sector=3, got {LMUParser._delta_engine.current_sector}"
+    # Merge into the Store first, then drive the Engine from the Store's View —
+    # mirrors telemetry_bus.py's real call order.
+    store = TelemetryStateStore.get_instance()
+    store.update_full_scoring(session, timestamp=time.time())
+    rlm = ReferenceLapManager.get_instance()
+    rlm.update_scoring_from_view(store.timing, store.grid)
+    assert rlm.delta_engine.current_sector == 3, (
+        f"sector=0 must map to current_sector=3, got {rlm.delta_engine.current_sector}"
     )
 
 

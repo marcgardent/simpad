@@ -27,6 +27,7 @@ from typing import Optional, List, Tuple, Dict, Union
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
 from simpulse_sdk.models.delta import DeltaReferenceMode
 from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
+from simpulse_sdk.models.view import TelemetryView
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -757,6 +758,14 @@ class DeltaEngine:
             last_s2=last_s2, best_s1=best_s1, best_s2=best_s2, best_lap=best_lap,
             vehicles_src=vehicles_src,
         )
+
+    def update_physics_from_view(self, view: TelemetryView) -> None:
+        """Processes the consolidated TelemetryView instead of a raw TelemInfo —
+        same single-source-of-truth pattern as update_scoring_from_view() above.
+        No-op when the Store hasn't ingested any TelemInfo yet (view.raw_telemetry
+        is None, e.g. before the very first physics packet of a session)."""
+        if view.raw_telemetry is not None:
+            self.update_physics(view.raw_telemetry)
 
     def _apply_scoring_update(
         self,

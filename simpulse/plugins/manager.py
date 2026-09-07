@@ -34,7 +34,7 @@ from simpulse_sdk import (
     LapDeltaPacket,
     VehicleSensors,
     TelemetryStateStore,
-    TelemetryPluginView,
+    TelemetryView,
 )
 
 
@@ -358,41 +358,41 @@ class PluginManager(QObject):
             except Exception as e:
                 self._handle_plugin_error(pid, "on_delta_frame", e)
 
-    # Declarative channel dispatch routing: (store_update_method, plugin_hook_name)
-    CHANNEL_ROUTING: Dict[TelemetryChannel, Tuple[str, str]] = {
-        TelemetryChannel.TELEMETRY: ("update_telemetry", "on_physics_tick"),
-        TelemetryChannel.OPPONENT_TELEMETRY: ("update_opponent_telemetry", "on_opponents_tick"),
-        TelemetryChannel.COMPACT_SCORING: ("update_compact_scoring", "on_scoring_update"),
-        TelemetryChannel.FULL_SCORING: ("update_full_scoring", "on_grid_update"),
-        TelemetryChannel.WEATHER: ("update_weather", "on_weather_update"),
-        TelemetryChannel.EXTENDED_STATE: ("update_extended_state", "on_extended_state_update"),
-        TelemetryChannel.SYSTEM_EVENTS: ("update_system_events", "on_session_event"),
-        TelemetryChannel.FORCE_FEEDBACK: ("update_force_feedback", "on_ffb_update"),
-        TelemetryChannel.GRAPHICS: ("update_graphics", "on_graphics_update"),
-        TelemetryChannel.TRACK_RULES: ("update_track_rules", "on_track_rules_update"),
-        TelemetryChannel.PIT_MENU: ("update_pit_menu", "on_pit_menu_update"),
+    # Declarative channel -> plugin hook routing. The Store merge itself is no
+    # longer this class's job — TelemetryBus.process_raw_packet() merges the raw
+    # packet into TelemetryStateStore exactly once, feeds the Engines, and only
+    # THEN emits packet_received (which reaches dispatch_packet below), so the
+    # store.snapshot() taken here already reflects both this packet AND the
+    # Engine's output (delta) for the same tick — see telemetry_bus.py.
+    CHANNEL_ROUTING: Dict[TelemetryChannel, str] = {
+        TelemetryChannel.TELEMETRY: "on_physics_tick",
+        TelemetryChannel.OPPONENT_TELEMETRY: "on_opponents_tick",
+        TelemetryChannel.COMPACT_SCORING: "on_scoring_update",
+        TelemetryChannel.FULL_SCORING: "on_grid_update",
+        TelemetryChannel.WEATHER: "on_weather_update",
+        TelemetryChannel.EXTENDED_STATE: "on_extended_state_update",
+        TelemetryChannel.SYSTEM_EVENTS: "on_session_event",
+        TelemetryChannel.FORCE_FEEDBACK: "on_ffb_update",
+        TelemetryChannel.GRAPHICS: "on_graphics_update",
+        TelemetryChannel.TRACK_RULES: "on_track_rules_update",
+        TelemetryChannel.PIT_MENU: "on_pit_menu_update",
     }
 
     def dispatch_packet(self, packet: TelemetryRawPacket) -> None:
         """
-        Ingests a specific channel raw packet into the central TelemetryStateStore
-        and dispatches polymorphic typed on_* event hooks.
+        Dispatches polymorphic typed on_* event hooks for an already-merged raw
+        packet (TelemetryBus merges it into TelemetryStateStore before emitting
+        packet_received — see CHANNEL_ROUTING's docstring above).
         Pure O(1) table-driven dispatch: zero if/elif ladder.
         """
         if packet.data is None:
             return
 
-        route = self.CHANNEL_ROUTING.get(packet.channel)
-        if route is None:
+        plugin_hook_name = self.CHANNEL_ROUTING.get(packet.channel)
+        if plugin_hook_name is None:
             return
 
         store = TelemetryStateStore.get_instance()
-        store_method_name, plugin_hook_name = route
-
-        # 1. Update State Store via direct method lookup
-        store_method = getattr(store, store_method_name, None)
-        if store_method is not None:
-            store_method(packet.data, packet.timestamp, packet.raw_bytes_len)
 
         # 1b. Metadata-only channel sample to IChannelSampleSubscriber plugins.
         # Deliberately carries NO decoded payload: diagnostics plugins measure Hz/bytes
@@ -412,8 +412,10 @@ class PluginManager(QObject):
                 self._handle_plugin_error(pid, "on_channel_sample", e)
 
         # 2. Dispatch polymorphic on_* hook to enabled plugins.
-        # Plugins see the consolidated view; raw-UDP ingress is granted only to the
-        # handful of ingest-layer plugins that declare _REQUIRE_RAW_INGEST explicitly.
+        # Plugins see the immutable TelemetryView (data + Engine results, single
+        # snapshot per tick); raw-UDP ingress is granted only to the handful of
+        # ingest-layer plugins that declare _REQUIRE_RAW_INGEST explicitly.
+        view: Optional[TelemetryView] = None
         for pid, p in list(self._plugins.items()):
             if p.state != PluginState.ENABLED:
                 continue
@@ -424,7 +426,9 @@ class PluginManager(QObject):
                     if getattr(p, "_REQUIRE_RAW_INGEST", False):
                         hook(store)
                     else:
-                        hook(TelemetryPluginView(store))
+                        if view is None:
+                            view = store.snapshot()
+                        hook(view)
                     self._error_counts[pid] = 0
                 except Exception as e:
                     self._handle_plugin_error(pid, plugin_hook_name, e)

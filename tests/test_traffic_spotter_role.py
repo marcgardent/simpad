@@ -6,7 +6,6 @@ import pytest
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from simpulse.builtin_plugins.race_engineer.base import RoleStatus
-from simpulse.core.telemetry.lmu_parser import TelemetryData
 
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3

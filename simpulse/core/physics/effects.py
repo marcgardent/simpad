@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, Union
 from ..math_utils import apply_response_curve, clamp
 from ..telemetry.sensors import VehicleSensors
-from ..telemetry.lmu_parser import TelemetryData
+from simpulse_sdk.models.view import TelemetryView
 
 
 @dataclass
@@ -87,7 +87,7 @@ class PhysicsToHaptic:
       4. Wheel spin (Acceleration / TC)
     """
 
-    def __init__(self, config: Optional[Union[PhysicsHapticConfig, Dict[str, float]]] = None):
+    def __init__(self, config: Optional[Union[PhysicsHapticConfig, Dict[str, float]]] = None): # TODO MGT on arrete les extra non typé Dict[str, float]
         if config is None:
             self.typed_config = PhysicsHapticConfig()
         elif isinstance(config, PhysicsHapticConfig):
@@ -127,12 +127,12 @@ class PhysicsToHaptic:
             self.config.update(new_config)
             self.typed_config = PhysicsHapticConfig.from_dict(self.config)
 
-    def process(self, telemetry: Union[VehicleSensors, TelemetryData]) -> Tuple[float, float, float, float]:
+    def process(self, telemetry: Union[VehicleSensors, TelemetryView]) -> Tuple[float, float, float, float]:
         """
         Computes vibration intensities (left_low, left_high, right_low, right_high)
         from VehicleSensors domain signals.
         """
-        sensors = telemetry.to_sensors() if isinstance(telemetry, TelemetryData) else telemetry
+        sensors = VehicleSensors.from_view(telemetry) if isinstance(telemetry, TelemetryView) else telemetry
 
         # Level 1: Calculate raw effect slip levels
         lock_l, lock_r = self._calc_raw_slip(sensors.lock_left, sensors.lock_right, self.typed_config.lock)

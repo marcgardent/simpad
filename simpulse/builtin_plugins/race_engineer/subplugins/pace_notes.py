@@ -17,7 +17,6 @@ from simpulse.core.telemetry.reference_profile import (
     AnnotationType,
     clean_name_identifier,
 )
-from simpulse.core.telemetry.lmu_parser import LMUParser
 from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
@@ -75,6 +74,7 @@ class PaceNotesRole(BaseRole):
         self._last_announced_dist: float = -1.0
         self._last_ann_signature: List[Tuple[str, float, str, Optional[int]]] = []
         self._custom_profile: Optional[ReferenceLapProfile] = None
+        self._last_known_profile: Optional[ReferenceLapProfile] = None
 
     def get_parameters(self) -> List[RoleParam]:
         """Declares list of configurable parameters for UI form."""
@@ -155,30 +155,19 @@ class PaceNotesRole(BaseRole):
             else:
                 return self._custom_profile
 
-        scoring_track = context.get_track_name() if context else ""
-
         if context:
+            # Sanctioned SDK path: EngineerContext.reference_profile is injected by
+            # RaceEngineerManager once per tick from its own core-side resolution
+            # (RaceEngineerManager._get_active_reference_profile) — subplugins never
+            # reach into Core (ReferenceLapManager/DeltaEngine) themselves.
             ctx_prof = context.get_reference_profile()
-            if ctx_prof and ctx_prof.annotations:
-                return ctx_prof
+            self._last_known_profile = ctx_prof
+            return ctx_prof if (ctx_prof and ctx_prof.annotations) else None
 
-        delta_eng = LMUParser._delta_engine
-        if delta_eng:
-            # 1. Current profile if it contains annotations
-            if delta_eng.current_profile and delta_eng.current_profile.annotations:
-                prof = delta_eng.current_profile
-                ref_track = prof.track_name
-                if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
-                    return prof
-
-            # 2. Direct fallback to track reference/marks profile on disk (independent of delta mode)
-            prof = delta_eng.all_time_best_profile or delta_eng.current_profile
-            if prof and prof.annotations:
-                ref_track = prof.track_name
-                if not (scoring_track and ref_track and clean_name_identifier(scoring_track) != clean_name_identifier(ref_track)):
-                    return prof
-
-        return None
+        # No context (e.g. get_state_summary(), called by a UI refresh outside the
+        # telemetry tick): fall back to whatever the last context-provided call
+        # resolved, rather than reaching into Core directly.
+        return self._last_known_profile
 
     def get_channel_requirements(self) -> List[ChannelRequirement]:
         return [

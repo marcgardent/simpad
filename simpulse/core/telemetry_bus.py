@@ -15,7 +15,6 @@ from PySide6.QtCore import QObject, Signal, QTimer
 from simpulse.core.telemetry import (
     VehicleSensors,
     UDPServer,
-    LMUParser,
 )
 from simpulse.core.telemetry_channels import (
     TelemetryChannel, ChannelMetrics, TelemetryRawPacket, TelemetryPayload
@@ -34,6 +33,25 @@ from isimotor_rawudp_client import (
 )
 
 logger = logging.getLogger("simpulse.telemetry_bus")
+
+
+# Channel -> TelemetryStateStore merge-handler name. This is the ONE place a raw
+# packet is merged into the Store — PluginManager.dispatch_packet() (triggered by
+# packet_received, emitted below AFTER this merge and the Engine update) no longer
+# touches the Store itself, so each packet is merged exactly once.
+_STORE_MERGE_METHODS: Dict[TelemetryChannel, str] = {
+    TelemetryChannel.TELEMETRY: "update_telemetry",
+    TelemetryChannel.OPPONENT_TELEMETRY: "update_opponent_telemetry",
+    TelemetryChannel.COMPACT_SCORING: "update_compact_scoring",
+    TelemetryChannel.FULL_SCORING: "update_full_scoring",
+    TelemetryChannel.WEATHER: "update_weather",
+    TelemetryChannel.EXTENDED_STATE: "update_extended_state",
+    TelemetryChannel.SYSTEM_EVENTS: "update_system_events",
+    TelemetryChannel.FORCE_FEEDBACK: "update_force_feedback",
+    TelemetryChannel.GRAPHICS: "update_graphics",
+    TelemetryChannel.TRACK_RULES: "update_track_rules",
+    TelemetryChannel.PIT_MENU: "update_pit_menu",
+}
 
 
 class UdpStreamStatus(Enum):
@@ -224,29 +242,28 @@ class TelemetryBus(QObject):
             timestamp=now
         )
 
-        # 1. Dispatch raw packet to observers via Qt Signal first (direct Qt connection:
-        # this synchronously runs PluginManager.dispatch_packet -> TelemetryStateStore.update_*
-        # -> on_* hooks). The Store is the single point of ingestion; by the time this
-        # call returns, store.timing/.grid are fully up to date for this packet.
-        self.packet_received.emit(packet)
+        store = TelemetryStateStore.get_instance()
 
-        # 2. Process high-level telemetry domain representations and delta calculations
-        # from the consolidated View — never by re-parsing the raw packet a second time.
+        # 1. Merge the raw packet into the Store — the ONE place this happens (see
+        # _STORE_MERGE_METHODS). Not a raw VehicleSensors/dict: those never reach
+        # the Store (VehicleSensors is already-derived mock data; dict is the
+        # defensive-only JSON-scoring path, see the isinstance(data, dict) branch
+        # below).
+        if data is not None and not isinstance(data, (VehicleSensors, dict)):
+            merge_method_name = _STORE_MERGE_METHODS.get(channel)
+            merge_method = getattr(store, merge_method_name, None) if merge_method_name else None
+            if merge_method is not None:
+                merge_method(data, now, raw_bytes_len)
+
+        # 2. Engines consume the Store's consolidated View — never a hand-extracted
+        # raw packet — so DeltaEngine sees the exact same fused state as everyone
+        # else (this is what resolves CompactScoring/FullScoringSession disagreeing
+        # on transient values: they're merged into one View by the Store first).
         delta_pkt: Optional[LapDeltaPacket] = None
         if data is not None:
             if isinstance(data, TelemInfo):
-                delta_pkt = self.reference_lap_mgr.update_physics(
-                    veh_speed_ms=float(data.speed_mps),
-                    throttle=float(data.unfiltered_throttle),
-                    brake=float(data.unfiltered_brake),
-                    steering=float(data.unfiltered_steering),
-                    gear=int(data.gear),
-                    dt=float(data.delta_time),
-                    elapsed_time=float(data.elapsed_time),
-                    lap_start_et=float(data.lap_start_et),
-                )
+                delta_pkt = self.reference_lap_mgr.update_physics_from_view(store.snapshot())
             elif isinstance(data, (CompactScoring, FullScoringSession)):
-                store = TelemetryStateStore.get_instance()
                 delta_pkt = self.reference_lap_mgr.update_scoring_from_view(store.timing, store.grid)
             elif isinstance(data, dict):
                 # Defensive-only path: TelemetryPayload never carries a raw dict in
@@ -255,8 +272,15 @@ class TelemetryBus(QObject):
                 # callers that still hand-build a JSON-shaped scoring dict directly.
                 delta_pkt = self.reference_lap_mgr.update_scoring(data)
 
-        if data is not None:
+        # 3. NOW notify observers (PluginManager.dispatch_packet, via this Qt
+        # signal's direct connection) — the Store (raw + derived) AND the Engine's
+        # delta output are both fully up to date for this exact packet by this
+        # point, so store.snapshot() built downstream carries the current tick's
+        # delta, not the previous one.
+        self.packet_received.emit(packet)
 
+        # 4. Build VehicleSensors for the UI/overlay from the same consolidated View.
+        if data is not None:
             if override_sensors is not None:
                 sensors = override_sensors
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
@@ -265,8 +289,7 @@ class TelemetryBus(QObject):
             elif isinstance(data, VehicleSensors):
                 self.process_frame(data, delta_pkt)
             else:
-                snap = LMUParser.process_packet(data)
-                sensors = snap.to_sensors() if snap is not None else self._latest_sensors
+                sensors = VehicleSensors.from_view(store.snapshot())
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
                 self._apply_presence_fields(sensors)
                 self.process_frame(sensors, delta_pkt)
@@ -276,8 +299,9 @@ class TelemetryBus(QObject):
         LapDeltaPacket (ReferenceLapManager/DeltaEngine) — falling back to the most
         recently emitted one when this particular raw packet didn't trigger a fresh
         recompute (e.g. Weather/ExtendedState/SystemEvent, which never touch the
-        engine). This is the ONLY place VehicleSensors gets these fields; the parser
-        (LMUParser) neither computes nor carries them.
+        engine). This is the ONLY place VehicleSensors gets these fields; neither
+        the Store's TelemetryView nor VehicleSensors.from_view() compute or carry
+        them.
         """
         effective = delta_pkt if delta_pkt is not None else self.reference_lap_mgr.latest_packet
         sensors.delta_time = effective.display_delta
@@ -307,9 +331,9 @@ class TelemetryBus(QObject):
         """Stamps sensors.in_realtime from the single authoritative
         TelemetryStateStore (backed by PresenceTracker) — same centralization
         pattern as _apply_delta_fields, but sourced from the Store, not
-        ReferenceLapManager/DeltaEngine. Defensive: LMUParser's own TelemetryData
-        is already correct after the presence migration, but this is the only
-        place that also covers the override_sensors path (mock mode).
+        ReferenceLapManager/DeltaEngine. Defensive: VehicleSensors.from_view()'s
+        own in_realtime is already correct, but this is the only place that also
+        covers the override_sensors path (mock mode).
         """
         sensors.in_realtime = TelemetryStateStore.get_instance().in_realtime
 

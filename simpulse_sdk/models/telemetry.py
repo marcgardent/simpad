@@ -24,6 +24,7 @@ from isimotor_rawudp_client import (
 )
 
 from simpulse_sdk.models.delta import SectorInfo
+from simpulse_sdk.models.view import TelemetryView
 
 
 TelemetryPayload = Union[
@@ -808,6 +809,29 @@ class VehicleSensors:
             terrain_names=terrain_names,
             lmu=lmu_data,
         )
+
+    @classmethod
+    def from_view(cls, view: "TelemetryView") -> Self:
+        """Instantiates a VehicleSensors object from the consolidated, immutable
+        TelemetryView — the single source of truth (data + Engine results). This is
+        the sanctioned entry point for the real UDP pipeline: it replaces the old
+        LMUParser.process_packet(...).to_sensors() detour (LMUParser is gone — the
+        Store/View already carries everything from_telem_info() needs).
+
+        Delegates straight to from_telem_info() once a TelemInfo has been ingested
+        (view.raw_telemetry is not None, true after the very first physics packet
+        of a session); before that, returns near-default sensors stamped with the
+        View's own presence/lap-flag fields.
+        """
+        if view.raw_telemetry is not None:
+            return cls.from_telem_info(
+                telem=view.raw_telemetry,
+                scoring=view.raw_scoring,
+                lap_flag=view.lap_flag,
+                track_cut_state=view.track_cut_state,
+                in_realtime=view.in_realtime,
+            )
+        return cls(in_realtime=view.in_realtime, lap_flag=view.lap_flag)
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────
     @property

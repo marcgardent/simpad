@@ -19,7 +19,6 @@ from isimotor_rawudp_client import (
 )
 
 from simpulse.core.telemetry_channels import TelemetryPayload
-from .lmu_parser import LMUParser, TelemetryData
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +26,12 @@ logger = logging.getLogger(__name__)
 class UDPServer:
     """
     Thread-safe UDP telemetry server for Le Mans Ultimate Telemetry Plugin & isiMotor-RawUDP.
-    Encapsulates standard IsiMotorClient for high-frequency binary decoding (SIMP)
-    while preserving full backwards compatibility with JSON streams and the SimPulse API.
+    Pure I/O: owns the socket/IsiMotorClient lifecycle and relays each decoded raw
+    packet to `packet_listener` (TelemetryBus._on_udp_packet_received in production).
+    Does not decode into any higher-level model itself, and keeps no "latest data"
+    cache of its own — TelemetryStateStore (via TelemetryBus) is the single owner
+    of that state; a second copy here previously drifted out of sync with it (see
+    git history for the removed _latest_data/_handle_* merge code).
     """
 
     def __init__(
@@ -44,7 +47,6 @@ class UDPServer:
         self.packet_listener = packet_listener
         self._client: Optional[IsiMotorClient] = None
         self._lock = threading.Lock()
-        self._latest_data: Optional[TelemetryData] = None
         self._last_packet_time: float = 0.0
         self._packet_count: int = 0
 
@@ -59,8 +61,9 @@ class UDPServer:
             inbound_host="127.0.0.1",
             inbound_port=self.target_port,
         )
-        self._setup_callbacks()
-        # Starts ingestion with unified binary + JSON hook
+        # Starts ingestion with unified binary + JSON hook. Decoded packets reach
+        # consumers exclusively through packet_listener (set on __init__) via
+        # _on_datagram_received below — no per-channel callback wiring needed here.
         self._client._receiver.start(self._on_datagram_received)
         logger.info(f"UDP server started on port {self.port} with IsiMotorClient")
         print(f"[UDP] Listening on UDP {self.host}:{self.port} via isimotor_rawudp_client (120 Hz+ ultra-low latency)", flush=True)
@@ -74,91 +77,6 @@ class UDPServer:
             except Exception as e:
                 logger.warning(f"Error stopping IsiMotorClient: {e}")
             self._client = None
-
-    def _setup_callbacks(self) -> None:
-        """Configures isiMotor client event callbacks."""
-        if not self._client:
-            return
-
-        def _handle_telem(telem: TelemInfo):
-            snap = LMUParser.process_telemetry(telem)
-            if snap is not None:
-                with self._lock:
-                    self._latest_data = snap
-
-        def _handle_compact_scoring(scoring: CompactScoring):
-            snap = LMUParser.process_compact_scoring(scoring)
-            with self._lock:
-                if self._latest_data is not None:
-                    # Updates only timing and scoring fields on active physics snapshot
-                    # without ever overwriting pedal inputs, engine RPM, gear, or speed
-                    self._latest_data.raw_scoring = scoring
-                    self._latest_data.delta_time = snap.delta_time
-                    self._latest_data.estimated_lap_time = snap.estimated_lap_time
-                    self._latest_data.estimated_lap_time_str = snap.estimated_lap_time_str
-                    self._latest_data.sector1_time = snap.sector1_time
-                    self._latest_data.sector1_status = snap.sector1_status
-                    self._latest_data.sector2_time = snap.sector2_time
-                    self._latest_data.sector2_status = snap.sector2_status
-                    self._latest_data.sector3_time = snap.sector3_time
-                    self._latest_data.sector3_status = snap.sector3_status
-                    self._latest_data.sector1_delta = snap.sector1_delta
-                    self._latest_data.sector2_delta = snap.sector2_delta
-                    self._latest_data.sector3_delta = snap.sector3_delta
-                    self._latest_data.current_sector = snap.current_sector
-                    self._latest_data.total_laps = snap.total_laps
-                    self._latest_data.laps_completed = snap.laps_completed
-                    self._latest_data.lap_flag = snap.lap_flag
-                    self._latest_data.track_cut_state = snap.track_cut_state
-                else:
-                    self._latest_data = snap
-
-        def _handle_full_scoring(session: FullScoringSession):
-            snap = LMUParser.process_full_scoring(session)
-            with self._lock:
-                if self._latest_data is not None:
-                    # Updates only multi-car session and timing fields without disturbing physics
-                    self._latest_data.raw_scoring = session
-                    self._latest_data.delta_time = snap.delta_time
-                    self._latest_data.estimated_lap_time = snap.estimated_lap_time
-                    self._latest_data.estimated_lap_time_str = snap.estimated_lap_time_str
-                    self._latest_data.sector1_time = snap.sector1_time
-                    self._latest_data.sector1_status = snap.sector1_status
-                    self._latest_data.sector2_time = snap.sector2_time
-                    self._latest_data.sector2_status = snap.sector2_status
-                    self._latest_data.sector3_time = snap.sector3_time
-                    self._latest_data.sector3_status = snap.sector3_status
-                    self._latest_data.sector1_delta = snap.sector1_delta
-                    self._latest_data.sector2_delta = snap.sector2_delta
-                    self._latest_data.sector3_delta = snap.sector3_delta
-                    self._latest_data.current_sector = snap.current_sector
-                    self._latest_data.total_laps = snap.total_laps
-                    self._latest_data.laps_completed = snap.laps_completed
-                    self._latest_data.lap_flag = snap.lap_flag
-                    self._latest_data.track_cut_state = snap.track_cut_state
-                else:
-                    self._latest_data = snap
-
-        def _handle_system_event(event: SystemEvent):
-            snap = LMUParser.process_system_event(event)
-            with self._lock:
-                if self._latest_data is not None:
-                    self._latest_data.in_realtime = snap.in_realtime
-                else:
-                    self._latest_data = snap
-
-        def _handle_packet(pkt: Union[ForceFeedback, WeatherControl, Graphics, ExtendedState]):
-            # Internal handling of packet (FFB, Weather, Graphics, ExtendedState) without polluting physics stream
-            LMUParser.process_packet(pkt)
-
-        self._client.on_telemetry = _handle_telem
-        self._client.on_scoring = _handle_compact_scoring
-        self._client.on_full_scoring = _handle_full_scoring
-        self._client.on_system_event = _handle_system_event
-        self._client.on_weather = _handle_packet
-        self._client.on_extended_state = _handle_packet
-        self._client.on_force_feedback = _handle_packet
-        self._client.on_graphics = _handle_packet
 
     def _on_datagram_received(self, data: bytes, timestamp: float) -> None:
         """
@@ -202,35 +120,6 @@ class UDPServer:
                 self.packet_listener(channel_name, None, raw_len)
             except Exception as e:
                 logger.error(f"Error in packet_listener chunk: {e}")
-
-    def get_latest_data(self, timeout: float = 1.2) -> Optional[TelemetryData]:
-        """
-        Retrieves latest received data in a thread-safe manner with Zero-Order Hold.
-        Absorbs micro-drops in UDP stream (< 1.2s) without propagating null/reset state.
-        """
-        with self._lock:
-            if self._latest_data is not None:
-                if timeout <= 0 or (time.time() - self._last_packet_time) <= timeout:
-                    return self._latest_data
-            return None
-
-    def get_latest_telemetry(self) -> Optional[TelemInfo]:
-        """Returns latest TelemInfo packet received."""
-        if self._client:
-            return self._client.get_latest_telemetry() or LMUParser.get_latest_telemetry_info()
-        return LMUParser.get_latest_telemetry_info()
-
-    def get_latest_scoring(self) -> Optional[CompactScoring]:
-        """Returns latest CompactScoring packet received."""
-        if self._client:
-            return self._client.get_latest_scoring() or LMUParser.get_latest_compact_scoring()
-        return LMUParser.get_latest_compact_scoring()
-
-    def get_latest_full_scoring(self) -> Optional[FullScoringSession]:
-        """Returns latest FullScoringSession packet received."""
-        if self._client:
-            return self._client.get_latest_full_scoring() or LMUParser.get_latest_full_scoring()
-        return LMUParser.get_latest_full_scoring()
 
     @property
     def client(self) -> Optional[IsiMotorClient]:
@@ -315,13 +204,6 @@ class UDPServer:
     def is_receiving(self, timeout: float = 1.0) -> bool:
         """Returns True if UDP packets were received recently."""
         return self.is_receiving_packets(timeout)[0]
-
-    def stop(self) -> None:
-        """Stops UDP server and releases IsiMotorClient."""
-        if self._client:
-            self._client.stop()
-            self._client = None
-        logger.info("UDP Server stopped.")
 
     @property
     def is_running(self) -> bool:

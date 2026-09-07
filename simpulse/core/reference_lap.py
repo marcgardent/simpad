@@ -20,6 +20,7 @@ from isimotor_rawudp_client import FullScoringSession, CompactScoring
 
 if TYPE_CHECKING:
     from simpulse.core.config import ConfigManager
+    from simpulse_sdk.models.view import TelemetryView
 
 from simpulse.core.telemetry.reference_profile import (
     ReferenceLapProfile,
@@ -66,17 +67,6 @@ class ReferenceLapManager(QObject):
         ReferenceLapManager._instance = self
         self.config_manager = config_manager
         self.delta_engine = DeltaEngine()
-        try:
-            # Alias LMUParser's engine reference onto this authoritative instance.
-            # LMUParser only *reads* cls._delta_engine (display_delta, current_sector,
-            # etc.) to assemble its VehicleSensors snapshot — TelemetryBus is the sole
-            # writer, feeding this same engine once via update_physics()/update_scoring()
-            # before routing the packet to LMUParser. Without this alias, LMUParser would
-            # read its own separate, never-updated DeltaEngine() default instance.
-            from simpulse.core.telemetry.lmu_parser import LMUParser
-            LMUParser._delta_engine = self.delta_engine
-        except Exception:
-            pass
 
         self._last_emitted_packet = LapDeltaPacket()
         self._last_laps_completed_count: int = -1
@@ -262,6 +252,25 @@ class ReferenceLapManager(QObject):
             pass
         self.delta_updated.emit(packet)
         return packet
+
+    def update_physics_from_view(self, view: "TelemetryView") -> Optional[LapDeltaPacket]:
+        """Update physics in DeltaEngine from the consolidated TelemetryView instead
+        of hand-extracted raw scalars — same single-source-of-truth pattern as
+        update_scoring_from_view() below. Returns None when the Store hasn't
+        ingested any TelemInfo yet (view.raw_telemetry is None)."""
+        if view.raw_telemetry is None:
+            return None
+        t = view.raw_telemetry
+        return self.update_physics(
+            veh_speed_ms=float(t.speed_mps),
+            throttle=float(t.unfiltered_throttle),
+            brake=float(t.unfiltered_brake),
+            steering=float(t.unfiltered_steering),
+            gear=int(t.gear),
+            dt=float(t.delta_time),
+            elapsed_time=float(t.elapsed_time),
+            lap_start_et=float(t.lap_start_et),
+        )
 
     def update_scoring(self, scoring_data: ScoringPacketType) -> LapDeltaPacket:
         """Process scoring packet in DeltaEngine, detect lap/sector transitions and return LapDeltaPacket."""
