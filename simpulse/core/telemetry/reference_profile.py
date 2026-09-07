@@ -10,7 +10,6 @@ SOLID Architecture (SRP, OCP, DIP):
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 import json
 import logging
 from pathlib import Path
@@ -160,13 +159,14 @@ def find_telemetry_filepath_for_track(
     return None
 
 
-class AnnotationType(str, Enum):
-    """Driving reference annotation types."""
-    BRAKE = "brake"        # Brake marker ('B' key) -> Audio: "Brake"
-    TURN_IN = "turn_in"    # Turn-in marker ('I' key) -> Audio: "Turn"
-    TURN = "turn"          # Turn marker ('T' key) -> Auto numbering T1..T30 -> Audio: "Turn 1"..
-    GEAR = "gear"          # Gear marker ('1'..'8' keys) -> Audio: "Gear 1".. "Gear 8"
-
+# Re-exported from simpulse_sdk: the enum is a pure value type shared with the
+# plugin-facing ReferenceLapProfileView (see to_view() below), single source
+# of truth for both sides of the Core/SDK boundary.
+from simpulse_sdk.models.reference_profile import (
+    AnnotationType,
+    ReferenceLapProfileView,
+    TrackAnnotationView,
+)
 
 AnnotationDictValue = Union[str, float, int, List[int]]
 
@@ -588,3 +588,41 @@ class ReferenceLapProfile:
         marks_path = get_marks_filepath(filepath)
         ok_marks = self.save_marks_to_file(marks_path)
         return ok_telem and ok_marks
+
+    # ── SDK boundary ────────────────────────────────────────────────────────
+    def to_view(self) -> ReferenceLapProfileView:
+        """
+        Builds the immutable, plugin-facing snapshot of this profile.
+        This is the ONLY form of a reference lap plugins may receive — no file
+        I/O, no annotation mutation, no access to the mutable grids below.
+        """
+        return ReferenceLapProfileView(
+            track_name=self.track_name,
+            vehicle_name=self.vehicle_name,
+            vehicle_class=self.vehicle_class,
+            lap_time=self.lap_time,
+            track_length=self.track_length,
+            spatial_step=self.spatial_step,
+            num_points=self.num_points,
+            t_grid=tuple(self.t_grid),
+            speed_grid=tuple(self.speed_grid),
+            throttle_grid=tuple(self.throttle_grid),
+            brake_grid=tuple(self.brake_grid),
+            steering_grid=tuple(self.steering_grid),
+            gear_grid=tuple(self.gear_grid),
+            sector_1_dist=self.sector_1_dist,
+            sector_2_dist=self.sector_2_dist,
+            sector_1_time=self.sector_1_time,
+            sector_2_time=self.sector_2_time,
+            annotations=tuple(
+                TrackAnnotationView(
+                    id=a.id,
+                    type=a.type,
+                    distance=a.distance,
+                    gear=a.gear,
+                    label=a.label,
+                    color=tuple(a.color) if a.color else None,
+                )
+                for a in self.annotations
+            ),
+        )

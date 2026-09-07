@@ -75,27 +75,94 @@ TelemetryBus.process_raw_packet()          ← ORCHESTRATEUR UNIQUE
 
 ---
 
-## 3. TODO — dette identifiée, pas encore traitée
+## 3. TODO — dette identifiée
 
-Rien ci-dessous n'est bloquant ; classé par impact.
+### T1. ✅ Frontière SDK/Core percée par `ReferenceLapProfile` — traité cette session
+**Le déplacement brut envisagé initialement était une mauvaise idée** (repéré en
+cours de session) : `ReferenceLapProfile` n'est pas qu'un type de données, c'est
+un objet mutable propriétaire de logique Core — enregistrement meter-by-meter,
+édition d'annotations, autosave/load vers `.json`/`.marks.json`. Le déplacer tel
+quel dans le SDK aurait fait fuir du code Core (I/O disque, mutation) dans la
+couche censée n'exposer que de l'état consolidé immuable.
 
-### T1. Frontière SDK/Core encore percée : `ReferenceLapProfile` vit dans le Core
-`simpulse/core/telemetry/reference_profile.py` définit `ReferenceLapProfile`/
-`TrackAnnotation`/`AnnotationType` — un type de données pourtant consommé par
-des sous-plugins qui ne devraient connaître que le SDK. 14 fichiers importent
-ce module directement (`grep -rln "reference_profile import"`), dont 3
-builtin_plugins déjà nettoyés cette session (ils ne touchent plus
-`ReferenceLapManager`, mais importent encore le *type* depuis `simpulse.core`).
-**Fix propre** : déplacer ces 3 classes vers `simpulse_sdk.models`, garder un
-ré-export shim dans `simpulse/core/telemetry/reference_profile.py` pour ne pas
-casser les 14 call sites d'un coup, migrer les imports progressivement.
+**Fix retenu** (même famille que `TelemetryView`/`TelemetryStateStore.snapshot()`) :
+- `ReferenceLapProfile`/`TrackAnnotation` restent dans
+  `simpulse/core/telemetry/reference_profile.py` (Core, mutable, I/O, inchangé).
+- `AnnotationType` (enum, pur type-valeur) déménage dans
+  `simpulse_sdk.models.reference_profile` — source unique, Core l'importe en retour.
+- Nouveau `ReferenceLapProfileView`/`TrackAnnotationView` dans le même module SDK :
+  `@dataclass(frozen=True)`, grids en `tuple`, uniquement les helpers en lecture
+  pure réellement consommés par les sous-plugins (`get_value_at_dist`,
+  `get_annotation_display_label`, `get_annotation_phrase_key`, `get_sector_at_dist`,
+  `get_turn_number`, `get_sorted_turns`) — zéro I/O, zéro mutation.
+- `ReferenceLapProfile.to_view() -> ReferenceLapProfileView` : construit
+  l'instantané. Seul `race_engineer/manager.py::_get_active_reference_profile()`
+  (et le fallback historique dans `context.py::get_reference_profile()`, voir T2)
+  appelle `.to_view()` — les sous-plugins (`pace_notes`, `traffic_jam`,
+  `traffic_spotter`) et `EngineerContext` ne connaissent plus que
+  `ReferenceLapProfileView`.
 
-### T2. 23 fichiers `builtin_plugins/` importent `simpulse.core.*` directement
-Pattern répandu, pas nouveau (préexistant à cette session). À auditer un par un :
-certains sont légitimement "code de confiance" à la frontière (comme
-`race_engineer/manager.py`), d'autres devraient plutôt passer par le SDK/la
-View. Pas de plan concret pour l'instant — juste un inventaire à faire
-(`grep -rl "^from simpulse\.core\.\|^import simpulse\.core\." simpulse/builtin_plugins/`).
+Suite complète toujours verte après le fix (337/337).
+
+### T2. Audit `builtin_plugins/` important `simpulse.core.*` directement — fait
+22 fichiers (`grep -rl "^from simpulse\.core\.\|^import simpulse\.core\." simpulse/builtin_plugins/`,
+proche des ~23 déjà notés). Catégorisation :
+
+1. **Faux positifs — shims déjà en place** (la majorité) : `simpulse.core.telemetry.state_store`,
+   `simpulse.core.telemetry_channels`, `simpulse.core.telemetry.sensors`,
+   `simpulse.core.params` ne sont *que* des ré-exports 1:1 de `simpulse_sdk` (mêmes
+   docstrings "Re-exported from simpulse_sdk for single source of truth"). Import
+   d'un chemin Core qui pointe en réalité vers le SDK — cosmétique, pas une fuite
+   de frontière. Concerne `haptic_feedback/*`, la plupart des sous-plugins
+   `race_engineer/*`, `official_cockpit_hud/widgets/base_widget.py`.
+2. **Services Core légitimes, hors du périmètre de la vision** :
+   `simpulse.core.utils.audio` (`AudioAnnouncer`) / `audio_baker` — TTS/lecture
+   audio, pas de la donnée télémétrie/UDP. Pas une violation du principe (le
+   principe porte sur les données de course, pas les services transverses).
+3. **Violation réelle #1 — déjà documentée** : `race_engineer/manager.py` résout
+   `ReferenceLapManager`/`DeltaEngine` (Core) — accepté comme unique point
+   d'entrée légitime (cf. §2 point 2).
+4. **Violation réelle #2 — nouvellement repérée, pas corrigée** :
+   `EngineerContext.get_reference_profile()` (`race_engineer/context.py`) a un
+   chemin de repli qui reconstruit `ReferenceLapManager.get_instance()`
+   directement quand `self.reference_profile` est `None` mais qu'un
+   `scoring`/`store` est présent — donc **`context.py` n'est pas le seul point
+   d'entrée Core comme l'affirmait §2 point 2**. Corrigé cette session pour au
+   moins retourner `.to_view()` (cohérence de type), mais le court-circuit vers
+   `ReferenceLapManager` lui-même reste en place — un vrai fix supprimerait ce
+   fallback et forcerait tous les appelants à toujours passer par
+   `EngineerContext.reference_profile` injecté par le manager.
+5. **Violation réelle #3 — nouvellement repérée, pas corrigée, plus sérieuse** :
+   `race_engineer/subplugins/lap_validity.py::_evaluate_validity()` /
+   `emit_sound()` / `reset()` / `get_state_summary()` font
+   `TelemetryStateStore.get_instance()` en direct (import local dans la
+   fonction) et appellent des méthodes *mutantes* du Store
+   (`consume_validity_transition()`, `.reset()`) — pas juste une lecture. Le
+   chemin normal (`context.state_store`) est toujours pris en pratique (le
+   `context` passé par `role_base` n'est jamais `None`), donc pas de bug
+   observé, mais le code est écrit pour retomber sur le singleton mutable si un
+   jour `context` devient `None` (ou en test unitaire isolé). À corriger :
+   supprimer les branches `elif`/`else` de `_evaluate_validity` et les 3 accès
+   directs de `reset()`/`get_state_summary()`/`emit_sound()`, en s'appuyant
+   uniquement sur `context.state_store`.
+6. **`reference_lap_studio/plugin.py`** importe `simpulse.core.reference_lap`
+   (le `ReferenceLapManager` lui-même) — légitime : c'est l'UI Studio dédiée à
+   l'édition/l'enregistrement des profils de référence, pas un plugin
+   race_engineer/HUD consommateur de données de course.
+
+7. **Violation réelle #4 — signalée par MGT directement dans le code, pas
+   corrigée** : `TelemetryView.raw_telemetry`/`raw_scoring` (`simpulse_sdk/models/view.py`)
+   exposent encore une union brute `Union[FullScoringSession, CompactScoring]`
+   au lieu d'un état consolidé — contraire au principe même de la View ("bug
+   assuré" selon l'annotation laissée sur le champ). Ces deux champs existent
+   pour les Engines/`VehicleSensors.from_view()` en aval, pas pour les plugins
+   — mais tant qu'ils vivent sur la View partagée, rien n'empêche un plugin de
+   les lire directement. À corriger : soit les sortir de `TelemetryView` vers
+   un canal interne dédié aux Engines, soit les remplacer par leur forme déjà
+   consolidée (`timing`/`grid`).
+
+**Reste à faire** (pas traité cette session, effort ciblé plutôt qu'un audit) :
+items 4, 5 et 7 ci-dessus.
 
 ### T3. Vérification manuelle sur session UDP réelle
 Le nouveau séquencement (merge → Engines → dispatch plugins) change délibérément

@@ -15,7 +15,7 @@ from .base import BaseRole, RoleHostSlot, EngineerMessage, RoleStatus, AudioEngi
 from .context import EngineerContext, TelemetryTriggerPacket
 from .factory import RoleFactory
 from simpulse.core.telemetry.state_store import TelemetryStateStore
-from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView
 from simpulse.core.telemetry_channels import ChannelRequirement, TelemetryChannel
 from .params import ParamScalarValue
 from simpulse.core.utils.audio import AudioAnnouncer
@@ -287,20 +287,25 @@ class RaceEngineer:
             logger.error(f"[RaceEngineer] Failed to generate TTS audio: {e}", exc_info=True)
             return 0, 0
 
-    def _get_active_reference_profile(self) -> Optional[ReferenceLapProfile]:
-        """Resolves the active reference lap profile from Core ReferenceLapManager (unified engine)."""
+    def _get_active_reference_profile(self) -> Optional[ReferenceLapProfileView]:
+        """
+        Resolves the active reference lap profile from Core ReferenceLapManager
+        (unified engine) and converts it to its immutable, plugin-facing View —
+        the mutable ReferenceLapProfile (file I/O, annotation editing) never
+        leaves this method.
+        """
         try:
             from simpulse.core.reference_lap import ReferenceLapManager
             ref_mgr = ReferenceLapManager.get_instance()
             if ref_mgr:
                 prof = ref_mgr.get_active_profile()
                 if prof:
-                    return prof
+                    return prof.to_view()
                 engine = getattr(ref_mgr, "delta_engine", None)
                 if engine is not None:
                     prof = engine.all_time_best_profile or engine.current_profile
                     if prof:
-                        return prof
+                        return prof.to_view()
         except Exception:
             pass
         return None

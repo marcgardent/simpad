@@ -11,12 +11,8 @@ from simpulse.builtin_plugins.race_engineer.base import BaseRole, EngineerMessag
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 from simpulse.builtin_plugins.race_engineer.registry import RoleRegistry
 from simpulse.builtin_plugins.race_engineer.params import RoleParam, BoolParam, FloatRangeParam, ParamScalarValue
-from simpulse.core.telemetry.reference_profile import (
-    ReferenceLapProfile,
-    TrackAnnotation,
-    AnnotationType,
-    clean_name_identifier,
-)
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView, AnnotationType
+from simpulse.core.telemetry.reference_profile import clean_name_identifier
 from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
@@ -73,8 +69,8 @@ class PaceNotesRole(BaseRole):
         self._last_announced_label: str = "None"
         self._last_announced_dist: float = -1.0
         self._last_ann_signature: List[Tuple[str, float, str, Optional[int]]] = []
-        self._custom_profile: Optional[ReferenceLapProfile] = None
-        self._last_known_profile: Optional[ReferenceLapProfile] = None
+        self._custom_profile: Optional[ReferenceLapProfileView] = None
+        self._last_known_profile: Optional[ReferenceLapProfileView] = None
 
     def get_parameters(self) -> List[RoleParam]:
         """Declares list of configurable parameters for UI form."""
@@ -135,12 +131,12 @@ class PaceNotesRole(BaseRole):
             ),
         ]
 
-    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfileView]) -> None:
         """Allows manual injection of a reference profile."""
         self._custom_profile = profile
         self.reset()
 
-    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfileView]:
         """Retrieves active reference profile with strict per-track isolation."""
         if self._custom_profile is not None:
             # If the unified session state explicitly indicates a different track, invalidate stale profile

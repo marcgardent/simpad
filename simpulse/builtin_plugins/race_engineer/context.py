@@ -19,7 +19,7 @@ from isimotor_rawudp_client import (
 
 from .base import AudioEngineType
 from simpulse.core.telemetry.state_store import TelemetryStateStore
-from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView
 from simpulse.core.telemetry_channels import TelemetryRawPacket
 
 TelemetryTriggerPacket = Union[TelemInfo, FullScoringSession, CompactScoring, TelemetryRawPacket]
@@ -52,7 +52,7 @@ class EngineerContext:
     scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
     timestamp: float = field(default_factory=time.time)
     audio_engine: Optional[AudioEngineType] = None
-    reference_profile: Optional[ReferenceLapProfile] = None
+    reference_profile: Optional[ReferenceLapProfileView] = None
     store: Optional[TelemetryStateStore] = None
     trigger_packet: Optional[TelemetryTriggerPacket] = None
 
@@ -257,7 +257,7 @@ class EngineerContext:
             if ref_name:
                 return ref_name
         return ""
-    def get_reference_profile(self) -> Optional[ReferenceLapProfile]:
+    def get_reference_profile(self) -> Optional[ReferenceLapProfileView]:
         """Returns active reference lap profile if it matches current track."""
         scoring_track = self.get_track_name()
 
@@ -291,7 +291,7 @@ class EngineerContext:
                     t2 = "".join(c for c in ref_track if c.isalnum()).lower()
                     if t1 and t2 and t1 != t2:
                         return None
-                return prof
+                return prof.to_view()
         except Exception:
             pass
         return None
@@ -299,7 +299,7 @@ class EngineerContext:
     def get_reference_speed_mps(
         self,
         track_dist: float,
-        profile: Optional[ReferenceLapProfile] = None,
+        profile: Optional[ReferenceLapProfileView] = None,
     ) -> Optional[float]:
         """Returns reference lap speed at given track position (m/s)."""
         ref_prof = profile or self.get_reference_profile()
@@ -312,7 +312,7 @@ class EngineerContext:
         self,
         speed_mps: float,
         track_dist: float,
-        profile: Optional[ReferenceLapProfile] = None,
+        profile: Optional[ReferenceLapProfileView] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
@@ -338,7 +338,7 @@ class EngineerContext:
     def is_vehicle_in_normal_domain(
         self,
         veh: Optional[VehicleScoring],
-        profile: Optional[ReferenceLapProfile] = None,
+        profile: Optional[ReferenceLapProfileView] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """
@@ -360,7 +360,7 @@ class EngineerContext:
 
     def is_player_in_normal_domain(
         self,
-        profile: Optional[ReferenceLapProfile] = None,
+        profile: Optional[ReferenceLapProfileView] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """Determines if player vehicle is driving within normal speed domain."""
@@ -381,7 +381,7 @@ class EngineerContext:
         self,
         player_veh: Optional[VehicleScoring],
         opp_veh: Optional[VehicleScoring],
-        profile: Optional[ReferenceLapProfile] = None,
+        profile: Optional[ReferenceLapProfileView] = None,
         tolerance_kmh: float = 30.0,
     ) -> bool:
         """

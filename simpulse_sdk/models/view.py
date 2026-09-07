@@ -34,6 +34,7 @@ class TelemetryView:
 
     # Raw packets still needed downstream (Engines/VehicleSensors construction) —
     # read-only pass-through, never mutated by consumers.
+    # TODO MGT VIOLATION DU STATE qui doit consolider les données en particulier FullScoringSession, CompactScoring (une union basic c'est bug assuré)
     raw_telemetry: Optional[TelemInfo] = None
     raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
 

@@ -29,6 +29,11 @@ from simpulse_sdk.models.state_store import (
     LapStatus,
 )
 from simpulse_sdk.models.view import TelemetryView
+from simpulse_sdk.models.reference_profile import (
+    AnnotationType,
+    ReferenceLapProfileView,
+    TrackAnnotationView,
+)
 from simpulse_sdk.models.plugin_metadata import (
     PluginMetadata,
     PluginState,
@@ -73,6 +78,9 @@ __all__ = [
     "TimingStatus",
     "ValidityEvent",
     "LapStatus",
+    "AnnotationType",
+    "ReferenceLapProfileView",
+    "TrackAnnotationView",
     "PluginMetadata",
     "PluginState",
     "PluginErrorReport",

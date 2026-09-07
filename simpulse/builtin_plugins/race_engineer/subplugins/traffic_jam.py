@@ -11,7 +11,7 @@ from simpulse.builtin_plugins.race_engineer.base import BaseRole, EngineerMessag
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 from simpulse.builtin_plugins.race_engineer.registry import RoleRegistry
 from simpulse.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
-from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView
 from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
@@ -55,19 +55,19 @@ class TrafficJamRole(BaseRole):
         self.cooldown_sec = float(cooldown_sec)
         self.enable_ref_lap_filter = bool(enable_ref_lap_filter)
         self.domain_speed_tolerance_kmh = float(domain_speed_tolerance_kmh)
-        self._custom_profile: Optional[ReferenceLapProfile] = None
-        self._last_known_profile: Optional[ReferenceLapProfile] = None
+        self._custom_profile: Optional[ReferenceLapProfileView] = None
+        self._last_known_profile: Optional[ReferenceLapProfileView] = None
 
         self._last_alert_time: float = 0.0
         self._is_active_alert: bool = False
         self._target_slow_car_info: str = ""
 
-    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfileView]) -> None:
         """Manually injects a reference lap profile."""
         self._custom_profile = profile
         self.reset()
 
-    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfileView]:
         """Retrieves active reference profile (injected, or via context — the
         sanctioned SDK path: RaceEngineerManager resolves it from Core once per
         tick and injects it into EngineerContext; this plugin never reaches into

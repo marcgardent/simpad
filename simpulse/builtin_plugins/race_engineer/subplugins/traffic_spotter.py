@@ -15,7 +15,7 @@ from simpulse.builtin_plugins.race_engineer.base import BaseRole, EngineerMessag
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 from simpulse.builtin_plugins.race_engineer.registry import RoleRegistry
 from simpulse.builtin_plugins.race_engineer.params import RoleParam, FloatRangeParam, BoolParam, ParamScalarValue
-from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView
 from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.telemetry_channels import TelemetryChannel, ChannelRequirement
 
@@ -116,8 +116,8 @@ class TrafficSpotterRole(BaseRole):
             self.target_memory_sec = float(incoming_cooldown_sec)
         else:
             self.target_memory_sec = float(target_memory_sec)
-        self._custom_profile: Optional[ReferenceLapProfile] = None
-        self._last_known_profile: Optional[ReferenceLapProfile] = None
+        self._custom_profile: Optional[ReferenceLapProfileView] = None
+        self._last_known_profile: Optional[ReferenceLapProfileView] = None
 
         # Dynamic tracking variables
         self.target_vehicle_id: Optional[int] = None
@@ -176,12 +176,12 @@ class TrafficSpotterRole(BaseRole):
         for vid in expired:
             del self._target_history[vid]
 
-    def set_reference_profile(self, profile: Optional[ReferenceLapProfile]) -> None:
+    def set_reference_profile(self, profile: Optional[ReferenceLapProfileView]) -> None:
         """Manually injects a reference lap profile."""
         self._custom_profile = profile
         self.reset()
 
-    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfile]:
+    def get_reference_profile(self, context: Optional[EngineerContext] = None) -> Optional[ReferenceLapProfileView]:
         """Retrieves active reference profile (injected, or via context — the
         sanctioned SDK path: RaceEngineerManager resolves it from Core once per
         tick and injects it into EngineerContext; this plugin never reaches into
