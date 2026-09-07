@@ -5,15 +5,14 @@ and QtLapStatusWidget Rendering.
 
 import time
 import unittest
-from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPainter, QImage
-from PySide6.QtCore import QRectF
 
 from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.builtin_plugins.official_cockpit_hud.widgets.lap_status import QtLapStatusWidget
 from simpulse.core.telemetry.sensors import VehicleSensors
-from isimotor_rawudp_client import TelemInfo, CompactScoring
+from simpulse_sdk.models import WheelSet, TireCorner, VehicleECU, AntiLockECU, TractionControlECU
+from isimotor_rawudp_client import TelemInfo
 
 
 class TestHitAndCleanLap(unittest.TestCase):
@@ -143,12 +142,10 @@ class TestHitAndCleanLap(unittest.TestCase):
         sensors = VehicleSensors(
             unfiltered_brake=0.85,
             unfiltered_throttle=0.92,
-            ecu_abs_active_raw=True,
-            ecu_tc_active_raw=True,
             vehicle_speed=50.0,
             explicit_aero_load=70.0,
-            front_left_lock=0.40,
-            rear_left_spin=0.60,
+            wheels=WheelSet(front_left=TireCorner(lock=0.40), rear_left=TireCorner(spin=0.60)),
+            ecu=VehicleECU(abs=AntiLockECU(active_raw=True), tc=TractionControlECU(active_raw=True)),
         )
         plugin.paint_hud(painter, 640, 300, sensors)
 
@@ -192,7 +189,10 @@ class TestHitAndCleanLap(unittest.TestCase):
         img = QImage(640, 300, QImage.Format.Format_ARGB32)
         painter = QPainter(img)
 
-        sensors = VehicleSensors(unfiltered_brake=0.95, unfiltered_throttle=1.0, ecu_abs_level=5, ecu_tc_level=3)
+        sensors = VehicleSensors(
+            unfiltered_brake=0.95, unfiltered_throttle=1.0,
+            ecu=VehicleECU(abs=AntiLockECU(level=5), tc=TractionControlECU(level=3)),
+        )
         plugin.config.show_background = True
         plugin.paint_hud(painter, 640, 300, sensors)
 

@@ -2,20 +2,18 @@
 Unit and Integration Tests for the XInput Haptic Feedback Plugin and Subplugins in Qt6.
 """
 
-from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from simpulse_sdk import PluginState, PluginContext
+from simpulse_sdk import PluginState
 from simpulse.plugins.manager import PluginManager
 from simpulse.core.config import ConfigManager
 from simpulse.builtin_plugins.haptic_feedback import HapticFeedbackPlugin
 from simpulse.builtin_plugins.haptic_feedback.plugin import (
-    HapticFeedbackConfig,
     HapticFeedbackWidget,
-    SubpluginListItemWidget,
 )
 from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse_sdk.models import VehicleECU, AntiLockECU
 
 
 @pytest.fixture(scope="session")
@@ -58,7 +56,7 @@ def test_haptic_plugin_telemetry_dispatch(qapp, tmp_path):
         vehicle_speed=30.0,
         in_realtime=True,
         gear=3,
-        ecu_abs_active_raw=True,
+        ecu=VehicleECU(abs=AntiLockECU(active_raw=True)),
     )
 
     plugin.on_telemetry_frame(sensors)

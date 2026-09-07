@@ -44,7 +44,7 @@ class TestLMUMiddleware(unittest.TestCase):
 
         self.assertIsNotNone(view.raw_telemetry)
         sensors = VehicleSensors.from_view(view)
-        self.assertAlmostEqual(sensors.front_left_lock, 0.0, places=4)
+        self.assertAlmostEqual(sensors.wheels.front_left.lock, 0.0, places=4)
 
     def test_physics_processor(self):
         processor = PhysicsToHaptic()
@@ -108,7 +108,7 @@ class TestLMUMiddleware(unittest.TestCase):
         )
         view = snapshot_for(telem)
         sensors = VehicleSensors.from_view(view)
-        self.assertAlmostEqual(sensors.front_left_lock, 1.0, places=2)
+        self.assertAlmostEqual(sensors.wheels.front_left.lock, 1.0, places=2)
         self.assertAlmostEqual(sensors.lock_intensity, 1.0, places=2)
 
     def test_real_game_frame_integration(self):

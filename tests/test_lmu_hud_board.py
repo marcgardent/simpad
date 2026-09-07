@@ -19,6 +19,7 @@ from simpulse.builtin_plugins.official_cockpit_hud.widgets import (
 )
 from simpulse.builtin_plugins.official_cockpit_hud.widgets.tires_gauge import get_qt_tire_colors
 from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse_sdk.models import WheelSet, TireCorner, VehicleECU, AntiLockECU, TractionControlECU
 
 
 class TestQtHudOverlay(unittest.TestCase):
@@ -85,7 +86,7 @@ class TestQtHudOverlay(unittest.TestCase):
             vehicle_speed=30.0,
             unfiltered_brake=1.0,
             filtered_brake=0.5,
-            front_left_lock=0.30,
+            wheels=WheelSet(front_left=TireCorner(lock=0.30)),
         )
         self.assertTrue(sensors_abs.lock_intensity > 0.05)
         self.assertFalse(sensors_abs.spin_intensity > 0.05)
@@ -97,10 +98,10 @@ class TestQtHudOverlay(unittest.TestCase):
         sensors_tc = VehicleSensors(
             in_realtime=True,
             vehicle_speed=30.0,
-            ecu_tc_active_raw=True,
+            ecu=VehicleECU(tc=TractionControlECU(active_raw=True)),
             unfiltered_throttle=1.0,
             filtered_throttle=0.4,
-            rear_left_spin=0.35,
+            wheels=WheelSet(rear_left=TireCorner(spin=0.35)),
         )
         self.assertFalse(sensors_tc.lock_intensity > 0.05)
         self.assertTrue(sensors_tc.spin_intensity > 0.05)
@@ -112,11 +113,10 @@ class TestQtHudOverlay(unittest.TestCase):
         sensors_lock_no_abs = VehicleSensors(
             in_realtime=True,
             vehicle_speed=30.0,
-            ecu_abs_active_raw=False,
-            ecu_abs_level=0,
+            ecu=VehicleECU(abs=AntiLockECU(active_raw=False, level=0)),
             unfiltered_brake=1.0,
             filtered_brake=1.0,
-            front_left_lock=1.0,
+            wheels=WheelSet(front_left=TireCorner(lock=1.0)),
         )
         self.assertTrue(sensors_lock_no_abs.lock_intensity > 0.05)
         self.assertEqual(sensors_lock_no_abs.ecu_abs_active * 100.0, 0.0)  # ABS gauge must stay strictly 0!

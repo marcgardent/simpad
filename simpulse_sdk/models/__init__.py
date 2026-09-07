@@ -32,6 +32,20 @@ from simpulse_sdk.models.state_store import (
     LapStatus,
 )
 from simpulse_sdk.models.view import TelemetryView, TrackCutState
+from simpulse_sdk.models.wheels import (
+    ALL_WHEEL_POSITIONS,
+    TireCorner,
+    WheelPosition,
+    WheelSet,
+)
+from simpulse_sdk.models.ecu import (
+    AntiLockECU,
+    ChassisECU,
+    CockpitECU,
+    PowertrainECU,
+    TractionControlECU,
+    VehicleECU,
+)
 from simpulse_sdk.models.reference_profile import (
     AnnotationType,
     ReferenceLapProfileView,
@@ -81,6 +95,16 @@ __all__ = [
     "TelemetryStateStore",
     "TelemetryView",
     "TrackCutState",
+    "ALL_WHEEL_POSITIONS",
+    "TireCorner",
+    "WheelPosition",
+    "WheelSet",
+    "AntiLockECU",
+    "ChassisECU",
+    "CockpitECU",
+    "PowertrainECU",
+    "TractionControlECU",
+    "VehicleECU",
     "PacketSlot",
     "TimingStatus",
     "ValidityEvent",

@@ -19,7 +19,6 @@ from isimotor_rawudp_client import (
     FullScoringSession,
     VehicleScoring,
     SystemEvent,
-    ExtendedState,
     HWControlCommand,
     WeatherControlCommand,
 )
@@ -233,7 +232,7 @@ def test_vehicle_sensors_from_telem_info():
     assert sensors.remaining_laps == 20  # 25 - 5
     assert sensors.explicit_aero_load > 0.0
     # Vérification grip fraction natif du modèle pneu
-    assert sensors.front_left_grip == 0.98
+    assert sensors.wheels.front_left.grip == 0.98
     assert sensors.grip_intensity == 0.98
 
 
@@ -252,14 +251,14 @@ def test_vehicle_sensors_abs_lockup_calculation():
 
     sensors = VehicleSensors.from_telem_info(telem)
     # Glissement FL brut = (50 - 35) / 50 = 0.30 -> Échelle calibrée: saturation à 0.18 -> lockup saturé à 1.0
-    assert sensors.front_left_lock == 1.0
-    assert sensors.front_right_lock == 0.0
+    assert sensors.wheels.front_left.lock == 1.0
+    assert sensors.wheels.front_right.lock == 0.0
     assert sensors.lock_intensity == 1.0
     assert sensors.lock_left == 1.0
     assert sensors.lock_right == 0.0
     # Grip natif
-    assert sensors.front_left_grip == 0.70
-    assert sensors.front_right_grip == 0.95
+    assert sensors.wheels.front_left.grip == 0.70
+    assert sensors.wheels.front_right.grip == 0.95
     assert sensors.grip_left == 0.70
 
 
@@ -278,7 +277,7 @@ def test_vehicle_sensors_abs_trail_braking_micro_lockup():
     sensors = VehicleSensors.from_telem_info(telem)
     # Glissement FL brut = (50 - 45) / 50 = 0.10 -> (0.10 - 0.04) / (0.18 - 0.04) = 0.06 / 0.14 ≈ 0.428
     expected = (0.10 - 0.04) / (0.18 - 0.04)
-    assert sensors.front_left_lock == pytest.approx(expected, abs=0.01)
+    assert sensors.wheels.front_left.lock == pytest.approx(expected, abs=0.01)
     assert sensors.lock_intensity == pytest.approx(expected, abs=0.01)
 
 
@@ -344,16 +343,16 @@ def test_vehicle_sensors_native_ecu_state_v020():
     sensors = VehicleSensors.from_telem_info(telem)
     assert sensors.ecu_abs_active == 1.0
     assert sensors.ecu_tc_active == 1.0
-    assert sensors.ecu_abs_level == 5
-    assert sensors.ecu_abs_max == 12
-    assert sensors.ecu_tc_level == 3
-    assert sensors.ecu_tc_max == 10
-    assert sensors.ecu_tc_cut == 2
-    assert sensors.ecu_tc_slip == 4
-    assert sensors.ecu_motor_map == 1
-    assert sensors.ecu_brake_migration == 3
-    assert sensors.ecu_front_arb == 2
-    assert sensors.ecu_rear_arb == 4
+    assert sensors.ecu.abs.level == 5
+    assert sensors.ecu.abs.level_max == 12
+    assert sensors.ecu.tc.level == 3
+    assert sensors.ecu.tc.level_max == 10
+    assert sensors.ecu.tc.cut == 2
+    assert sensors.ecu.tc.slip == 4
+    assert sensors.ecu.powertrain.motor_map == 1
+    assert sensors.ecu.chassis.brake_migration == 3
+    assert sensors.ecu.chassis.front_arb == 2
+    assert sensors.ecu.chassis.rear_arb == 4
 
 
 def test_store_merge_telemetry():

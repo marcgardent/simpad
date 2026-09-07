@@ -136,9 +136,9 @@ class PhysicsToHaptic:
 
         # Level 1: Calculate raw effect slip levels
         lock_l, lock_r = self._calc_raw_slip(sensors.lock_left, sensors.lock_right, self.typed_config.lock)
-        over_l, over_r = self._calc_raw_slip(sensors.rear_left_lat_slip, sensors.rear_right_lat_slip, self.typed_config.oversteer)
-        under_l, under_r = self._calc_raw_slip(sensors.front_left_lat_slip, sensors.front_right_lat_slip, self.typed_config.understeer)
-        spin_l, spin_r = self._calc_raw_slip(sensors.rear_left_spin, sensors.rear_right_spin, self.typed_config.spin)
+        over_l, over_r = self._calc_raw_slip(sensors.wheels.rear_left.lat_slip, sensors.wheels.rear_right.lat_slip, self.typed_config.oversteer)
+        under_l, under_r = self._calc_raw_slip(sensors.wheels.front_left.lat_slip, sensors.wheels.front_right.lat_slip, self.typed_config.understeer)
+        spin_l, spin_r = self._calc_raw_slip(sensors.wheels.rear_left.spin, sensors.wheels.rear_right.spin, self.typed_config.spin)
 
         # Level 2: Compute low/high haptic intensities for each wheel
         lock_g_low, lock_g_high, lock_d_low, lock_d_high = self._eval_effect_curves(lock_l, lock_r, self.typed_config.lock)

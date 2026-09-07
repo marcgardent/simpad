@@ -93,14 +93,15 @@ class TelemetryDiagnosticLogger:
         abs_ecu = sensors.ecu_abs_active * 100.0
 
         # Wheels FL, FR, RL, RR
-        fl_lock = sensors.front_left_lock * 100.0
-        fl_slip = max(sensors.front_left_spin, sensors.front_left_lat_slip) * 100.0
-        fr_lock = sensors.front_right_lock * 100.0
-        fr_slip = max(sensors.front_right_spin, sensors.front_right_lat_slip) * 100.0
-        rl_lock = sensors.rear_left_lock * 100.0
-        rl_slip = max(sensors.rear_left_spin, sensors.rear_left_lat_slip) * 100.0
-        rr_lock = sensors.rear_right_lock * 100.0
-        rr_slip = max(sensors.rear_right_spin, sensors.rear_right_lat_slip) * 100.0
+        wheels = sensors.wheels
+        fl_lock = wheels.front_left.lock * 100.0
+        fl_slip = max(wheels.front_left.spin, wheels.front_left.lat_slip) * 100.0
+        fr_lock = wheels.front_right.lock * 100.0
+        fr_slip = max(wheels.front_right.spin, wheels.front_right.lat_slip) * 100.0
+        rl_lock = wheels.rear_left.lock * 100.0
+        rl_slip = max(wheels.rear_left.spin, wheels.rear_left.lat_slip) * 100.0
+        rr_lock = wheels.rear_right.lock * 100.0
+        rr_slip = max(wheels.rear_right.spin, wheels.rear_right.lat_slip) * 100.0
 
         lpv_fl, lpv_fr, lpv_rl, lpv_rr = (raw_lpv + (0.0, 0.0, 0.0, 0.0))[:4]
         lgv_fl, lgv_fr, lgv_rl, lgv_rr = (raw_lgv + (0.0, 0.0, 0.0, 0.0))[:4]
@@ -119,7 +120,7 @@ class TelemetryDiagnosticLogger:
             f"RL: Lk={rl_lock:3.0f}% Sl={rl_slip:3.0f}% (pv={lpv_rl:4.1f} gv={lgv_rl:4.1f}) | "
             f"RR: Lk={rr_lock:3.0f}% Sl={rr_slip:3.0f}% (pv={lpv_rr:4.1f} gv={lgv_rr:4.1f}) | "
             f"SYNTH: LockMax={sensors.lock_intensity*100:3.0f}% SpinMax={sensors.spin_intensity*100:3.0f}% "
-            f"[ECU_Flags: abs={sensors.ecu_abs_active_raw}, tc={sensors.ecu_tc_active_raw}, abs_lvl={sensors.ecu_abs_level}]\n"
+            f"[ECU_Flags: abs={sensors.ecu.abs.active_raw}, tc={sensors.ecu.tc.active_raw}, abs_lvl={sensors.ecu.abs.level}]\n"
         )
 
         try:

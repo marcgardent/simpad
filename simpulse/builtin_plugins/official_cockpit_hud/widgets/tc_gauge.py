@@ -5,7 +5,7 @@ Displays TC power cuts / wheelspin percentage in Cyan (#00dcff / QColor(0, 220, 
 
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush, QPen, QFont, QPainterPath, QLinearGradient
-from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 class QtTcGaugeWidget(BaseQtHudWidget):
@@ -94,14 +94,14 @@ class QtTcGaugeWidget(BaseQtHudWidget):
         label_y = gauge_y + gauge_height + (3.0 * scale_y)
         label_h = 16.0 * scale_y
 
-        if sensors.ecu_tc_level > 0:
+        if sensors.ecu.tc.level > 0:
             badge_rect = QRectF(tc_x - (1.0 * scale_x), label_y, gauge_width + (2.0 * scale_x), label_h)
             painter.setBrush(QBrush(QColor(10, 30, 45, 220)))
             painter.setPen(QPen(QColor(0, 220, 255, 220), 1.0))
             painter.drawRoundedRect(badge_rect, 3.0, 3.0)
             painter.setFont(QFont("sans-serif", max(7, int(8.5 * scale_y)), QFont.Weight.Bold))
             painter.setPen(QColor(165, 243, 252, 255))
-            painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), str(sensors.ecu_tc_level))
+            painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), str(sensors.ecu.tc.level))
         else:
             painter.setFont(QFont("sans-serif", max(7, int(7.5 * scale_y)), QFont.Weight.Bold))
             col = QColor(0, 220, 255, 255) if self.display_tc > 1.0 else QColor(148, 163, 184, 180)

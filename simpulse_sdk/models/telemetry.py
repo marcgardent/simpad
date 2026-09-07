@@ -4,11 +4,11 @@ Provides IsiMotor standard domain abstractions, channels, and LMU extension tele
 """
 
 from __future__ import annotations
-import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace, InitVar
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union, Self
+from warnings import deprecated
 
 from isimotor_rawudp_client import (
     TelemInfo,
@@ -25,6 +25,15 @@ from isimotor_rawudp_client import (
 
 from simpulse_sdk.models.delta import ExpectedStatus, LapColorStatus, SectorInfo, SplitStatus
 from simpulse_sdk.models.view import TelemetryView, TrackCutState
+from simpulse_sdk.models.wheels import WheelSet
+from simpulse_sdk.models.ecu import (
+    AntiLockECU,
+    ChassisECU,
+    CockpitECU,
+    PowertrainECU,
+    TractionControlECU,
+    VehicleECU,
+)
 
 
 TelemetryPayload = Union[
@@ -156,11 +165,19 @@ class ChannelSample:
     timestamp: float = 0.0
 
 
+@deprecated("Use VehicleSensors.ecu (VehicleECU) instead — see simpulse_sdk/models/ecu.py")
 @dataclass(frozen=True)
 class LmuTelemetryData:
     """
     Strongly-typed Le Mans Ultimate specific electronic, cockpit, and ECU data.
     Separates game-specific telemetry extensions from IsiMotor standard core sensors.
+
+    DEPRECATED: this is a flat bag duplicating VehicleSensors.ecu (VehicleECU),
+    which splits the same 18 values by business domain (abs/tc/powertrain/
+    chassis/cockpit) instead of one ecu_* prefix soup. Kept only because
+    `VehicleSensors.lmu` still gets populated for backward compatibility — new
+    code should read `.ecu.abs` / `.ecu.tc` / etc. instead. Do not add new
+    fields here; extend simpulse_sdk/models/ecu.py.
     """
     ecu_abs_active_raw: Optional[bool] = None
     ecu_tc_active_raw: Optional[bool] = None
@@ -215,50 +232,66 @@ class LmuTelemetryData:
 
 
 @dataclass
-class VehicleSensors:
+class _VehicleSensorsFields:
     """
-    Dimensionless normalized abstraction of slip sensors (0.0 to 1.0).
+    Dataclass mechanics for VehicleSensors — DO NOT use this class directly,
+    use `VehicleSensors` (defined at the bottom of this module), which adds the
+    deprecated flat-field property aliases on top of this one.
+
+    Split in two purely because Python dataclasses can't have a field and a
+    `@property`/`@deprecated` override of the same name in one class body (the
+    property would shadow the field's default at class-construction time) — see
+    the `VehicleSensors` docstring for the actual field documentation.
     """
 
     # 1. Longitudinal slip - Braking / Wheel Lock (FL, FR, RL, RR)
-    front_left_lock: float = 0.0
-    front_right_lock: float = 0.0
-    rear_left_lock: float = 0.0
-    rear_right_lock: float = 0.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_lock).
+    front_left_lock: InitVar[float] = 0.0
+    front_right_lock: InitVar[float] = 0.0
+    rear_left_lock: InitVar[float] = 0.0
+    rear_right_lock: InitVar[float] = 0.0
 
     # 2. Longitudinal slip - Acceleration / TC Spin (FL, FR, RL, RR)
-    front_left_spin: float = 0.0
-    front_right_spin: float = 0.0
-    rear_left_spin: float = 0.0
-    rear_right_spin: float = 0.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_spin).
+    front_left_spin: InitVar[float] = 0.0
+    front_right_spin: InitVar[float] = 0.0
+    rear_left_spin: InitVar[float] = 0.0
+    rear_right_spin: InitVar[float] = 0.0
 
     # 3. Lateral slip - Cornering / Sliding (FL, FR, RL, RR) [0.0 to 1.0]
-    front_left_lat_slip: float = 0.0
-    front_right_lat_slip: float = 0.0
-    rear_left_lat_slip: float = 0.0
-    rear_right_lat_slip: float = 0.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_lat_slip).
+    front_left_lat_slip: InitVar[float] = 0.0
+    front_right_lat_slip: InitVar[float] = 0.0
+    rear_left_lat_slip: InitVar[float] = 0.0
+    rear_right_lat_slip: InitVar[float] = 0.0
 
     # 3b. Signed lateral slip Left (-1.0) / Right (+1.0) for horizontal gauge
-    front_left_lat_signed: float = 0.0
-    front_right_lat_signed: float = 0.0
-    rear_left_lat_signed: float = 0.0
-    rear_right_lat_signed: float = 0.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_lat_signed).
+    front_left_lat_signed: InitVar[float] = 0.0
+    front_right_lat_signed: InitVar[float] = 0.0
+    rear_left_lat_signed: InitVar[float] = 0.0
+    rear_right_lat_signed: InitVar[float] = 0.0
 
     # 4. Engine RPM
     engine_rpm: float = 0.0
     engine_max_rpm: float = 7500.0
 
     # 5. Suspension Travel (FL, FR, RL, RR) [0.0 to 1.0]
-    front_left_travel: float = 0.0
-    front_right_travel: float = 0.0
-    rear_left_travel: float = 0.0
-    rear_right_travel: float = 0.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_travel).
+    front_left_travel: InitVar[float] = 0.0
+    front_right_travel: InitVar[float] = 0.0
+    rear_left_travel: InitVar[float] = 0.0
+    rear_right_travel: InitVar[float] = 0.0
 
     # 6. Tire Grip Fraction (FL, FR, RL, RR) [0.0 to 1.0]
-    front_left_grip: float = 1.0
-    front_right_grip: float = 1.0
-    rear_left_grip: float = 1.0
-    rear_right_grip: float = 1.0
+    # DEPRECATED (InitVar only, not stored — see VehicleSensors.front_left_grip).
+    front_left_grip: InitVar[float] = 1.0
+    front_right_grip: InitVar[float] = 1.0
+    rear_left_grip: InitVar[float] = 1.0
+    rear_right_grip: InitVar[float] = 1.0
+
+    # Per-corner composite — the source of truth for everything above (§1-3b, §5-6).
+    wheels: WheelSet = field(default_factory=WheelSet)
 
     # Vehicle speed (m/s)
     vehicle_speed: float = 0.0
@@ -305,27 +338,82 @@ class VehicleSensors:
     gear: int = 0
 
     # 7. LMU Electronic & Cockpit Data (isiMotor-RawUDP v0.2.0)
-    ecu_abs_active_raw: Optional[bool] = None
-    ecu_tc_active_raw: Optional[bool] = None
-    ecu_abs_level: int = 0
-    ecu_abs_max: int = 0
-    ecu_tc_level: int = 0
-    ecu_tc_max: int = 0
-    ecu_tc_cut: int = 0
-    ecu_tc_cut_max: int = 0
-    ecu_tc_slip: int = 0
-    ecu_tc_slip_max: int = 0
-    ecu_motor_map: int = 0
-    ecu_motor_map_max: int = 0
-    ecu_brake_migration: int = 0
-    ecu_brake_migration_max: int = 0
-    ecu_front_arb: int = 0
-    ecu_front_arb_max: int = 0
-    ecu_rear_arb: int = 0
-    ecu_rear_arb_max: int = 0
-    ecu_wiper_state: int = 0
-    ecu_lift_and_coast: float = 0.0
-    lmu: Optional[LmuTelemetryData] = None
+    # DEPRECATED (whole block, InitVar only, not stored): use `.ecu.abs`/
+    # `.ecu.tc`/`.ecu.powertrain`/`.ecu.chassis`/`.ecu.cockpit` (VehicleECU)
+    # instead — see VehicleSensors.ecu_abs_level etc. `lmu` below is a second,
+    # separate historical copy of the same 18 values.
+    ecu_abs_active_raw: InitVar[Optional[bool]] = None
+    ecu_tc_active_raw: InitVar[Optional[bool]] = None
+    ecu_abs_level: InitVar[int] = 0
+    ecu_abs_max: InitVar[int] = 0
+    ecu_tc_level: InitVar[int] = 0
+    ecu_tc_max: InitVar[int] = 0
+    ecu_tc_cut: InitVar[int] = 0
+    ecu_tc_cut_max: InitVar[int] = 0
+    ecu_tc_slip: InitVar[int] = 0
+    ecu_tc_slip_max: InitVar[int] = 0
+    ecu_motor_map: InitVar[int] = 0
+    ecu_motor_map_max: InitVar[int] = 0
+    ecu_brake_migration: InitVar[int] = 0
+    ecu_brake_migration_max: InitVar[int] = 0
+    ecu_front_arb: InitVar[int] = 0
+    ecu_front_arb_max: InitVar[int] = 0
+    ecu_rear_arb: InitVar[int] = 0
+    ecu_rear_arb_max: InitVar[int] = 0
+    ecu_wiper_state: InitVar[int] = 0
+    ecu_lift_and_coast: InitVar[float] = 0.0
+    # `lmu` is NOT a stored field: VehicleSensors.lmu below builds it lazily
+    # (only when actually read) from `.ecu` instead — see VehicleSensors docstring.
+
+    # ECU composite — the source of truth for the whole §7 block above.
+    ecu: VehicleECU = field(default_factory=VehicleECU)
+
+    def __post_init__(
+        self,
+        front_left_lock, front_right_lock, rear_left_lock, rear_right_lock,
+        front_left_spin, front_right_spin, rear_left_spin, rear_right_spin,
+        front_left_lat_slip, front_right_lat_slip, rear_left_lat_slip, rear_right_lat_slip,
+        front_left_lat_signed, front_right_lat_signed, rear_left_lat_signed, rear_right_lat_signed,
+        front_left_travel, front_right_travel, rear_left_travel, rear_right_travel,
+        front_left_grip, front_right_grip, rear_left_grip, rear_right_grip,
+        ecu_abs_active_raw, ecu_tc_active_raw, ecu_abs_level, ecu_abs_max,
+        ecu_tc_level, ecu_tc_max, ecu_tc_cut, ecu_tc_cut_max, ecu_tc_slip, ecu_tc_slip_max,
+        ecu_motor_map, ecu_motor_map_max, ecu_brake_migration, ecu_brake_migration_max,
+        ecu_front_arb, ecu_front_arb_max, ecu_rear_arb, ecu_rear_arb_max,
+        ecu_wiper_state, ecu_lift_and_coast,
+    ) -> None:
+        """Builds `.wheels`/`.ecu` from the legacy flat InitVar params — the only
+        place these deprecated flat values still exist as of this call (they are
+        not stored on the instance). Skipped when `wheels`/`ecu` were passed in
+        explicitly as composites, which then take priority. See VehicleSensors
+        docstring: `.wheels`/`.ecu` are the source of truth going forward, the
+        flat constructor kwargs are kept only for backward compatibility."""
+        if self.wheels == WheelSet():
+            self.wheels = WheelSet.from_tuples(
+                locks=(front_left_lock, front_right_lock, rear_left_lock, rear_right_lock),
+                spins=(front_left_spin, front_right_spin, rear_left_spin, rear_right_spin),
+                lat_slips=(front_left_lat_slip, front_right_lat_slip, rear_left_lat_slip, rear_right_lat_slip),
+                lat_signed=(front_left_lat_signed, front_right_lat_signed, rear_left_lat_signed, rear_right_lat_signed),
+                travels=(front_left_travel, front_right_travel, rear_left_travel, rear_right_travel),
+                grips=(front_left_grip, front_right_grip, rear_left_grip, rear_right_grip),
+            )
+        if self.ecu == VehicleECU():
+            self.ecu = VehicleECU(
+                abs=AntiLockECU(active_raw=ecu_abs_active_raw, level=ecu_abs_level, level_max=ecu_abs_max),
+                tc=TractionControlECU(
+                    active_raw=ecu_tc_active_raw, level=ecu_tc_level, level_max=ecu_tc_max,
+                    cut=ecu_tc_cut, cut_max=ecu_tc_cut_max, slip=ecu_tc_slip, slip_max=ecu_tc_slip_max,
+                ),
+                powertrain=PowertrainECU(
+                    motor_map=ecu_motor_map, motor_map_max=ecu_motor_map_max, lift_and_coast=ecu_lift_and_coast,
+                ),
+                chassis=ChassisECU(
+                    brake_migration=ecu_brake_migration, brake_migration_max=ecu_brake_migration_max,
+                    front_arb=ecu_front_arb, front_arb_max=ecu_front_arb_max,
+                    rear_arb=ecu_rear_arb, rear_arb_max=ecu_rear_arb_max,
+                ),
+                cockpit=CockpitECU(wiper_state=ecu_wiper_state),
+            )
 
     @classmethod
     def from_wheel_velocities(
@@ -394,7 +482,6 @@ class VehicleSensors:
         wheels_on_track: int = 4,
         surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0),
         terrain_names: Tuple[str, str, str, str] = ("", "", "", ""),
-        lmu: Optional[LmuTelemetryData] = None,
     ) -> Self:
         """
         Builds a normalized VehicleSensors snapshot by evaluating wheel slip dynamics
@@ -602,7 +689,6 @@ class VehicleSensors:
             ecu_rear_arb_max=ecu_rear_arb_max,
             ecu_wiper_state=ecu_wiper_state,
             ecu_lift_and_coast=ecu_lift_and_coast,
-            lmu=lmu,
         )
 
     # Alias with explicit naming intent (wheel slips computation + full snapshot construction)
@@ -648,7 +734,6 @@ class VehicleSensors:
             raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
             travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             raw_grips = tuple(float(w.grip_fraction) for w in wheels[:4])
-            raw_bpres = tuple(float(w.brake_pressure) for w in wheels[:4])
             surface_types = tuple(int(w.surface_type) for w in wheels[:4])
             terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
             wheels_on_track = sum(1 for s in surface_types if s not in (2, 3, 4))
@@ -660,7 +745,6 @@ class VehicleSensors:
             lat_gv = (0.0, 0.0, 0.0, 0.0)
             travels = (0.0, 0.0, 0.0, 0.0)
             raw_grips = (1.0, 1.0, 1.0, 1.0)
-            raw_bpres = (0.0, 0.0, 0.0, 0.0)
             surface_types = (0, 0, 0, 0)
             terrain_names = ("", "", "", "")
             wheels_on_track = 4
@@ -755,8 +839,6 @@ class VehicleSensors:
             ecu_wiper_state = 0
             ecu_lift_and_coast = 0.0
 
-        lmu_data = LmuTelemetryData.from_telem_info(telem)
-
         return cls.from_wheel_velocities(
             long_patch_vels=lpv,
             long_ground_vels=lgv,
@@ -821,7 +903,6 @@ class VehicleSensors:
             wheels_on_track=wheels_on_track,
             surface_types=surface_types,
             terrain_names=terrain_names,
-            lmu=lmu_data,
         )
 
     @classmethod
@@ -919,86 +1000,86 @@ class VehicleSensors:
         """Over-Braking intensity (Combined Max 4 wheels)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.front_left_lock, self.front_right_lock, self.rear_left_lock, self.rear_right_lock)
+        return max(c.lock for c in self.wheels)
 
     @property
     def lock_left(self) -> float:
         """Over-Braking Left side (Max FL, RL)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.front_left_lock, self.rear_left_lock)
+        return max(c.lock for c in self.wheels.left)
 
     @property
     def lock_right(self) -> float:
         """Over-Braking Right side (Max FR, RR)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.front_right_lock, self.rear_right_lock)
+        return max(c.lock for c in self.wheels.right)
 
     @property
     def lock_front(self) -> float:
         """Over-Braking Front axle (Max FL, FR)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.front_left_lock, self.front_right_lock)
+        return max(c.lock for c in self.wheels.front)
 
     @property
     def lock_rear(self) -> float:
         """Over-Braking Rear axle (Max RL, RR)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.rear_left_lock, self.rear_right_lock)
+        return max(c.lock for c in self.wheels.rear)
 
     @property
     def spin_intensity(self) -> float:
         """Over-Acceleration intensity (Combined Max RL/RR)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return max(self.rear_left_spin, self.rear_right_spin)
+        return max(self.wheels.rear_left.spin, self.wheels.rear_right.spin)
 
     @property
     def spin_left(self) -> float:
         """Over-Acceleration Left wheel (RL)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return self.rear_left_spin
+        return self.wheels.rear_left.spin
 
     @property
     def spin_right(self) -> float:
         """Over-Acceleration Right wheel (RR)."""
         if self.vehicle_speed <= 1.5:
             return 0.0
-        return self.rear_right_spin
+        return self.wheels.rear_right.spin
 
     @property
     def oversteer_intensity(self) -> float:
         """Oversteer intensity (Combined Max RL/RR)."""
-        return max(self.rear_left_lat_slip, self.rear_right_lat_slip)
+        return max(self.wheels.rear_left.lat_slip, self.wheels.rear_right.lat_slip)
 
     @property
     def oversteer_left(self) -> float:
         """Oversteer Left wheel (RL)."""
-        return self.rear_left_lat_slip
+        return self.wheels.rear_left.lat_slip
 
     @property
     def oversteer_right(self) -> float:
         """Oversteer Right wheel (RR)."""
-        return self.rear_right_lat_slip
+        return self.wheels.rear_right.lat_slip
 
     @property
     def understeer_intensity(self) -> float:
         """Understeer intensity (Combined Max FL/FR)."""
-        return max(self.front_left_lat_slip, self.front_right_lat_slip)
+        return max(self.wheels.front_left.lat_slip, self.wheels.front_right.lat_slip)
 
     @property
     def understeer_left(self) -> float:
         """Understeer Left wheel (FL)."""
-        return self.front_left_lat_slip
+        return self.wheels.front_left.lat_slip
 
     @property
     def understeer_right(self) -> float:
         """Understeer Right wheel (FR)."""
-        return self.front_right_lat_slip
+        return self.wheels.front_right.lat_slip
 
     # ── Engine Regime Properties ─────────────────────────────────────────────
     @property
@@ -1040,35 +1121,35 @@ class VehicleSensors:
     @property
     def travel_intensity(self) -> float:
         """Wheel Travel intensity (Combined Max FL, FR, RL, RR)."""
-        return max(self.front_left_travel, self.front_right_travel, self.rear_left_travel, self.rear_right_travel)
+        return max(c.travel for c in self.wheels)
 
     @property
     def travel_left(self) -> float:
         """Wheel Travel Left side (Max FL, RL)."""
-        return max(self.front_left_travel, self.rear_left_travel)
+        return max(c.travel for c in self.wheels.left)
 
     @property
     def travel_right(self) -> float:
         """Wheel Travel Right side (Max FR, RR)."""
-        return max(self.front_right_travel, self.rear_right_travel)
+        return max(c.travel for c in self.wheels.right)
 
     # ── Grip Fraction Properties (0.0 to 1.0) ──────────────────────────────────
     @property
     def grip_intensity(self) -> float:
         """Unified 4-wheel Grip Fraction (min of FL, FR, RL, RR clamped [0.0, 1.0])."""
-        val = min(self.front_left_grip, self.front_right_grip, self.rear_left_grip, self.rear_right_grip)
+        val = min(c.grip for c in self.wheels)
         return min(1.0, max(0.0, val))
 
     @property
     def grip_left(self) -> float:
         """Grip Fraction Left side (min of FL, RL clamped [0.0, 1.0])."""
-        val = min(self.front_left_grip, self.rear_left_grip)
+        val = min(c.grip for c in self.wheels.left)
         return min(1.0, max(0.0, val))
 
     @property
     def grip_right(self) -> float:
         """Grip Fraction Right side (min of FR, RR clamped [0.0, 1.0])."""
-        val = min(self.front_right_grip, self.rear_right_grip)
+        val = min(c.grip for c in self.wheels.right)
         return min(1.0, max(0.0, val))
 
     # ── Aerodynamic Load Property (0.0 to 1.0) ────────────────────────────────
@@ -1095,10 +1176,10 @@ class VehicleSensors:
         """
         if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
-        if self.ecu_abs_active_raw is True:
+        if self.ecu.abs.active_raw is True:
             return 1.0
         # If ABS is explicitly disabled at level 0 on an ABS-equipped car, return 0.0
-        if self.ecu_abs_level == 0 and self.ecu_abs_max > 0:
+        if self.ecu.abs.level == 0 and self.ecu.abs.level_max > 0:
             return 0.0
         ub = self.unfiltered_brake
         fb = self.filtered_brake if self.filtered_brake is not None else ub
@@ -1116,10 +1197,10 @@ class VehicleSensors:
         """
         if not self.in_realtime or self.vehicle_speed <= 1.5:
             return 0.0
-        if self.ecu_tc_active_raw is True:
+        if self.ecu.tc.active_raw is True:
             return 1.0
         # If TC is explicitly disabled at level 0 on a TC-equipped car, return 0.0
-        if self.ecu_tc_level == 0 and self.ecu_tc_max > 0:
+        if self.ecu.tc.level == 0 and self.ecu.tc.level_max > 0:
             return 0.0
         # Throttle cut detection (in gear only)
         if self.gear <= 0:
@@ -1152,4 +1233,466 @@ class VehicleSensors:
             current_sector=int(self.current_sector),
             delta_time=float(self.delta_time),
             lap_number=int(self.remaining_laps),
+        )
+
+
+class VehicleSensors(_VehicleSensorsFields):
+    """
+    Dimensionless normalized abstraction of slip sensors (0.0 to 1.0).
+
+    `.wheels` (WheelSet) and `.ecu` (VehicleECU) are the current source of
+    truth — see simpulse_sdk/models/wheels.py and ecu.py. The properties below
+    (`front_left_lock`, `ecu_abs_level`, etc.) are DEPRECATED read/write aliases
+    onto `.wheels`/`.ecu`, kept only for backward compatibility with existing
+    plugins/tests — each is flagged via `@deprecated` (PEP 702), so IDEs and
+    type-checkers (pyright, mypy ≥ 1.13) mark every usage site. New code should
+    read `.wheels.front_left.lock`, `.wheels.axle_avg_grip(front=True)`,
+    `.ecu.abs.level`, etc. instead. Do not add new flat per-wheel or
+    per-ECU-domain fields/properties here — extend WheelSet/VehicleECU instead.
+
+    Constructing with the legacy flat kwargs (`VehicleSensors(front_left_lock=...)`)
+    still works — `_VehicleSensorsFields.__post_init__` back-fills `.wheels`/`.ecu`
+    from them — but only these properties are statically flagged as deprecated,
+    not the constructor kwargs themselves (PEP 702 doesn't cover per-parameter
+    deprecation).
+    """
+
+    # ── Per-corner deprecated aliases (write-through to `.wheels`) ────────────
+    def update_wheel_corner(self, corner: str, **updates: float) -> None:
+        """Public, non-deprecated helper to mutate one TireCorner in place (WheelSet
+        is frozen — this rebuilds it via dataclasses.replace). `corner` is one of
+        "front_left"/"front_right"/"rear_left"/"rear_right"; `updates` are TireCorner
+        field names (lock=, spin=, lat_slip=, lat_signed=, travel=, grip=). Used by
+        the deprecated flat-field setters below, and by any caller updating `.wheels`
+        without rebuilding the whole WheelSet by hand."""
+        old_wheels = self.wheels
+        new_corner = replace(getattr(old_wheels, corner), **updates)
+        self.wheels = replace(old_wheels, **{corner: new_corner})
+
+    @property
+    @deprecated("Use .wheels.front_left.lock instead")
+    def front_left_lock(self) -> float:
+        return self.wheels.front_left.lock
+
+    @front_left_lock.setter
+    def front_left_lock(self, value: float) -> None:
+        self.update_wheel_corner("front_left", lock=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.lock instead")
+    def front_right_lock(self) -> float:
+        return self.wheels.front_right.lock
+
+    @front_right_lock.setter
+    def front_right_lock(self, value: float) -> None:
+        self.update_wheel_corner("front_right", lock=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.lock instead")
+    def rear_left_lock(self) -> float:
+        return self.wheels.rear_left.lock
+
+    @rear_left_lock.setter
+    def rear_left_lock(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", lock=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.lock instead")
+    def rear_right_lock(self) -> float:
+        return self.wheels.rear_right.lock
+
+    @rear_right_lock.setter
+    def rear_right_lock(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", lock=value)
+
+    @property
+    @deprecated("Use .wheels.front_left.spin instead")
+    def front_left_spin(self) -> float:
+        return self.wheels.front_left.spin
+
+    @front_left_spin.setter
+    def front_left_spin(self, value: float) -> None:
+        self.update_wheel_corner("front_left", spin=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.spin instead")
+    def front_right_spin(self) -> float:
+        return self.wheels.front_right.spin
+
+    @front_right_spin.setter
+    def front_right_spin(self, value: float) -> None:
+        self.update_wheel_corner("front_right", spin=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.spin instead")
+    def rear_left_spin(self) -> float:
+        return self.wheels.rear_left.spin
+
+    @rear_left_spin.setter
+    def rear_left_spin(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", spin=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.spin instead")
+    def rear_right_spin(self) -> float:
+        return self.wheels.rear_right.spin
+
+    @rear_right_spin.setter
+    def rear_right_spin(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", spin=value)
+
+    @property
+    @deprecated("Use .wheels.front_left.lat_slip instead")
+    def front_left_lat_slip(self) -> float:
+        return self.wheels.front_left.lat_slip
+
+    @front_left_lat_slip.setter
+    def front_left_lat_slip(self, value: float) -> None:
+        self.update_wheel_corner("front_left", lat_slip=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.lat_slip instead")
+    def front_right_lat_slip(self) -> float:
+        return self.wheels.front_right.lat_slip
+
+    @front_right_lat_slip.setter
+    def front_right_lat_slip(self, value: float) -> None:
+        self.update_wheel_corner("front_right", lat_slip=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.lat_slip instead")
+    def rear_left_lat_slip(self) -> float:
+        return self.wheels.rear_left.lat_slip
+
+    @rear_left_lat_slip.setter
+    def rear_left_lat_slip(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", lat_slip=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.lat_slip instead")
+    def rear_right_lat_slip(self) -> float:
+        return self.wheels.rear_right.lat_slip
+
+    @rear_right_lat_slip.setter
+    def rear_right_lat_slip(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", lat_slip=value)
+
+    @property
+    @deprecated("Use .wheels.front_left.lat_signed instead")
+    def front_left_lat_signed(self) -> float:
+        return self.wheels.front_left.lat_signed
+
+    @front_left_lat_signed.setter
+    def front_left_lat_signed(self, value: float) -> None:
+        self.update_wheel_corner("front_left", lat_signed=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.lat_signed instead")
+    def front_right_lat_signed(self) -> float:
+        return self.wheels.front_right.lat_signed
+
+    @front_right_lat_signed.setter
+    def front_right_lat_signed(self, value: float) -> None:
+        self.update_wheel_corner("front_right", lat_signed=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.lat_signed instead")
+    def rear_left_lat_signed(self) -> float:
+        return self.wheels.rear_left.lat_signed
+
+    @rear_left_lat_signed.setter
+    def rear_left_lat_signed(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", lat_signed=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.lat_signed instead")
+    def rear_right_lat_signed(self) -> float:
+        return self.wheels.rear_right.lat_signed
+
+    @rear_right_lat_signed.setter
+    def rear_right_lat_signed(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", lat_signed=value)
+
+    @property
+    @deprecated("Use .wheels.front_left.travel instead")
+    def front_left_travel(self) -> float:
+        return self.wheels.front_left.travel
+
+    @front_left_travel.setter
+    def front_left_travel(self, value: float) -> None:
+        self.update_wheel_corner("front_left", travel=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.travel instead")
+    def front_right_travel(self) -> float:
+        return self.wheels.front_right.travel
+
+    @front_right_travel.setter
+    def front_right_travel(self, value: float) -> None:
+        self.update_wheel_corner("front_right", travel=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.travel instead")
+    def rear_left_travel(self) -> float:
+        return self.wheels.rear_left.travel
+
+    @rear_left_travel.setter
+    def rear_left_travel(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", travel=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.travel instead")
+    def rear_right_travel(self) -> float:
+        return self.wheels.rear_right.travel
+
+    @rear_right_travel.setter
+    def rear_right_travel(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", travel=value)
+
+    @property
+    @deprecated("Use .wheels.front_left.grip instead")
+    def front_left_grip(self) -> float:
+        return self.wheels.front_left.grip
+
+    @front_left_grip.setter
+    def front_left_grip(self, value: float) -> None:
+        self.update_wheel_corner("front_left", grip=value)
+
+    @property
+    @deprecated("Use .wheels.front_right.grip instead")
+    def front_right_grip(self) -> float:
+        return self.wheels.front_right.grip
+
+    @front_right_grip.setter
+    def front_right_grip(self, value: float) -> None:
+        self.update_wheel_corner("front_right", grip=value)
+
+    @property
+    @deprecated("Use .wheels.rear_left.grip instead")
+    def rear_left_grip(self) -> float:
+        return self.wheels.rear_left.grip
+
+    @rear_left_grip.setter
+    def rear_left_grip(self, value: float) -> None:
+        self.update_wheel_corner("rear_left", grip=value)
+
+    @property
+    @deprecated("Use .wheels.rear_right.grip instead")
+    def rear_right_grip(self) -> float:
+        return self.wheels.rear_right.grip
+
+    @rear_right_grip.setter
+    def rear_right_grip(self, value: float) -> None:
+        self.update_wheel_corner("rear_right", grip=value)
+
+    # ── ECU deprecated aliases (write-through to `.ecu`) ───────────────────────
+    def update_ecu_domain(self, domain: str, **updates) -> None:
+        """Public, non-deprecated helper to mutate one ECU sub-model in place
+        (VehicleECU is frozen — this rebuilds it via dataclasses.replace). `domain`
+        is one of "abs"/"tc"/"powertrain"/"chassis"/"cockpit"; `updates` are that
+        sub-model's field names. Used by the deprecated flat-field setters below,
+        and by any caller updating `.ecu` without rebuilding it by hand."""
+        old_ecu = self.ecu
+        new_domain = replace(getattr(old_ecu, domain), **updates)
+        self.ecu = replace(old_ecu, **{domain: new_domain})
+
+    @property
+    @deprecated("Use .ecu.abs.active_raw instead")
+    def ecu_abs_active_raw(self) -> Optional[bool]:
+        return self.ecu.abs.active_raw
+
+    @ecu_abs_active_raw.setter
+    def ecu_abs_active_raw(self, value: Optional[bool]) -> None:
+        self.update_ecu_domain("abs", active_raw=value)
+
+    @property
+    @deprecated("Use .ecu.tc.active_raw instead")
+    def ecu_tc_active_raw(self) -> Optional[bool]:
+        return self.ecu.tc.active_raw
+
+    @ecu_tc_active_raw.setter
+    def ecu_tc_active_raw(self, value: Optional[bool]) -> None:
+        self.update_ecu_domain("tc", active_raw=value)
+
+    @property
+    @deprecated("Use .ecu.abs.level instead")
+    def ecu_abs_level(self) -> int:
+        return self.ecu.abs.level
+
+    @ecu_abs_level.setter
+    def ecu_abs_level(self, value: int) -> None:
+        self.update_ecu_domain("abs", level=value)
+
+    @property
+    @deprecated("Use .ecu.abs.level_max instead")
+    def ecu_abs_max(self) -> int:
+        return self.ecu.abs.level_max
+
+    @ecu_abs_max.setter
+    def ecu_abs_max(self, value: int) -> None:
+        self.update_ecu_domain("abs", level_max=value)
+
+    @property
+    @deprecated("Use .ecu.tc.level instead")
+    def ecu_tc_level(self) -> int:
+        return self.ecu.tc.level
+
+    @ecu_tc_level.setter
+    def ecu_tc_level(self, value: int) -> None:
+        self.update_ecu_domain("tc", level=value)
+
+    @property
+    @deprecated("Use .ecu.tc.level_max instead")
+    def ecu_tc_max(self) -> int:
+        return self.ecu.tc.level_max
+
+    @ecu_tc_max.setter
+    def ecu_tc_max(self, value: int) -> None:
+        self.update_ecu_domain("tc", level_max=value)
+
+    @property
+    @deprecated("Use .ecu.tc.cut instead")
+    def ecu_tc_cut(self) -> int:
+        return self.ecu.tc.cut
+
+    @ecu_tc_cut.setter
+    def ecu_tc_cut(self, value: int) -> None:
+        self.update_ecu_domain("tc", cut=value)
+
+    @property
+    @deprecated("Use .ecu.tc.cut_max instead")
+    def ecu_tc_cut_max(self) -> int:
+        return self.ecu.tc.cut_max
+
+    @ecu_tc_cut_max.setter
+    def ecu_tc_cut_max(self, value: int) -> None:
+        self.update_ecu_domain("tc", cut_max=value)
+
+    @property
+    @deprecated("Use .ecu.tc.slip instead")
+    def ecu_tc_slip(self) -> int:
+        return self.ecu.tc.slip
+
+    @ecu_tc_slip.setter
+    def ecu_tc_slip(self, value: int) -> None:
+        self.update_ecu_domain("tc", slip=value)
+
+    @property
+    @deprecated("Use .ecu.tc.slip_max instead")
+    def ecu_tc_slip_max(self) -> int:
+        return self.ecu.tc.slip_max
+
+    @ecu_tc_slip_max.setter
+    def ecu_tc_slip_max(self, value: int) -> None:
+        self.update_ecu_domain("tc", slip_max=value)
+
+    @property
+    @deprecated("Use .ecu.powertrain.motor_map instead")
+    def ecu_motor_map(self) -> int:
+        return self.ecu.powertrain.motor_map
+
+    @ecu_motor_map.setter
+    def ecu_motor_map(self, value: int) -> None:
+        self.update_ecu_domain("powertrain", motor_map=value)
+
+    @property
+    @deprecated("Use .ecu.powertrain.motor_map_max instead")
+    def ecu_motor_map_max(self) -> int:
+        return self.ecu.powertrain.motor_map_max
+
+    @ecu_motor_map_max.setter
+    def ecu_motor_map_max(self, value: int) -> None:
+        self.update_ecu_domain("powertrain", motor_map_max=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.brake_migration instead")
+    def ecu_brake_migration(self) -> int:
+        return self.ecu.chassis.brake_migration
+
+    @ecu_brake_migration.setter
+    def ecu_brake_migration(self, value: int) -> None:
+        self.update_ecu_domain("chassis", brake_migration=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.brake_migration_max instead")
+    def ecu_brake_migration_max(self) -> int:
+        return self.ecu.chassis.brake_migration_max
+
+    @ecu_brake_migration_max.setter
+    def ecu_brake_migration_max(self, value: int) -> None:
+        self.update_ecu_domain("chassis", brake_migration_max=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.front_arb instead")
+    def ecu_front_arb(self) -> int:
+        return self.ecu.chassis.front_arb
+
+    @ecu_front_arb.setter
+    def ecu_front_arb(self, value: int) -> None:
+        self.update_ecu_domain("chassis", front_arb=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.front_arb_max instead")
+    def ecu_front_arb_max(self) -> int:
+        return self.ecu.chassis.front_arb_max
+
+    @ecu_front_arb_max.setter
+    def ecu_front_arb_max(self, value: int) -> None:
+        self.update_ecu_domain("chassis", front_arb_max=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.rear_arb instead")
+    def ecu_rear_arb(self) -> int:
+        return self.ecu.chassis.rear_arb
+
+    @ecu_rear_arb.setter
+    def ecu_rear_arb(self, value: int) -> None:
+        self.update_ecu_domain("chassis", rear_arb=value)
+
+    @property
+    @deprecated("Use .ecu.chassis.rear_arb_max instead")
+    def ecu_rear_arb_max(self) -> int:
+        return self.ecu.chassis.rear_arb_max
+
+    @ecu_rear_arb_max.setter
+    def ecu_rear_arb_max(self, value: int) -> None:
+        self.update_ecu_domain("chassis", rear_arb_max=value)
+
+    @property
+    @deprecated("Use .ecu.cockpit.wiper_state instead")
+    def ecu_wiper_state(self) -> int:
+        return self.ecu.cockpit.wiper_state
+
+    @ecu_wiper_state.setter
+    def ecu_wiper_state(self, value: int) -> None:
+        self.update_ecu_domain("cockpit", wiper_state=value)
+
+    @property
+    @deprecated("Use .ecu.powertrain.lift_and_coast instead")
+    def ecu_lift_and_coast(self) -> float:
+        return self.ecu.powertrain.lift_and_coast
+
+    @ecu_lift_and_coast.setter
+    def ecu_lift_and_coast(self, value: float) -> None:
+        self.update_ecu_domain("powertrain", lift_and_coast=value)
+
+    @property
+    @deprecated("Use .ecu (VehicleECU) instead — LmuTelemetryData is a second, "
+                "flat copy of the same 18 values")
+    def lmu(self) -> LmuTelemetryData:
+        """Built lazily, on read, straight from `.ecu` — never stored, so
+        constructing/reading a VehicleSensors that never touches `.lmu` never
+        pays for or warns about this deprecated shape."""
+        abs_, tc, pt, ch, cp = self.ecu.abs, self.ecu.tc, self.ecu.powertrain, self.ecu.chassis, self.ecu.cockpit
+        return LmuTelemetryData(
+            ecu_abs_active_raw=abs_.active_raw, ecu_tc_active_raw=tc.active_raw,
+            ecu_abs_level=abs_.level, ecu_abs_max=abs_.level_max,
+            ecu_tc_level=tc.level, ecu_tc_max=tc.level_max,
+            ecu_tc_cut=tc.cut, ecu_tc_cut_max=tc.cut_max,
+            ecu_tc_slip=tc.slip, ecu_tc_slip_max=tc.slip_max,
+            ecu_motor_map=pt.motor_map, ecu_motor_map_max=pt.motor_map_max,
+            ecu_brake_migration=ch.brake_migration, ecu_brake_migration_max=ch.brake_migration_max,
+            ecu_front_arb=ch.front_arb, ecu_front_arb_max=ch.front_arb_max,
+            ecu_rear_arb=ch.rear_arb, ecu_rear_arb_max=ch.rear_arb_max,
+            ecu_wiper_state=cp.wiper_state, ecu_lift_and_coast=pt.lift_and_coast,
         )

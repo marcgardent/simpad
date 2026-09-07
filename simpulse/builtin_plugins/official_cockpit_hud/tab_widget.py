@@ -234,7 +234,7 @@ class OfficialCockpitHudTabWidget(QWidget):
 
         abs_pct = int(sensors.ecu_abs_active * 100.0)
         tc_pct = int(max(sensors.ecu_tc_active, sensors.spin_intensity) * 100.0)
-        self.lbl_assists.setText(f"ABS: {abs_pct}% (lvl {sensors.ecu_abs_level})  |  TC: {tc_pct}% (lvl {sensors.ecu_tc_level})")
+        self.lbl_assists.setText(f"ABS: {abs_pct}% (lvl {sensors.ecu.abs.level})  |  TC: {tc_pct}% (lvl {sensors.ecu.tc.level})")
         self.preview_canvas.update()
 
     def update_delta_ui(self, delta: LapDeltaPacket) -> None:

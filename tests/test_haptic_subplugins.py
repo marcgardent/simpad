@@ -2,8 +2,8 @@
 Unit tests for SimPulse Haptics Subplugins and Marc Profile Decomposition.
 """
 
-import pytest
 from simpulse.core.telemetry.sensors import VehicleSensors
+from simpulse_sdk.models import WheelSet, TireCorner, VehicleECU, AntiLockECU, TractionControlECU
 from simpulse.builtin_plugins.haptic_feedback.models import HapticMotorOutput
 from simpulse.builtin_plugins.haptic_feedback.subplugins.base import HapticHostSlot
 from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_abs import MarcAbsSubplugin
@@ -11,9 +11,7 @@ from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_tc import MarcTcSu
 from simpulse.builtin_plugins.haptic_feedback.subplugins.marc_engine_shift import MarcEngineShiftSubplugin
 from simpulse.builtin_plugins.haptic_feedback.subplugins.curbs import CurbsHapticSubplugin
 from simpulse.builtin_plugins.haptic_feedback.subplugins.slip import SlipHapticSubplugin
-from simpulse.builtin_plugins.haptic_feedback.subplugins.grip import TireGripHapticSubplugin
 from simpulse.builtin_plugins.haptic_feedback.manager import HapticSubpluginManager
-from simpulse.builtin_plugins.haptic_feedback.math_engine import WaveformShape
 
 
 def test_haptic_motor_output_xinput_mapping():
@@ -49,7 +47,7 @@ def test_marc_abs_subplugin():
     sensors = VehicleSensors(
         vehicle_speed=20.0,
         in_realtime=True,
-        ecu_abs_active_raw=True,
+        ecu=VehicleECU(abs=AntiLockECU(active_raw=True)),
     )
 
     # Time at sine peak for 144 Hz (period / 2 = 1 / (144 * 2))
@@ -80,7 +78,7 @@ def test_marc_tc_subplugin():
         vehicle_speed=20.0,
         in_realtime=True,
         gear=2,
-        ecu_tc_active_raw=True,
+        ecu=VehicleECU(tc=TractionControlECU(active_raw=True)),
     )
 
     t_peak = 1.0 / (144.0 * 2.0)
@@ -138,8 +136,7 @@ def test_curbs_and_slip_subplugins():
     sensors_curb = VehicleSensors(
         vehicle_speed=30.0,
         in_realtime=True,
-        front_left_travel=0.25,
-        rear_left_travel=0.20,
+        wheels=WheelSet(front_left=TireCorner(travel=0.25), rear_left=TireCorner(travel=0.20)),
     )
     res_curb = curbs.evaluate(sensors_curb, time_s=0.01)
     assert res_curb.left_low > 0.1
@@ -148,8 +145,7 @@ def test_curbs_and_slip_subplugins():
     sensors_slip = VehicleSensors(
         vehicle_speed=30.0,
         in_realtime=True,
-        rear_left_lat_slip=0.35,
-        rear_right_lat_slip=0.30,
+        wheels=WheelSet(rear_left=TireCorner(lat_slip=0.35), rear_right=TireCorner(lat_slip=0.30)),
     )
     res_slip = slip.evaluate(sensors_slip, time_s=0.01)
     # Oversteer routes to right_high
@@ -176,8 +172,7 @@ def test_haptic_subplugin_manager():
         vehicle_speed=25.0,
         in_realtime=True,
         gear=2,
-        ecu_abs_active_raw=True,
-        ecu_tc_active_raw=True,
+        ecu=VehicleECU(abs=AntiLockECU(active_raw=True), tc=TractionControlECU(active_raw=True)),
     )
     t_peak = 1.0 / (144.0 * 2.0)
     out = manager.evaluate(sensors, time_s=t_peak)

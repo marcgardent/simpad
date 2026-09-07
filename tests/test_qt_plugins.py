@@ -4,7 +4,6 @@ Unit and Integration Tests for the SimPulse Qt6 Strongly-Typed Plugin Architectu
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
 import pytest
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QImage, QPainter
@@ -15,16 +14,16 @@ from simpulse_sdk import (
     HudSlot, HudLayoutSpec, PluginErrorReport,
     ITabProvider, ITelemetrySubscriber, ITelemetryStateSubscriber, IHudWidgetProvider,
     TelemetryChannel, ChannelRequirement, TelemetryRawPacket,
-    VehicleSensors,
+    VehicleSensors, WheelSet, TireCorner, VehicleECU, AntiLockECU, TractionControlECU,
 )
 from simpulse.plugins.manager import PluginManager
 from simpulse.core.config import ConfigManager, AppSettings
 from simpulse.core.game_plugin_manager import GamePluginManager
 from simpulse.core.game_process_watcher import GameProcessWatcher, GameStatus, GameFocusState
 from simpulse.core.overlay_state_machine import (
-    OverlayStateMachine, GameSceneState, OverlayDisplayMode, OverlayStateSnapshot
+    OverlayStateMachine, GameSceneState, OverlayDisplayMode
 )
-from simpulse.core.telemetry_bus import TelemetryBus, UdpStreamStatus
+from simpulse.core.telemetry_bus import TelemetryBus
 from simpulse.ui.slot_compositor import HudSlotCompositor
 from simpulse.ui.status_bar import SimPulseCoreStatusBar
 from simpulse.builtin_plugins.gear_speed_hud import GearSpeedHudPlugin
@@ -34,7 +33,6 @@ from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpit
 from simpulse.builtin_plugins.pedal_monitor import PedalTelemetryPlugin
 from simpulse.builtin_plugins.pedal_monitor.plugin import PedalMonitorConfig
 from simpulse.builtin_plugins.stream_diagnostics import TelemetryDiagnosticsPlugin
-from simpulse.core.telemetry.sensors import VehicleSensors
 
 
 @pytest.fixture(scope="session")
@@ -364,10 +362,10 @@ def test_pedal_telemetry_plugin_typed(qapp, tmp_path):
     sensors = VehicleSensors()
     sensors.unfiltered_throttle = 0.85
     sensors.unfiltered_brake = 0.60
-    sensors.ecu_abs_active_raw = True
-    sensors.ecu_tc_active_raw = True
-    sensors.front_left_lock = 0.90
-    sensors.rear_left_spin = 0.75
+    sensors.update_ecu_domain("abs", active_raw=True)
+    sensors.update_ecu_domain("tc", active_raw=True)
+    sensors.update_wheel_corner("front_left", lock=0.90)
+    sensors.update_wheel_corner("rear_left", spin=0.75)
 
     plugin.on_telemetry_frame(sensors)
 
@@ -655,16 +653,16 @@ def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
         engine_max_rpm=8500.0,
         unfiltered_throttle=0.90,
         unfiltered_brake=0.45,
-        ecu_abs_active_raw=True,
-        ecu_tc_active_raw=True,
-        ecu_abs_level=4,
-        ecu_tc_level=3,
+        ecu=VehicleECU(
+            abs=AntiLockECU(active_raw=True, level=4),
+            tc=TractionControlECU(active_raw=True, level=3),
+        ),
         delta_time=-0.320,
         has_delta_reference=True,
-        front_left_lock=0.35,
-        rear_left_spin=0.40,
-        front_left_lat_slip=0.25,
-        front_left_lat_signed=-0.50,
+        wheels=WheelSet(
+            front_left=TireCorner(lock=0.35, lat_slip=0.25, lat_signed=-0.50),
+            rear_left=TireCorner(spin=0.40),
+        ),
         explicit_aero_load=0.75,
         lap_flag=2,
         fuel_level=42.5,
@@ -871,7 +869,7 @@ class EventHookSpyPlugin(SimPulsePlugin):
 
 def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     """Test that PluginManager dispatches typed polymorphic event hooks to plugins reading from TelemetryStateStore."""
-    from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl, SystemEvent
+    from isimotor_rawudp_client import TelemInfo, TelemVect3, CompactScoring, FullScoringSession, WeatherControl
     from simpulse.core.telemetry.state_store import TelemetryStateStore
 
 
@@ -1002,7 +1000,6 @@ def test_all_eleven_channels_have_on_hooks_and_zero_none(qapp, tmp_path):
     from simpulse_sdk import (
         SimPulsePlugin, PluginMetadata, PluginContext,
         TelemetryChannel, TelemetryRawPacket, TelemetryStateStore,
-        ITelemetryStateSubscriber,
     )
     from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession, WeatherControl, SystemEvent, ExtendedState, ForceFeedback, Graphics
 

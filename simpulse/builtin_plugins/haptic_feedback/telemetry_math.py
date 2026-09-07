@@ -114,10 +114,10 @@ def calc_wheel_travel_impacts(sensors: VehicleSensors) -> Dict[str, float]:
     :return: Dictionary with travel_fl, travel_fr, travel_rl, travel_rr, travel_l, travel_r, travel_max
     """
     return {
-        "travel_fl": clamp(sensors.front_left_travel),
-        "travel_fr": clamp(sensors.front_right_travel),
-        "travel_rl": clamp(sensors.rear_left_travel),
-        "travel_rr": clamp(sensors.rear_right_travel),
+        "travel_fl": clamp(sensors.wheels.front_left.travel),
+        "travel_fr": clamp(sensors.wheels.front_right.travel),
+        "travel_rl": clamp(sensors.wheels.rear_left.travel),
+        "travel_rr": clamp(sensors.wheels.rear_right.travel),
         "travel_left": clamp(sensors.travel_left),
         "travel_right": clamp(sensors.travel_right),
         "travel_max": clamp(sensors.travel_intensity),

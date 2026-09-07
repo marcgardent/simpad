@@ -82,9 +82,10 @@ class MockTelemetryGenerator(QObject):
 
             # Brief TC slip when accelerating hard
             if cycle < 2.0:
-                sensors.rear_left_spin = 0.15 * math.sin(cycle * 10) ** 2
-                sensors.rear_right_spin = 0.15 * math.sin(cycle * 10) ** 2
-                sensors.ecu_tc_active_raw = True
+                tc_spin = 0.15 * math.sin(cycle * 10) ** 2
+                sensors.update_wheel_corner("rear_left", spin=tc_spin)
+                sensors.update_wheel_corner("rear_right", spin=tc_spin)
+                sensors.update_ecu_domain("tc", active_raw=True)
 
         elif cycle < 16.0:
             # 2. Heavy braking zone (10-16s)
@@ -110,9 +111,9 @@ class MockTelemetryGenerator(QObject):
             # ABS activation during initial heavy brake pressure
             if cycle < 13.0:
                 abs_pulse = abs(math.sin(cycle * 25))
-                sensors.front_left_lock = 0.25 * abs_pulse
-                sensors.front_right_lock = 0.22 * abs_pulse
-                sensors.ecu_abs_active_raw = True
+                sensors.update_wheel_corner("front_left", lock=0.25 * abs_pulse)
+                sensors.update_wheel_corner("front_right", lock=0.22 * abs_pulse)
+                sensors.update_ecu_domain("abs", active_raw=True)
 
         elif cycle < 22.0:
             # 3. Corner apex / lateral load (16-22s)
@@ -125,11 +126,10 @@ class MockTelemetryGenerator(QObject):
 
             # Lateral slip
             lat_factor = math.sin(turn_prog * math.pi)
-            sensors.front_left_lat_slip = 0.4 * lat_factor
-            sensors.rear_left_lat_slip = 0.35 * lat_factor
-            sensors.front_right_lat_slip = 0.1
-            sensors.rear_right_lat_slip = 0.1
-            sensors.front_left_grip = max(0.5, 1.0 - 0.5 * lat_factor)
+            sensors.update_wheel_corner("front_left", lat_slip=0.4 * lat_factor, grip=max(0.5, 1.0 - 0.5 * lat_factor))
+            sensors.update_wheel_corner("rear_left", lat_slip=0.35 * lat_factor)
+            sensors.update_wheel_corner("front_right", lat_slip=0.1)
+            sensors.update_wheel_corner("rear_right", lat_slip=0.1)
 
         else:
             # 4. Corner exit & upshifts (22-30s)
