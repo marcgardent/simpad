@@ -161,8 +161,21 @@ class TelemetryStateStore:
         self._hit_count_current_lap = 0
         self._recalculate_cache()
 
+    @staticmethod
+    def _normalize_raw_sector(raw_sector: int) -> int:
+        """Per-packet isiMotor sector code -> 1/2/3, with NO jitter guard.
+
+        This is the raw signal DeltaEngine's own guard (_handle_sector_transition)
+        needs to see un-massaged to detect and reject a stray echo — it must NOT
+        be pre-resolved to the already-guarded display value (see
+        _resolve_current_sector below), or the guard would only ever see its own
+        past output and could never catch a genuine disagreement between
+        CompactScoring and FullScoringSession again.
+        """
+        return 3 if raw_sector == 0 else (raw_sector if raw_sector in (1, 2, 3) else 1)
+
     def _resolve_current_sector(self, raw_sector: int) -> int:
-        """Single source of truth for the displayed current sector.
+        """Single source of truth for the *displayed* current sector.
 
         Prefers the authoritative, jitter-guarded value already computed by
         DeltaEngine (delivered here through ``update_delta`` as
@@ -171,10 +184,15 @@ class TelemetryStateStore:
         disagree on the raw code for a frame or two around a timing line;
         recomputing it naively here duplicated (and disagreed with) the guard
         DeltaEngine already applies, which is what actually reaches the HUD.
+
+        Used ONLY for the ``current_sector`` property (plugin/HUD display).
+        ``BaseTimingState.sector``/``FullGridScoringState.sector`` (consumed as
+        DeltaEngine's own input) use ``_normalize_raw_sector`` instead — see its
+        docstring for why the two must not be conflated.
         """
         if self.delta.data is not None and self.delta.is_fresh(2.0):
             return int(self.delta.data.current_sector)
-        return 3 if raw_sector == 0 else (raw_sector if raw_sector in (1, 2, 3) else 1)
+        return self._normalize_raw_sector(raw_sector)
 
     def reset(self) -> None:
         """Resets all packet slots and persistent state memory."""
@@ -352,10 +370,11 @@ class TelemetryStateStore:
             self._last_total_laps = new_laps
 
             raw_sec = data.sector
-            norm_sec = self._resolve_current_sector(raw_sec)
-            self._last_current_sector = norm_sec
+            norm_sec = self._normalize_raw_sector(raw_sec)
+            self._last_current_sector = self._resolve_current_sector(raw_sec)
 
-            # Construct unified BaseTimingState (continuous 10Hz)
+            # Construct unified BaseTimingState (continuous 10Hz) — carries the raw
+            # normalized sector (DeltaEngine's input), not the guarded display value.
             self.timing = BaseTimingState(
                 track_name=data.track_name.strip(),
                 session=data.session,
@@ -428,8 +447,8 @@ class TelemetryStateStore:
                 self._last_total_laps = player_veh.total_laps
                 self._last_lap_dist = player_veh.lap_dist
                 raw_sec = player_veh.sector
-                norm_sec = self._resolve_current_sector(raw_sec)
-                self._last_current_sector = norm_sec
+                norm_sec = self._normalize_raw_sector(raw_sec)
+                self._last_current_sector = self._resolve_current_sector(raw_sec)
                 if player_veh.lmu:
                     self._last_track_limits_steps = player_veh.lmu.track_limits_steps
 
