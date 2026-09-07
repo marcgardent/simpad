@@ -613,6 +613,7 @@ class VehicleSensors:
         cls,
         telem: TelemInfo,
         scoring: Optional[Union[CompactScoring, FullScoringSession, Dict[str, Union[int, float, str, bool]]]] = None,
+        remaining_laps: Optional[int] = None,
         delta_time: float = 0.0,
         estimated_lap_time: float = 0.0,
         estimated_lap_time_str: str = "--:--.---",
@@ -672,19 +673,32 @@ class VehicleSensors:
         else:
             aero_downforce = explicit_aero_load
 
-        remaining_laps = 0
-        if isinstance(scoring, CompactScoring):
-            if 0 < scoring.max_laps < 1000:
-                remaining_laps = max(0, scoring.max_laps - scoring.total_laps)
-        elif isinstance(scoring, FullScoringSession):
-            player_v = scoring.player_vehicle
-            if player_v and 0 < scoring.max_laps < 1000:
-                remaining_laps = max(0, scoring.max_laps - player_v.total_laps)
-        elif isinstance(scoring, dict):
-            max_laps = int(scoring.get("mMaxLaps", scoring.get("maxLaps", 0)))
-            total_laps = int(scoring.get("mTotalLaps", scoring.get("totalLaps", 0)))
-            if 0 < max_laps < 1000:
-                remaining_laps = max(0, max_laps - total_laps)
+        # `remaining_laps` (from the caller, e.g. from_view() below reading the
+        # already-unified BaseTimingState) takes priority. `scoring` stays only
+        # for direct callers that never went through the Store/View and still
+        # hand this a raw CompactScoring/FullScoringSession/legacy-JSON-dict —
+        # each is a *different* shape for the same two fields (max_laps/
+        # total_laps live one level down under .player_vehicle for
+        # FullScoringSession, top-level for CompactScoring, and under
+        # differently-cased keys for the JSON dict), so this three-way
+        # isinstance dispatch is the trap: it must be kept in lockstep with
+        # those raw formats by hand. Never add a fourth caller here — teach it
+        # to compute remaining_laps itself (from BaseTimingState if it has one)
+        # and pass that instead.
+        if remaining_laps is None:
+            remaining_laps = 0
+            if isinstance(scoring, CompactScoring):
+                if 0 < scoring.max_laps < 1000:
+                    remaining_laps = max(0, scoring.max_laps - scoring.total_laps)
+            elif isinstance(scoring, FullScoringSession):
+                player_v = scoring.player_vehicle
+                if player_v and 0 < scoring.max_laps < 1000:
+                    remaining_laps = max(0, scoring.max_laps - player_v.total_laps)
+            elif isinstance(scoring, dict):
+                max_laps = int(scoring.get("mMaxLaps", scoring.get("maxLaps", 0)))
+                total_laps = int(scoring.get("mTotalLaps", scoring.get("totalLaps", 0)))
+                if 0 < max_laps < 1000:
+                    remaining_laps = max(0, max_laps - total_laps)
 
         engine_rpm = float(telem.engine_rpm)
         engine_max_rpm = float(telem.engine_max_rpm)
@@ -822,11 +836,20 @@ class VehicleSensors:
         (view.raw_telemetry is not None, true after the very first physics packet
         of a session); before that, returns near-default sensors stamped with the
         View's own presence/lap-flag fields.
+
+        `remaining_laps` is computed from `view.timing` (BaseTimingState, already
+        the single merge of CompactScoring/FullScoringSession — see
+        `BaseTimingState.merge()`) instead of handing from_telem_info() a raw
+        scoring packet to re-dispatch on by isinstance: the View path never needs
+        that ambiguity, max_laps/total_laps are already unified fields here.
         """
         if view.raw_telemetry is not None:
+            remaining_laps = 0
+            if 0 < view.timing.max_laps < 1000:
+                remaining_laps = max(0, view.timing.max_laps - view.timing.total_laps)
             return cls.from_telem_info(
                 telem=view.raw_telemetry,
-                scoring=view.raw_scoring,
+                remaining_laps=remaining_laps,
                 lap_flag=view.lap_flag,
                 track_cut_state=view.track_cut_state,
                 in_realtime=view.in_realtime,

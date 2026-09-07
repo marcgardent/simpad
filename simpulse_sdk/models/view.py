@@ -2,10 +2,19 @@
 SimPulse SDK — Immutable Telemetry View.
 
 TelemetryView is the single consolidated, read-only snapshot of TelemetryStateStore
-handed to Engines (DeltaEngine, ...) and to Plugins. It bundles both raw packet data
-still needed downstream (raw_telemetry/raw_scoring) and every derived/cross-channel
-value the Store computes (presence, lap validity, hit-count, wheels/surface, speed &
-pedals, track-limits) plus the authoritative Engine output (delta), once available.
+handed to Engines (DeltaEngine, ...) and to Plugins. It bundles the one raw packet
+still needed downstream (raw_telemetry, a single well-defined TelemInfo type) and
+every derived/cross-channel value the Store computes (presence, lap validity,
+hit-count, wheels/surface, speed & pedals, track-limits, unified timing/grid) plus
+the authoritative Engine output (delta), once available.
+
+There used to be a `raw_scoring: Optional[Union[FullScoringSession, CompactScoring]]`
+field here too — a raw, ambiguous union that made every consumer re-implement its own
+isinstance dispatch to tell the two packet shapes apart (see
+`VehicleSensors.from_telem_info()`'s `remaining_laps` derivation for the textbook
+example). Removed: `timing`/`grid` below are the single merge of both
+(`BaseTimingState.merge()`/`FullGridScoringState.from_timing()` in scoring.py) —
+anything raw_scoring used to answer, they already answer without a union.
 
 Nothing downstream should ever need to reach into the raw PacketSlot ingestion layer
 (TelemetryStateStore.telemetry/.compact_scoring/.full_scoring/etc.) directly — this
@@ -20,9 +29,9 @@ read-only by convention on those nested objects too, never mutate them in place.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
-from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
+from isimotor_rawudp_client import TelemInfo
 
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
@@ -32,11 +41,10 @@ from .delta import LapDeltaPacket
 class TelemetryView:
     """Immutable snapshot of TelemetryStateStore at one instant."""
 
-    # Raw packets still needed downstream (Engines/VehicleSensors construction) —
-    # read-only pass-through, never mutated by consumers.
-    # TODO MGT VIOLATION DU STATE qui doit consolider les données en particulier FullScoringSession, CompactScoring (une union basic c'est bug assuré)
+    # Raw packet still needed downstream (Engines/VehicleSensors construction) —
+    # read-only pass-through, never mutated by consumers. See module docstring
+    # for why there's no raw_scoring next to it any more.
     raw_telemetry: Optional[TelemInfo] = None
-    raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None
 
     # Unified typed scoring models
     timing: BaseTimingState = field(default_factory=BaseTimingState)
@@ -91,7 +99,6 @@ class TelemetryView:
         """
         return cls(
             raw_telemetry=store.telemetry.data,
-            raw_scoring=store.full_scoring.data or store.compact_scoring.data,
             timing=store.timing,
             grid=store.grid,
             delta=store.delta.data,

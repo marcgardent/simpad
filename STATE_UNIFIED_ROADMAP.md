@@ -157,18 +157,53 @@ proche des ~23 déjà notés). Catégorisation :
    l'édition/l'enregistrement des profils de référence, pas un plugin
    race_engineer/HUD consommateur de données de course.
 
-7. **Violation réelle #4 — signalée par MGT directement dans le code, pas
-   corrigée** : `TelemetryView.raw_telemetry`/`raw_scoring` (`simpulse_sdk/models/view.py`)
-   exposent encore une union brute `Union[FullScoringSession, CompactScoring]`
-   au lieu d'un état consolidé — contraire au principe même de la View ("bug
-   assuré" selon l'annotation laissée sur le champ). Ces deux champs existent
-   pour les Engines/`VehicleSensors.from_view()` en aval, pas pour les plugins
-   — mais tant qu'ils vivent sur la View partagée, rien n'empêche un plugin de
-   les lire directement. À corriger : soit les sortir de `TelemetryView` vers
-   un canal interne dédié aux Engines, soit les remplacer par leur forme déjà
-   consolidée (`timing`/`grid`).
+7. **Violation réelle #4 — signalée par MGT directement dans le code — ✅ corrigée**,
+   et généralisée : `TelemetryView.raw_scoring` (`Union[FullScoringSession,
+   CompactScoring]`) est **supprimé** de `TelemetryView`. C'était la demande de
+   fond ("un modèle unifié de full et compact avec un merge qui porte toute la
+   difficulté et piège") : le vrai problème n'était pas seulement ce champ,
+   c'est que **`BaseTimingState`/`FullGridScoringState` étaient reconstruits en
+   double** — `update_compact_scoring()` et `update_full_scoring()`
+   (`simpulse_sdk/models/state_store.py`) recopiaient chacun à la main le même
+   sous-ensemble de ~11 champs (`total_laps`, `count_lap_flag`, `cur_sector1/2`,
+   `last_*`, `best_*`, …) depuis deux formes différentes (`CompactScoring` vs
+   `FullScoringSession.player_vehicle`, un `VehicleScoring`) — deux littéraux à
+   maintenir identiques à l'œil, le vrai piège (un champ ajouté/renommé dans un
+   chemin et oublié dans l'autre désynchronise silencieusement `timing` selon
+   le paquet arrivé en dernier, sans qu'aucun test ne le voie).
+   **Fix** (`simpulse_sdk/models/scoring.py`) :
+   - `BaseTimingState.merge(...)` : point de fusion unique, prend un
+     `lap_source: LapTimingSource` (Protocol structurel satisfait aussi bien
+     par `CompactScoring` que par `VehicleScoring` — même noms de champs par
+     coïncidence du format isiMotor) + les champs de session résolus par
+     l'appelant (`track_name`, `session`, `track_length`, …).
+   - `FullGridScoringState.from_timing(timing, **full_only_fields)` : construit
+     le grid à partir du `timing` déjà fusionné (jamais retypé une 2e fois) +
+     les champs propres à Full (météo, pénalités, leaderboard, …).
+   - `FullGridScoringState.sync_lap_timing(timing)` : resynchronise en place
+     les champs hérités de `BaseTimingState` sur le grid existant quand un tick
+     CompactScoring (10Hz) arrive entre deux ticks FullScoringSession (2-5Hz) —
+     itère sur `dataclasses.fields(BaseTimingState)`, donc un champ ajouté là
+     est repris ici automatiquement (plus de liste à maintenir à la main).
+   - `update_compact_scoring`/`update_full_scoring` n'ont plus qu'à appeler
+     `.merge()`/`.from_timing()`/`.sync_lap_timing()` — ~60 lignes de littéraux
+     dupliqués supprimées.
+   - Trap documenté en commentaire dans `update_full_scoring` : si
+     `player_veh` reste `None` ce tick, `self.timing`/`self.grid` ne sont PAS
+     mis à jour du tout (comportement conservé, juste rendu explicite).
+   - Conséquence directe sur `TelemetryView` : `VehicleSensors.from_view()`
+     dérive maintenant `remaining_laps` depuis `view.timing.max_laps`/
+     `.total_laps` (déjà unifiés) au lieu de transmettre `raw_scoring` à
+     `VehicleSensors.from_telem_info()` pour qu'il refasse un `isinstance`
+     dispatch à 3 branches (`CompactScoring`/`FullScoringSession`/dict JSON
+     legacy) — ce triple dispatch reste nécessaire dans `from_telem_info()`
+     lui-même (API bas niveau encore appelée directement par un test avec un
+     paquet brut), mais un nouveau paramètre `remaining_laps` explicite permet
+     de le court-circuiter ; `raw_scoring` n'avait plus aucun autre
+     consommateur et a donc pu être retiré de `TelemetryView` sans détour.
 
-**Reste à faire** : item 7 ci-dessus (4 et 5 traités).
+**Section 3 entièrement traitée** (T1/T2, items 1-7). Reste T3 (vérif manuelle,
+hors de portée agent) et T4 (nettoyages mineurs, voir ci-dessous).
 
 ### T3. Vérification manuelle sur session UDP réelle
 Le nouveau séquencement (merge → Engines → dispatch plugins) change délibérément

@@ -4,9 +4,31 @@ Defines BaseTimingState (common continuous timing) and FullGridScoringState (ext
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from dataclasses import dataclass, field, fields
+from typing import List, Tuple, Optional, Protocol
 from isimotor_rawudp_client import VehicleScoring
+
+
+class LapTimingSource(Protocol):
+    """
+    Structural type for the one merge point shared by CompactScoring (10Hz)
+    and FullScoringSession.player_vehicle (a VehicleScoring, 2-5Hz) — both
+    isiMotor packets happen to expose this exact same field subset for lap/
+    sector timing. `BaseTimingState.merge()` is the single place allowed to
+    read it; TelemetryStateStore.update_compact_scoring/update_full_scoring
+    must never duplicate this field-by-field mapping themselves again.
+    """
+    total_laps: int
+    in_garage_stall: bool
+    count_lap_flag: int
+    cur_sector1: float
+    cur_sector2: float
+    last_sector1: float
+    last_sector2: float
+    last_lap_time: float
+    best_sector1: float
+    best_sector2: float
+    best_lap_time: float
 
 
 @dataclass
@@ -69,6 +91,61 @@ class BaseTimingState:
         """True if current session is qualifying."""
         return 5 <= self.session <= 8
 
+    @classmethod
+    def merge(
+        cls,
+        *,
+        track_name: str,
+        session: int,
+        current_et: float,
+        track_length: float,
+        max_laps: int,
+        in_realtime: bool,
+        sector: int,
+        lap_source: LapTimingSource,
+    ) -> "BaseTimingState":
+        """
+        THE single merge point for BaseTimingState, from either raw source.
+
+        This exists because CompactScoring (10Hz) and FullScoringSession's
+        player_vehicle (2-5Hz VehicleScoring) both carry the full lap/sector
+        timing subset under the exact same field names — a coincidence of the
+        isiMotor wire format, not something either call site should encode
+        for itself. Before this method, update_compact_scoring() and
+        update_full_scoring() each rebuilt BaseTimingState by hand: two
+        15-field literals that had to be kept in lockstep by eye. That's the
+        actual trap — a field added/renamed in one path and forgotten in the
+        other silently desyncs `timing` depending on which packet happened to
+        arrive last, with no test catching it (both paths produce a valid
+        BaseTimingState, just with different data). Session-level fields
+        (track_name/session/current_et/track_length/max_laps/in_realtime) and
+        the already-normalized `sector` are NOT part of that shared subset —
+        callers resolve those themselves (they differ: CompactScoring is
+        session-scoped, FullScoringSession needs its player_vehicle resolved
+        first) and pass them in explicitly.
+        """
+        return cls(
+            track_name=track_name.strip(),
+            session=session,
+            current_et=current_et,
+            track_length=track_length,
+            max_laps=max_laps,
+            in_realtime=in_realtime,
+            total_laps=lap_source.total_laps,
+            sector=sector,
+            in_garage=lap_source.in_garage_stall,
+            count_lap_flag=lap_source.count_lap_flag,
+            is_lap_valid=(lap_source.count_lap_flag == 2),
+            cur_sector1=lap_source.cur_sector1,
+            cur_sector2=lap_source.cur_sector2,
+            last_sector1=lap_source.last_sector1,
+            last_sector2=lap_source.last_sector2,
+            last_lap_time=lap_source.last_lap_time,
+            best_sector1=lap_source.best_sector1,
+            best_sector2=lap_source.best_sector2,
+            best_lap_time=lap_source.best_lap_time,
+        )
+
 
 @dataclass
 class FullGridScoringState(BaseTimingState):
@@ -124,3 +201,30 @@ class FullGridScoringState(BaseTimingState):
     vehicles: List[VehicleScoring] = field(default_factory=list)
     leaderboard: List[VehicleScoring] = field(default_factory=list)
     player_vehicle: Optional[VehicleScoring] = None
+
+    @classmethod
+    def from_timing(cls, timing: BaseTimingState, **full_only_fields) -> "FullGridScoringState":
+        """
+        Builds a FullGridScoringState from an already-merged BaseTimingState
+        (see `BaseTimingState.merge`) plus the fields only FullScoringSession
+        carries. The shared timing subset is read back off `timing` field by
+        field, not retyped as a second literal here — the previous version of
+        update_full_scoring() built `self.timing` and `self.grid` as two
+        independent ~15-field literals that had to be kept identical by eye.
+        """
+        common = {f.name: getattr(timing, f.name) for f in fields(BaseTimingState)}
+        return cls(**common, **full_only_fields)
+
+    def sync_lap_timing(self, timing: BaseTimingState) -> None:
+        """
+        In-place sync of this grid's inherited BaseTimingState fields from a
+        freshly merged `timing`. Used when a CompactScoring tick (10Hz)
+        arrives between two FullScoringSession ticks (2-5Hz): the grid keeps
+        its Full-only fields (weather, penalties, leaderboard, …) untouched
+        but its shared timing fields track the latest tick instead of going
+        stale until the next FullScoringSession. Iterates BaseTimingState's
+        own fields, so a field added there is picked up here automatically —
+        no second hand-maintained field list to forget.
+        """
+        for f in fields(BaseTimingState):
+            setattr(self, f.name, getattr(timing, f.name))

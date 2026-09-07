@@ -393,43 +393,23 @@ class TelemetryStateStore:
 
             # Construct unified BaseTimingState (continuous 10Hz) — carries the raw
             # normalized sector (DeltaEngine's input), not the guarded display value.
-            self.timing = BaseTimingState(
-                track_name=data.track_name.strip(),
+            # Single merge point shared with update_full_scoring() below — see
+            # BaseTimingState.merge() for why this can't be a per-call-site literal.
+            self.timing = BaseTimingState.merge(
+                track_name=data.track_name,
                 session=data.session,
                 current_et=data.current_et,
                 track_length=data.lap_dist,
                 max_laps=data.max_laps,
                 in_realtime=data.in_realtime,
-                total_laps=data.total_laps,
                 sector=norm_sec,
-                in_garage=data.in_garage_stall,
-                count_lap_flag=data.count_lap_flag,
-                is_lap_valid=(data.count_lap_flag == 2),
-                cur_sector1=data.cur_sector1,
-                cur_sector2=data.cur_sector2,
-                last_sector1=data.last_sector1,
-                last_sector2=data.last_sector2,
-                last_lap_time=data.last_lap_time,
-                best_sector1=data.best_sector1,
-                best_sector2=data.best_sector2,
-                best_lap_time=data.best_lap_time,
+                lap_source=data,
             )
 
-            # Sync timing updates to grid state if present
+            # Keep the grid's inherited timing fields current between two
+            # FullScoringSession ticks (see FullGridScoringState.sync_lap_timing).
             if self.grid is not None:
-                self.grid.total_laps = data.total_laps
-                self.grid.sector = norm_sec
-                self.grid.in_garage = data.in_garage_stall
-                self.grid.count_lap_flag = data.count_lap_flag
-                self.grid.is_lap_valid = (data.count_lap_flag == 2)
-                self.grid.cur_sector1 = data.cur_sector1
-                self.grid.cur_sector2 = data.cur_sector2
-                self.grid.last_sector1 = data.last_sector1
-                self.grid.last_sector2 = data.last_sector2
-                self.grid.last_lap_time = data.last_lap_time
-                self.grid.best_sector1 = data.best_sector1
-                self.grid.best_sector2 = data.best_sector2
-                self.grid.best_lap_time = data.best_lap_time
+                self.grid.sync_lap_timing(self.timing)
 
             self._recalculate_cache()
 
@@ -466,6 +446,14 @@ class TelemetryStateStore:
                 data.in_realtime,
                 player_veh.in_garage_stall if player_veh is not None else False,
             )
+            # Trap: if player_veh stays None this tick (single-car session not
+            # yet flagged, mid-transition packet, …), self.timing/self.grid are
+            # NOT touched at all below — the store silently keeps last tick's
+            # values rather than rebuilding from a half-resolved packet. That's
+            # deliberate (better a stale-but-consistent grid than one merged
+            # from no player data), but it means a FullScoringSession frame can
+            # be fully ingested (self.full_scoring.update() above always runs)
+            # while self.timing/self.grid quietly don't advance.
             if player_veh is not None:
                 self._last_penalties = player_veh.num_penalties
                 self._last_total_laps = player_veh.total_laps
@@ -478,50 +466,24 @@ class TelemetryStateStore:
 
                 self._process_lap_validity(player_veh.count_lap_flag, timestamp)
 
-                # Keep BaseTimingState in sync
-                self.timing = BaseTimingState(
-                    track_name=data.track_name.strip(),
+                # Keep BaseTimingState in sync — same merge point as
+                # update_compact_scoring() above (see BaseTimingState.merge()).
+                self.timing = BaseTimingState.merge(
+                    track_name=data.track_name,
                     session=data.session,
                     current_et=data.current_et,
                     track_length=data.lap_dist,
                     max_laps=data.max_laps,
                     in_realtime=data.in_realtime,
-                    total_laps=player_veh.total_laps,
                     sector=norm_sec,
-                    in_garage=player_veh.in_garage_stall,
-                    count_lap_flag=player_veh.count_lap_flag,
-                    is_lap_valid=(player_veh.count_lap_flag == 2),
-                    cur_sector1=player_veh.cur_sector1,
-                    cur_sector2=player_veh.cur_sector2,
-                    last_sector1=player_veh.last_sector1,
-                    last_sector2=player_veh.last_sector2,
-                    last_lap_time=player_veh.last_lap_time,
-                    best_sector1=player_veh.best_sector1,
-                    best_sector2=player_veh.best_sector2,
-                    best_lap_time=player_veh.best_lap_time,
+                    lap_source=player_veh,
                 )
 
-                # Construct FullGridScoringState
-                self.grid = FullGridScoringState(
-                    track_name=data.track_name.strip(),
-                    session=data.session,
-                    current_et=data.current_et,
-                    track_length=data.lap_dist,
-                    max_laps=data.max_laps,
-                    in_realtime=data.in_realtime,
-                    total_laps=player_veh.total_laps,
-                    sector=norm_sec,
-                    in_garage=player_veh.in_garage_stall,
-                    count_lap_flag=player_veh.count_lap_flag,
-                    is_lap_valid=(player_veh.count_lap_flag == 2),
-                    cur_sector1=player_veh.cur_sector1,
-                    cur_sector2=player_veh.cur_sector2,
-                    last_sector1=player_veh.last_sector1,
-                    last_sector2=player_veh.last_sector2,
-                    last_lap_time=player_veh.last_lap_time,
-                    best_sector1=player_veh.best_sector1,
-                    best_sector2=player_veh.best_sector2,
-                    best_lap_time=player_veh.best_lap_time,
+                # Construct FullGridScoringState from the timing just merged
+                # above (its shared subset is never retyped here — see
+                # FullGridScoringState.from_timing()) plus the Full-only fields.
+                self.grid = FullGridScoringState.from_timing(
+                    self.timing,
                     end_et=data.end_et,
                     game_phase=data.game_phase,
                     yellow_flag_state=data.yellow_flag_state,
