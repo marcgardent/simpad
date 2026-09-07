@@ -293,8 +293,15 @@ class RaceEngineer:
         an immutable View by ReferenceLapManager (see
         ReferenceLapManager._push_reference_profile_view) — no reach into
         ReferenceLapManager/DeltaEngine singletons from plugin code.
+
+        ``store`` is used with either a real TelemetryStateStore (whose
+        ``reference_profile`` is a PacketSlot with ``.data``) or the
+        consolidated TelemetryView the dispatcher hands non-raw-ingest plugins
+        (already the plain ``Optional[ReferenceLapProfileView]``), depending
+        on call site — see context.py's ``_unwrap_slot``.
         """
-        return store.reference_profile.data
+        rp = store.reference_profile
+        return rp.data if hasattr(rp, "data") else rp
 
     def update(
         self,

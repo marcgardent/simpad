@@ -926,6 +926,48 @@ def test_plugin_manager_polymorphic_event_dispatch(qapp, tmp_path):
     assert spy.weather_updates[0] is True
 
 
+class RawIngestSpyPlugin(SimPulsePlugin, ITelemetrySubscriber):
+    """Declares _REQUIRE_RAW_INGEST: the dispatcher must hand it the live
+    TelemetryStateStore itself, not the read-only TelemetryView snapshot."""
+
+    _REQUIRE_RAW_INGEST = True
+
+    def __init__(self):
+        super().__init__(PluginMetadata(
+            id="test.raw_ingest_spy", name="Raw Ingest Spy Plugin", version="1.0.0",
+        ))
+        self.received_real_store = None
+
+    def on_physics_tick(self, state) -> None:
+        from simpulse.core.telemetry.state_store import TelemetryStateStore
+        self.received_real_store = isinstance(state, TelemetryStateStore)
+
+
+def test_plugin_manager_raw_ingest_hands_real_store(qapp, tmp_path):
+    """_REQUIRE_RAW_INGEST plugins (race_engineer's whole EngineerContext plumbing:
+    consume_validity_transition()/is_dirty_lap/wheels_on_track/... need the full
+    mutable Store, not a frozen per-tick View) must receive the actual
+    TelemetryStateStore singleton from dispatch_packet, not view=store.snapshot()."""
+    from isimotor_rawudp_client import TelemInfo, TelemVect3
+    from simpulse.core.telemetry.state_store import TelemetryStateStore
+    from simpulse.builtin_plugins.race_engineer.plugin import RaceEngineerPlugin
+
+    assert RaceEngineerPlugin._REQUIRE_RAW_INGEST is True
+
+    cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
+    pm = PluginManager(cfg_mgr)
+    spy = RawIngestSpyPlugin()
+    pm.register_plugin(spy)
+
+    store = TelemetryStateStore.get_instance()
+    store.reset()
+    telem = TelemInfo(local_vel=TelemVect3(0.0, 0.0, 10.0), gear=2)
+    store.update_telemetry(telem, timestamp=time.time())
+    pm.dispatch_packet(TelemetryRawPacket(channel=TelemetryChannel.TELEMETRY, data=telem))
+
+    assert spy.received_real_store is True
+
+
 def test_plugin_manager_widget_inspector_on_right(qapp, tmp_path):
     """Test that Plugin Inspector is placed in a horizontal layout to the right of the plugins table."""
     from PySide6.QtWidgets import QHBoxLayout, QGroupBox

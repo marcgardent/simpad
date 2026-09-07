@@ -315,6 +315,23 @@ class _VehicleSensorsFields:
     sector2_status: SplitStatus = SplitStatus.DEFAULT
     sector3_time: str = "--"
     sector3_status: SplitStatus = SplitStatus.DEFAULT
+    # Expected (projected) sector times: reference split + live splitN delta —
+    # colour is session-scoped only (purple/green/yellow/white, never pink);
+    # beating my all-time-best split is instead flagged via *_is_pr (see
+    # simpulse.builtin_plugins.expected_timing, the only consumer).
+    expected_sector1_time: str = "--"
+    expected_sector1_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector1_is_pr: bool = False
+    expected_sector2_time: str = "--"
+    expected_sector2_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector2_is_pr: bool = False
+    expected_sector3_time: str = "--"
+    expected_sector3_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector3_is_pr: bool = False
+    expected_lap_is_pr: bool = False
+    my_session_best_lap_time_str: str = "--:--.---"
+    session_best_lap_time_str: str = "--:--.---"
+    my_all_time_best_lap_time_str: str = "--:--.---"
     explicit_aero_load: float = 0.0
     current_sector: int = 1
     sector1_delta: float = 0.0
@@ -327,6 +344,7 @@ class _VehicleSensorsFields:
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
     last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
+    last_lap_is_pr: bool = False  # completed lap beat my all-time best ("PR" tag, no colour)
     is_lap_freeze_active: bool = False
 
     # On-track state and engaged gear

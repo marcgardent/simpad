@@ -46,6 +46,16 @@ def _present_split_time(value: str) -> str:
 class QtSectorTimesWidget(BaseQtHudWidget):
     """
     Lap Sectors S1, S2, S3 (Positioned below Delta and Gear).
+
+    Colour is aligned with the Delta Timer widget above it — SESSION-scoped
+    only, sourced from sensors.expected_sectorN_status (never the sign of the
+    live delta, never pink):
+        * Purple (sector projection beats paddock / other cars this session)
+        * Green  (beats my session best for this sector)
+        * Yellow (valid, slower than my session)
+        * Grey   (invalid / no reference)
+    Beating my all-time-best split ("ever") is a "PR" tag drawn on the box,
+    not a colour — see sensors.expected_sectorN_is_pr.
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -109,42 +119,38 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             s_x = start_x + (i * (sector_w + sector_spacing))
             sec = sectors[i]
             s_time = sec.time
-            s_status = sec.status
             is_current = sec.is_current
-            delta_val = float(sec.delta)
             delta_str = sec.delta_str
 
-            # While sector is ongoing, display live sector delta
+            # Colour is aligned with the Delta Timer above: SESSION-scoped
+            # expected_sectorN_status only (purple/green/yellow/grey), the
+            # same field whether the sector is still live or already frozen.
+            expected_tok = str(getattr(sensors, f"expected_sector{i + 1}_status", "white") or "white").strip()
+            is_pr = bool(getattr(sensors, f"expected_sector{i + 1}_is_pr", False))
+
+            # Text: live sector delta while ongoing, else frozen split time
+            # presented in a stable IHM format whatever the model spelling
+            # ('38.437' or '00:38.437').
             if is_current and delta_str != "--":
                 disp_text = delta_str
-                if delta_val < 0.0:
-                    bg_color = QColor(22, 163, 74, 255)      # Green (Gain)
-                    border_color = QColor(34, 197, 94, 255)
-                elif delta_val > 0.0:
-                    bg_color = QColor(185, 28, 28, 255)     # Red (Loss)
-                    border_color = QColor(239, 68, 68, 255)
-                else:
-                    bg_color = QColor(15, 23, 42, 255)
-                    border_color = QColor(51, 65, 85, 255)
             else:
-                # Sector completed or waiting -> frozen split time, presented in a
-                # stable IHM format whatever the model spelling ('38.437' or '00:38.437').
                 disp_text = _present_split_time(s_time)
-                if s_status == "invalid":
-                    bg_color = QColor(15, 23, 42, 255)
-                    border_color = QColor(51, 65, 85, 255)
-                elif s_status == "green":
-                    bg_color = QColor(22, 163, 74, 255)
-                    border_color = QColor(34, 197, 94, 255)
-                elif s_status == "purple":
-                    bg_color = QColor(147, 51, 234, 255)
-                    border_color = QColor(168, 85, 247, 255)
-                elif s_status == "pink":
-                    bg_color = QColor(236, 72, 153, 255)
-                    border_color = QColor(255, 105, 180, 255)
-                else:
-                    bg_color = QColor(15, 23, 42, 255)
-                    border_color = QColor(51, 65, 85, 255)
+
+            if expected_tok in ("invalid", "white"):
+                bg_color = QColor(15, 23, 42, 255)
+                border_color = QColor(51, 65, 85, 255)
+            elif expected_tok == "purple":
+                bg_color = QColor(147, 51, 234, 255)
+                border_color = QColor(168, 85, 247, 255)
+            elif expected_tok == "green":
+                bg_color = QColor(22, 163, 74, 255)
+                border_color = QColor(34, 197, 94, 255)
+            elif expected_tok == "yellow":
+                bg_color = QColor(161, 98, 7, 255)
+                border_color = QColor(234, 179, 8, 255)
+            else:
+                bg_color = QColor(15, 23, 42, 255)
+                border_color = QColor(51, 65, 85, 255)
 
             # Marked white border for current active sector
             _cap_text.append(disp_text)
@@ -165,6 +171,20 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             # Time text
             painter.setPen(QPen(QColor(255, 255, 255, 255)))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, disp_text)
+
+            # All-time-best beaten for this sector: "PR" tag, not a colour.
+            if is_pr:
+                pr_font = QFont(self.font_family)
+                pr_font.setPixelSize(max(8, int(round(9.0 * scale_y))))
+                pr_font.setBold(True)
+                painter.setFont(pr_font)
+                painter.setPen(QPen(QColor(255, 105, 180, 255)))
+                painter.drawText(
+                    QRectF(s_x, sector_y - (11.0 * scale_y), sector_w, 10.0 * scale_y),
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                    "PR",
+                )
+                painter.setFont(font)
 
         # --- diagnostic paint logger (opt-in, no behaviour change) ---
         try:

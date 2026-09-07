@@ -101,9 +101,28 @@ class LapDeltaPacket:
     sector3_time: str = "--"
     sector3_status: SplitStatus = SplitStatus.DEFAULT
     sectors_list: List[SectorInfo] = field(default_factory=list)
+    # Expected (projected) sector times — reference split + live splitN delta,
+    # session-scoped colour only (never pink); beating the all-time-best split
+    # is instead surfaced via the *_is_pr flags. See DeltaEngine._expected_sector.
+    expected_sector1_time: str = "--"
+    expected_sector1_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector1_is_pr: bool = False
+    expected_sector2_time: str = "--"
+    expected_sector2_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector2_is_pr: bool = False
+    expected_sector3_time: str = "--"
+    expected_sector3_status: ExpectedStatus = ExpectedStatus.WHITE
+    expected_sector3_is_pr: bool = False
+    expected_lap_is_pr: bool = False
+    # Reference lap times for display: mine this session, best-of-session (any
+    # other car), and my all-time best.
+    my_session_best_lap_time_str: str = "--:--.---"
+    session_best_lap_time_str: str = "--:--.---"
+    my_all_time_best_lap_time_str: str = "--:--.---"
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
     last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
+    last_lap_is_pr: bool = False  # completed lap beat my all-time best ("PR" tag, no colour)
     is_lap_freeze_active: bool = False
     lap_flag: int = 2
     is_pit_lap: bool = False

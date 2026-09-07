@@ -99,6 +99,24 @@ def sector_display_status(val: float, best_val: float, session_best: float | Non
     return sector_split_status(val, personal_best=best_val, session_best=session_best, source="delta")
 
 
+def _individual_sector_splits(profile) -> Tuple[float, float, float]:
+    """Decomposes a ReferenceLapProfile's cumulative loop clocks
+    (sector_1_time, sector_2_time, lap_time) into standalone S1/S2/S3 splits.
+
+    Returns 0.0 for any split that can't be derived (missing profile, or a
+    cumulative clock that isn't strictly increasing yet).
+    """
+    if profile is None:
+        return 0.0, 0.0, 0.0
+    s1c = float(getattr(profile, "sector_1_time", 0.0) or 0.0)
+    s2c = float(getattr(profile, "sector_2_time", 0.0) or 0.0)
+    lap = float(getattr(profile, "lap_time", 0.0) or 0.0)
+    s1 = s1c if s1c > 0.0 else 0.0
+    s2 = (s2c - s1c) if (s2c > 0.0 and s1c > 0.0 and s2c > s1c) else 0.0
+    s3 = (lap - s2c) if (lap > 0.0 and s2c > 0.0 and lap > s2c) else 0.0
+    return s1, s2, s3
+
+
 def _clean_name(name: str) -> str:
     """Sanitizes track or vehicle name for filenames."""
     if not name:
@@ -185,6 +203,7 @@ class DeltaEngine:
         self._freeze_delta_until: float = 0.0
         self._last_completed_lap_time: float = 0.0
         self._last_completed_lap_status: LapColorStatus = LapColorStatus.DEFAULT
+        self._last_completed_lap_is_pr: bool = False
         self._freeze_lap_until: float = 0.0
 
         # EMA smoothing
@@ -542,6 +561,13 @@ class DeltaEngine:
 
             self._last_completed_lap_time = last_lap_time
             self._last_completed_lap_status = lap_status
+            # PR ("personal record"): this lap beat my all-time best — kept
+            # separate from lap_status's colour tiers (session-scoped only,
+            # see expected_lap_status) and surfaced as a text tag instead.
+            self._last_completed_lap_is_pr = (
+                lap_status != LapColorStatus.INVALID and last_lap_time > 0.0
+                and prev_all_time_best < 999900.0 and last_lap_time <= prev_all_time_best + 0.001
+            )
 
             # Capture and freeze final delta and lap time before reset
             self._frozen_final_delta = self._live_delta
@@ -1531,6 +1557,11 @@ class DeltaEngine:
         return "--:--.---"
 
     @property
+    def last_completed_lap_is_pr(self) -> bool:
+        """True when the just-completed lap beat my all-time best ("PR")."""
+        return self._last_completed_lap_is_pr
+
+    @property
     def last_completed_lap_status(self) -> LapColorStatus:
         """Returns color status of last completed lap ('purple', 'green', 'yellow', 'invalid', 'default')."""
         return self._last_completed_lap_status
@@ -1551,29 +1582,150 @@ class DeltaEngine:
         return "--:--.---"
 
     @property
-    def expected_lap_status(self) -> ExpectedStatus:
-        """Unified colour of the expected lap time (pink/purple/green/yellow/white).
+    def _ever_lap_bound(self) -> Optional[float]:
+        return self._all_time_best_lap_time if (self._all_time_best_lap_time or 0.0) < 999900.0 else None
 
-        Compares the *projection* estimated_lap_time to the three references the
-        engine tracks:
-          ever    → _all_time_best_lap_time,
+    @property
+    def _session_lap_bound(self) -> Optional[float]:
+        return self._session_best_lap_time if (self._session_best_lap_time or 0.0) < 999900.0 else None
+
+    @property
+    def _paddock_lap_bound(self) -> Optional[float]:
+        return self._paddock_best_lap if (self._paddock_known and (self._paddock_best_lap or 0.0) < 999900.0) else None
+
+    @property
+    def expected_lap_status(self) -> ExpectedStatus:
+        """Unified colour of the expected lap time — SESSION-scoped only
+        (purple/green/yellow/white): never pink. All-time-best ("ever") is not
+        a colour tier here; see ``expected_lap_is_pr`` for that comparison.
+
+        Compares the *projection* estimated_lap_time to the two references
+        the engine tracks this session:
           paddock → best other-car lap this session (_paddock_best_lap),
           session → _session_best_lap_time (my session best).
         First valid match wins; white when no usable reference exists yet.
         """
         from .sector_colors import expected_status
-        ever = self._all_time_best_lap_time if (self._all_time_best_lap_time or 0.0) < 999900.0 else None
-        session = self._session_best_lap_time if (self._session_best_lap_time or 0.0) < 999900.0 else None
-        paddock = self._paddock_best_lap if (self._paddock_known and (self._paddock_best_lap or 0.0) < 999900.0) else None
         invalid = not self.has_reference
         return expected_status(
             self.estimated_lap_time,
-            ever=ever,
-            paddock=paddock,
-            session=session,
+            ever=None,
+            paddock=self._paddock_lap_bound,
+            session=self._session_lap_bound,
             invalid=invalid,
             source="delta.expected",
         )
+
+    @property
+    def expected_lap_is_pr(self) -> bool:
+        """True when the projected lap time already beats my all-time best
+        ("PR" — personal record). Purely informational; never drives colour."""
+        ever = self._ever_lap_bound
+        if ever is None or not self.has_reference:
+            return False
+        v = self.estimated_lap_time
+        return 0.0 < v and v <= ever + 0.001
+
+    # ------------------------------------------------------------ expected sectors
+    @property
+    def _paddock_sector_splits(self) -> Tuple[float, float, float]:
+        """Standalone S1/S2/S3 of the best OTHER car this session, decomposed
+        from the cumulative loop clocks tracked in ``_update_scoring_core``."""
+        if not self._paddock_known:
+            return 0.0, 0.0, 0.0
+        cs1 = float(self._paddock_cum_s1 or 0.0)
+        cs2 = float(self._paddock_cum_s2 or 0.0)
+        lap = float(self._paddock_best_lap or 0.0)
+        s1 = cs1 if 0.0 < cs1 < 999900.0 else 0.0
+        s2 = (cs2 - cs1) if (0.0 < cs1 < cs2 < 999900.0) else 0.0
+        s3 = (lap - cs2) if (0.0 < cs2 < lap < 999900.0) else 0.0
+        return s1, s2, s3
+
+    def _expected_sector(self, idx: int) -> Tuple[str, ExpectedStatus, bool]:
+        """Projected time/colour/PR-flag for sector ``idx`` (1/2/3).
+
+        Mirrors ``estimated_lap_time`` (reference + live delta) at sector
+        granularity: ``expected = reference_split(idx) + splitN_delta``. While
+        a sector hasn't been reached yet its delta is 0, so this reads as the
+        *target* split; once inside it, it live-updates; once past it, it's
+        frozen at the actual result — same rule as the EXPECTED lap value.
+
+        Colour is SESSION-scoped only (purple/green/yellow/white) — never
+        pink; beating my all-time-best split for this sector is reported via
+        the returned ``is_pr`` flag instead (see the module docstring on the
+        "no pink, PR flag" convention this plugin uses).
+        """
+        from .sector_colors import expected_status
+        i = idx - 1
+        ref = _individual_sector_splits(self._current_profile)[i]
+        if ref <= 0.0 or not self.has_reference:
+            return "--", ExpectedStatus.WHITE, False
+        delta = (self._sector1_delta, self._sector2_delta, self._sector3_delta)[i]
+        expected = max(0.0, ref + delta)
+        ever = _individual_sector_splits(self._all_time_best_profile)[i] or None
+        session = _individual_sector_splits(self._session_best_profile)[i] or None
+        paddock = self._paddock_sector_splits[i] or None
+        status = expected_status(
+            expected, ever=None, paddock=paddock, session=session, invalid=False,
+            source="delta.expected_sector",
+        )
+        is_pr = ever is not None and 0.0 < expected <= ever + 0.001
+        return sector_time_display_str(expected), status, is_pr
+
+    @property
+    def expected_sector1_time(self) -> str:
+        return self._expected_sector(1)[0]
+
+    @property
+    def expected_sector1_status(self) -> ExpectedStatus:
+        return self._expected_sector(1)[1]
+
+    @property
+    def expected_sector1_is_pr(self) -> bool:
+        return self._expected_sector(1)[2]
+
+    @property
+    def expected_sector2_time(self) -> str:
+        return self._expected_sector(2)[0]
+
+    @property
+    def expected_sector2_status(self) -> ExpectedStatus:
+        return self._expected_sector(2)[1]
+
+    @property
+    def expected_sector2_is_pr(self) -> bool:
+        return self._expected_sector(2)[2]
+
+    @property
+    def expected_sector3_time(self) -> str:
+        return self._expected_sector(3)[0]
+
+    @property
+    def expected_sector3_status(self) -> ExpectedStatus:
+        return self._expected_sector(3)[1]
+
+    @property
+    def expected_sector3_is_pr(self) -> bool:
+        return self._expected_sector(3)[2]
+
+    # ------------------------------------------------------------ reference times
+    @property
+    def my_session_best_lap_time_str(self) -> str:
+        """My best lap this session ('mon meilleur de la session')."""
+        b = self._session_lap_bound
+        return format_lap_time(b) if b is not None else "--:--.---"
+
+    @property
+    def session_best_lap_time_str(self) -> str:
+        """Best lap of the session set by another car ('le meilleur de la session')."""
+        b = self._paddock_lap_bound
+        return format_lap_time(b) if b is not None else "--:--.---"
+
+    @property
+    def my_all_time_best_lap_time_str(self) -> str:
+        """My all-time best lap ('mon meilleur best ever')."""
+        b = self._ever_lap_bound
+        return format_lap_time(b) if b is not None else "--:--.---"
 
     @property
     def sector1_delta(self) -> float:

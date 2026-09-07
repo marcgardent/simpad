@@ -13,7 +13,7 @@ import time
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QThread, QTimer
 from PySide6.QtWidgets import (
@@ -955,6 +955,17 @@ class RaceEngineerPlugin(
     and dispatches telemetry and raw packets to all sub-plugins.
     """
 
+    # Every other polymorphic hook (on_physics_tick/on_scoring_update/...)
+    # receives the read-only TelemetryView snapshot from PluginManager
+    # (store.snapshot()) — but EngineerContext.state_store and this plugin's
+    # roles (lap_validity's consume_validity_transition()/is_dirty_lap,
+    # pace_notes/traffic_jam/traffic_spotter/fight_spotter/pitlane_spotter's
+    # wheels_on_track/lap_flag/speed_kmh/... reads) need the full MUTABLE
+    # TelemetryStateStore API a frozen View can't provide. Declaring raw
+    # ingest here makes the dispatcher hand this plugin the real Store
+    # instead, matching what its whole EngineerContext plumbing assumes.
+    _REQUIRE_RAW_INGEST = True
+
     def __init__(self):
         super().__init__(PluginMetadata(
             id="simpulse.builtin.race_engineer",
@@ -1070,47 +1081,47 @@ class RaceEngineerPlugin(
     # gates itself on the unified state. (No wake_reason enum: the hook name already
     # identifies the event, and this plugin no longer reads raw UDP slots.)
 
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+    def on_physics_tick(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """High-frequency physics tick."""
         self._evaluate(state)
 
-    def on_opponents_tick(self, state: TelemetryStateStore) -> None:
+    def on_opponents_tick(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Opponent vehicle dynamics tick."""
         self._evaluate(state)
 
-    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+    def on_scoring_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Compact scoring update (10Hz)."""
         self._evaluate(state)
 
-    def on_grid_update(self, state: TelemetryStateStore) -> None:
+    def on_grid_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Full grid update (2-5Hz)."""
         self._evaluate(state)
 
-    def on_weather_update(self, state: TelemetryStateStore) -> None:
+    def on_weather_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Weather update (~1Hz)."""
         self._evaluate(state)
 
-    def on_extended_state_update(self, state: TelemetryStateStore) -> None:
+    def on_extended_state_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Vehicle electronics and flags update (5Hz)."""
         self._evaluate(state)
 
-    def on_session_event(self, state: TelemetryStateStore) -> None:
+    def on_session_event(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """System / session event."""
         self._evaluate(state)
 
-    def on_ffb_update(self, state: TelemetryStateStore) -> None:
+    def on_ffb_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Force feedback frame."""
         self._evaluate(state)
 
-    def on_graphics_update(self, state: TelemetryStateStore) -> None:
+    def on_graphics_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Camera / graphics frame."""
         self._evaluate(state)
 
-    def on_track_rules_update(self, state: TelemetryStateStore) -> None:
+    def on_track_rules_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Track rules update."""
         self._evaluate(state)
 
-    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:
+    def on_pit_menu_update(self, state: TelemetryStateStore) -> None:  # type: ignore[override]
         """Pit menu update."""
         self._evaluate(state)
 

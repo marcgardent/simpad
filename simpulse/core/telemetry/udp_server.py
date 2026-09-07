@@ -2,7 +2,7 @@ import socket
 import threading
 import time
 import logging
-from typing import Optional, Tuple, Callable, Union
+from typing import Optional, Tuple, Callable, Union, Dict
 
 from isimotor_rawudp_client import (
     IsiMotorClient,

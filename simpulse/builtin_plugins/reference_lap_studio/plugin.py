@@ -33,7 +33,7 @@ from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber,
     LapDeltaPacket, DeltaReferenceMode, format_lap_time,
-    VehicleSensors, TelemetryStateStore
+    VehicleSensors, TelemetryStateStore, TelemetryView
 )
 from simpulse.core.reference_lap import (
     ReferenceLapManager, ReferenceLapProfile,
@@ -1059,11 +1059,11 @@ class ReferenceLapStudioPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
         return self._active_tab
 
     # Polymorphic Telemetry State Event Hooks
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+    def on_physics_tick(self, state: TelemetryView) -> None:
         """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
         pass
 
-    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+    def on_scoring_update(self, state: TelemetryView) -> None:
         """Called directly on scoring update (10Hz) from central state store."""
         pass
 

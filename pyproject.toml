@@ -21,6 +21,7 @@ simpulse = "simpulse.app:main"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "mypy>=1.13.0",
 ]
 
 [project.optional-dependencies]
@@ -30,4 +31,24 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.14"
+# Started deliberately loose (no --strict): the goal right now is catching
+# real "wrong object handed to a hook" bugs like the TelemetryStateStore vs.
+# TelemetryView mismatch (SimPulsePlugin's on_* hooks, race_engineer's
+# EngineerContext) — not chasing every untyped def in the Qt UI code.
+# Tighten incrementally (disallow_untyped_defs, etc.) module by module instead
+# of flipping it on globally.
+warn_return_any = false
+warn_unused_ignores = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# No type stubs published for the game-telemetry UDP client — silence the
+# "no stubs" noise instead of ignoring the whole package. python_version 3.14
+# lands on the interpreter this project already requires.
+[[tool.mypy.overrides]]
+module = "isimotor_rawudp_client.*"
+ignore_missing_imports = true
 

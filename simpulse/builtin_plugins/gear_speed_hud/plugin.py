@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot,
-    VehicleSensors, TelemetryStateStore
+    VehicleSensors, TelemetryStateStore, TelemetryView
 )
 
 
@@ -217,11 +217,17 @@ class GearSpeedHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHu
     # ITelemetrySubscriber
     # =========================================================================
 
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
+    def on_physics_tick(self, state: TelemetryView) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz).
+
+        Despite the type hint, non-raw-ingest plugins are handed the
+        consolidated TelemetryView snapshot (see PluginManager.dispatch_packet),
+        which only kept ``engine_rpm`` — ``rpm`` is a real-Store-only alias of
+        the same value, absent from the View.
+        """
         self._current_speed_kmh = state.speed_kmh
         self._current_gear = state.gear
-        self._current_rpm = state.rpm
+        self._current_rpm = state.engine_rpm
         self._max_rpm = max(1000.0, state.engine_max_rpm)
 
         if self._active_tab_widget and self._active_tab_widget.isVisible():

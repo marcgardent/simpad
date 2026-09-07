@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IHudWidgetProvider, HudSlot,
-    VehicleSensors, TelemetryStateStore
+    VehicleSensors, TelemetryStateStore, TelemetryView
 )
 
 
@@ -205,7 +205,7 @@ class PedalTelemetryPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
         self._active_tab_widget = PedalMonitorWidget(self, parent)
         return self._active_tab_widget
 
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
+    def on_physics_tick(self, state: TelemetryView) -> None:
         """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
         self._throttle_pct = state.throttle_pct
         self._brake_pct = state.brake_pct

@@ -25,6 +25,10 @@ class TestExpectedStatusRule(unittest.TestCase):
         self.assertEqual(expected_status(100.0, ever=99.0, paddock=99.5, session=100.0), "green")
 
     def test_engine_build_propagates_expected_status(self):
+        # DeltaEngine.expected_lap_status is SESSION-scoped only (no pink): the
+        # all-time-best ("ever") comparison is reported separately as the
+        # expected_lap_is_pr flag instead of a colour — see the "no pink, PR
+        # tag" convention in simpulse.builtin_plugins.expected_timing.
         mgr = ReferenceLapManager.get_instance()
         de = mgr.delta_engine
         de._ref_lap_time = 100.0
@@ -32,14 +36,15 @@ class TestExpectedStatusRule(unittest.TestCase):
         de._ref_num_points = 101
         de._ref_spatial_step = 1.0
         de._live_delta = -2.0                  # projected 98.0
-        de._all_time_best_lap_time = 99.0      # ever
+        de._all_time_best_lap_time = 99.0      # ever (beaten -> PR flag)
         de._session_best_lap_time = 100.0      # my session
         de._paddock_known = True
-        de._paddock_best_lap = 99.5
+        de._paddock_best_lap = 99.5            # beaten -> purple
         de._last_lap_flag = 2
         pkt = mgr._build_delta_packet(player_dist=200.0)
         self.assertEqual(pkt.estimated_lap_time_str, "01:38.000")
-        self.assertEqual(pkt.expected_status, "pink")
+        self.assertEqual(pkt.expected_status, "purple")
+        self.assertTrue(pkt.expected_lap_is_pr)
 
 
 class TestSensorCopy(unittest.TestCase):
@@ -102,6 +107,53 @@ class TestSectorVioletVsPaddock(unittest.TestCase):
         }
         self._update(eng, player, rival)
         self.assertNotEqual(eng._last_sector1_status, "purple")
+
+
+class TestExpectedSectorTimes(unittest.TestCase):
+    """S1/S2/S3 EXPECTED = reference split + live splitN delta, session-scoped
+    colour only (no pink); beating the all-time-best split -> *_is_pr=True."""
+
+    def _profile(self, s1_time, s2_time, lap_time):
+        from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+        return ReferenceLapProfile(
+            lap_time=lap_time, sector_1_time=s1_time, sector_2_time=s2_time,
+            t_grid=[float(i) for i in range(101)], num_points=101,
+        )
+
+    def test_sector1_expected_and_pr_flag(self):
+        from simpulse.core.telemetry.delta_engine import DeltaEngine
+        eng = DeltaEngine()
+        eng._current_profile = self._profile(30.0, 60.0, 100.0)   # active reference S1=30
+        eng._all_time_best_profile = self._profile(29.0, 60.0, 99.0)  # ever S1=29 (beaten below)
+        eng._session_best_profile = self._profile(31.0, 60.0, 101.0)  # my session S1=31
+        eng._paddock_known = True
+        eng._paddock_cum_s1 = 29.5   # paddock S1=29.5 (also beaten -> purple)
+        eng._paddock_cum_s2 = 60.0
+        eng._paddock_best_lap = 100.0
+        eng._ref_t_grid = [float(i) for i in range(101)]
+        eng._ref_num_points = 101
+        eng._sector1_delta = -1.5   # projected S1 = 30.0 - 1.5 = 28.5
+
+        self.assertEqual(eng.expected_sector1_time, "00:28.500")
+        self.assertEqual(eng.expected_sector1_status, "purple")   # beats paddock 29.5, session-scoped
+        self.assertTrue(eng.expected_sector1_is_pr)               # 28.5 <= ever 29.0
+
+    def test_sector_untouched_defaults_to_reference_split(self):
+        from simpulse.core.telemetry.delta_engine import DeltaEngine
+        eng = DeltaEngine()
+        eng._current_profile = self._profile(30.0, 60.0, 100.0)
+        eng._ref_t_grid = [float(i) for i in range(101)]
+        eng._ref_num_points = 101
+        eng._sector2_delta = 0.0  # S2 not reached yet -> target = reference split (60-30=30)
+        self.assertEqual(eng.expected_sector2_time, "00:30.000")
+        self.assertFalse(eng.expected_sector2_is_pr)
+
+    def test_no_reference_is_white_dash(self):
+        from simpulse.core.telemetry.delta_engine import DeltaEngine
+        eng = DeltaEngine()
+        self.assertEqual(eng.expected_sector1_time, "--")
+        self.assertEqual(eng.expected_sector1_status, "white")
+        self.assertFalse(eng.expected_sector1_is_pr)
 
 
 if __name__ == "__main__":

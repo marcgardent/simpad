@@ -52,8 +52,13 @@ class EngineerContext:
                 name = str(store.grid.track_name).strip()
                 if name:
                     return name
-            if store.delta.data is not None and getattr(store.delta.data, "track_name", ""):
-                name = str(store.delta.data.track_name).strip()
+            # store.delta is a real PacketSlot (has .data) when state_store is
+            # an actual TelemetryStateStore, or already the plain
+            # Optional[LapDeltaPacket] when it's a consolidated TelemetryView
+            # (the dispatcher hands non-raw-ingest plugins the latter).
+            delta = store.delta.data if hasattr(store.delta, "data") else store.delta
+            if delta is not None and getattr(delta, "track_name", ""):
+                name = str(delta.track_name).strip()
                 if name:
                     return name
         if self.reference_profile and getattr(self.reference_profile, "track_name", None):

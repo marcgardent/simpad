@@ -26,7 +26,8 @@ from PySide6.QtWidgets import QWidget
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider, HudSlot,
-    LapDeltaPacket, VehicleSensors, TelemetryStateStore
+    ITelemetryStateSubscriber,
+    LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryView
 )
 from simpulse.builtin_plugins.official_cockpit_hud.widgets import (
     CockpitWidgetContext,
@@ -53,7 +54,10 @@ logger = logging.getLogger("simpulse.plugin.official_cockpit_hud")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
-class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider):
+class OfficialCockpitHudPlugin(
+    SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber,
+    ITelemetryStateSubscriber, IHudWidgetProvider,
+):
     """
     Official SimPulse Center Cockpit Racing HUD Plugin.
     Implements Tab, Telemetry, and high-performance vector HUD rendering for the 12-widget telemetry suite.
@@ -159,14 +163,21 @@ class OfficialCockpitHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
     # Polymorphic Telemetry State Event Hooks
     # =========================================================================
 
-    def on_physics_tick(self, state: TelemetryStateStore) -> None:
-        """Called directly on high-frequency physics tick (100-120Hz) from central state store."""
-        if state.delta.data is not None:
-            self.latest_delta = state.delta.data
-            if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
-                self._active_tab_widget.update_delta_ui(state.delta.data)
+    def on_physics_tick(self, state: TelemetryView) -> None:
+        """Called directly on high-frequency physics tick (100-120Hz).
 
-    def on_scoring_update(self, state: TelemetryStateStore) -> None:
+        Despite the historical type hint, the dispatcher (PluginManager
+        CHANNEL_ROUTING) hands non-raw-ingest plugins the consolidated
+        TelemetryView snapshot, not the raw Store — ``.delta`` there is
+        already the plain ``Optional[LapDeltaPacket]`` (no ``.data`` wrapper;
+        that only exists on the raw Store's PacketSlot).
+        """
+        if state.delta is not None:
+            self.latest_delta = state.delta
+            if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
+                self._active_tab_widget.update_delta_ui(state.delta)
+
+    def on_scoring_update(self, state: TelemetryView) -> None:
         """Called directly on scoring update (10Hz) from central state store."""
         pass
 

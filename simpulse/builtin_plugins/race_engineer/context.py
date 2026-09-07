@@ -24,6 +24,19 @@ from simpulse.core.telemetry_channels import TelemetryRawPacket
 
 TelemetryTriggerPacket = Union[TelemInfo, FullScoringSession, CompactScoring, TelemetryRawPacket]
 
+
+def _unwrap_slot(value):
+    """Returns the payload of ``value`` whether it's a raw PacketSlot (a real
+    TelemetryStateStore's ``.delta``/``.reference_profile``, wrapped) or
+    already the unwrapped payload (the consolidated TelemetryView the
+    PluginManager dispatcher actually hands non-raw-ingest plugins carries
+    these as plain ``Optional[...]`` fields, no PacketSlot). ``store=`` on
+    this context is used with either at different call sites, so callers must
+    go through this instead of assuming one shape."""
+    if value is None:
+        return None
+    return value.data if hasattr(value, "data") else value
+
 _SCORING_STORE_SYNC = {
     FullScoringSession: lambda st, sc, ts: st.update_full_scoring(sc, ts),
     CompactScoring: lambda st, sc, ts: st.update_compact_scoring(sc, ts),
@@ -249,8 +262,9 @@ class EngineerContext:
                 name = str(resolved.grid.track_name).strip()
                 if name:
                     return name
-            if resolved.delta.data is not None and resolved.delta.data.track_name:
-                return str(resolved.delta.data.track_name).strip()
+            delta = _unwrap_slot(resolved.delta)
+            if delta is not None and delta.track_name:
+                return str(delta.track_name).strip()
 
         if self.reference_profile is not None and self.reference_profile.track_name:
             ref_name = str(self.reference_profile.track_name).strip()
@@ -387,8 +401,9 @@ class EngineerContext:
             base = store.grid if store.grid is not None else store.timing
             if base is not None and getattr(base, "track_length", 0.0) > 500.0:
                 return float(base.track_length)
-            if store.delta.data is not None and store.delta.data.track_length > 500.0:
-                return float(store.delta.data.track_length)
+            delta = _unwrap_slot(store.delta)
+            if delta is not None and delta.track_length > 500.0:
+                return float(delta.track_length)
         if self.reference_profile is not None and self.reference_profile.track_length > 500.0:
             return float(self.reference_profile.track_length)
         return 5000.0  # Fallback default
