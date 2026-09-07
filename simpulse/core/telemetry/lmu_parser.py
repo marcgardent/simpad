@@ -58,8 +58,8 @@ class TelemetryData:
     lateral_ground_vel: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     engine_rpm: float = 0.0
     engine_max_rpm: float = 7500.0
-    suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # TODO SRP: normalized (deflection/0.10, clamped) in process_telemetry — a calibration formula, not a decode
-    suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # TODO SRP: hardcoded (0,0,0,0) placeholder in process_telemetry, never actually computed from wheel data — dead/stub field
+    suspension_travels: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # unused: from_telem_info recomputes this itself; only ever reaches from_wheel_velocities' fallback at its default
+    suspension_velocities: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # dead/stub field, never actually derived from wheel data
     unfiltered_throttle: float = 0.0
     unfiltered_brake: float = 0.0
     filtered_throttle: Optional[float] = None
@@ -70,7 +70,7 @@ class TelemetryData:
     fuel: float = 0.0
     total_laps: int = 0
     laps_completed: int = 0
-    aero_downforce: float = 0.0  # TODO SRP: computed (min(100, (front+rear)/50)) in process_telemetry, not decoded
+    aero_downforce: float = 0.0  # unused by the real path (to_sensors() no longer passes it); kept only as the from_wheel_velocities fallback's input, always 0.0 there since raw_telemetry is None
     lap_flag: int = 2
     track_cut_state: Optional[Union[str, int]] = None  # TODO MGT FUCK Union et Optionnal fait un enum ; TODO SRP: derived from lap_flag by an if/elif duplicated 3x (process_telemetry/process_compact_scoring/process_full_scoring)
     track_limits_steps: int = 0
@@ -78,8 +78,8 @@ class TelemetryData:
     track_limits_steps_per_point: int = 0
     track_limits_steps_per_penalty: int = 0
     grip_fractions: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-    is_on_track: bool = True  # TODO SRP: derived (wheels_on_track > 0), not decoded
-    wheels_on_track: int = 4  # TODO SRP: aggregated from surface_types (count not in {2,3,4}), not decoded
+    is_on_track: bool = True  # sourced from TelemetryStateStore (single canonical formula, >= 3 wheels on track — see §5.1 of the architecture plan)
+    wheels_on_track: int = 4  # sourced from TelemetryStateStore
     surface_types: Tuple[int, int, int, int] = (0, 0, 0, 0)
     terrain_names: Tuple[str, str, str, str] = ("", "", "", "")
     raw_scoring: Optional[Union[FullScoringSession, CompactScoring]] = None # TODO FUck Union
@@ -90,14 +90,20 @@ class TelemetryData:
             return VehicleSensors.from_telem_info(
                 telem=self.raw_telemetry,
                 scoring=self.raw_scoring,
-                explicit_aero_load=self.aero_downforce,
+                # aero_downforce left unset (None): from_telem_info computes it itself
+                # from the front/rear downforce fields already on raw_telemetry — no
+                # need for LMUParser to duplicate that formula (see §Phase A of the
+                # architecture plan).
                 lap_flag=self.lap_flag,
                 track_cut_state=self.track_cut_state,
                 in_realtime=self.in_realtime,
             )
 
-        # TODO SRP: remaining_laps is computed here (total_laps - laps_completed), not decoded
-        remaining = max(0, self.total_laps - self.laps_completed) if (self.total_laps > 0 and self.total_laps < 1000) else 0
+        # remaining_laps: left at from_wheel_velocities' default (0) — this fallback
+        # only fires transiently, before the first TelemInfo has ever been decoded;
+        # the SDK's from_telem_info() (real path above) already computes the complete
+        # version from `scoring` (CompactScoring/FullScoringSession/dict), so this
+        # duplicate total_laps-minus-laps_completed formula served no purpose here.
         return VehicleSensors.from_wheel_velocities(
             self.longitudinal_patch_vel,
             self.longitudinal_ground_vel,
@@ -114,7 +120,6 @@ class TelemetryData:
             filtered_throttle=self.filtered_throttle,
             filtered_brake=self.filtered_brake,
             fuel_level=self.fuel,
-            remaining_laps=remaining,
             explicit_aero_load=self.aero_downforce,
             lap_flag=self.lap_flag,
             track_cut_state=self.track_cut_state,
@@ -135,7 +140,6 @@ class LMUParser:
     _last_fuel: float = 0.0
     _last_total_laps: int = 0
     _last_laps_completed: int = 0
-    _last_aero_downforce: float = 0.0
 
     _last_gear: int = 1
     _last_engine_rpm: float = 0.0
@@ -149,13 +153,7 @@ class LMUParser:
     _last_lgv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lat_pv: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_lat_gv: tuple = (0.0, 0.0, 0.0, 0.0)
-    _last_travels: tuple = (0.0, 0.0, 0.0, 0.0)
     _last_grips: tuple = (1.0, 1.0, 1.0, 1.0)
-    _last_susp_vels: tuple = (0.0, 0.0, 0.0, 0.0)
-    _last_is_on_track: bool = True
-    _last_wheels_on_track: int = 4
-    _last_surface_types: tuple = (0, 0, 0, 0)
-    _last_terrain_names: tuple = ("", "", "", "")
 
     _last_lap_flag: int = 2
     _last_track_cut_state: Optional[Union[str, int]] = "green"
@@ -229,11 +227,10 @@ class LMUParser:
         cls._last_telem_info = telem
         cls._last_fuel = telem.fuel
 
-        # TODO SRP: aero_downforce is COMPUTED here (front+rear downforce combined into
-        # a normalized 0-100 "load %" via an arbitrary /50 formula) — not decoded.
-        f_df = abs(float(telem.front_downforce))
-        r_df = abs(float(telem.rear_downforce))
-        cls._last_aero_downforce = min(100.0, (f_df + r_df) / 50.0)
+        # aero_downforce: no longer computed here — VehicleSensors.from_telem_info()
+        # derives it itself from raw_telemetry's front/rear downforce fields (see
+        # TelemetryData.to_sensors()); duplicating the formula here served no purpose
+        # in the real (raw_telemetry is not None) path.
 
         wheels = telem.wheels
         if wheels and len(wheels) >= 4:
@@ -241,20 +238,13 @@ class LMUParser:
             cls._last_lgv = tuple(float(w.longitudinal_ground_vel) for w in wheels[:4])
             cls._last_lat_pv = tuple(float(w.lateral_patch_vel) for w in wheels[:4])
             cls._last_lat_gv = tuple(float(w.lateral_ground_vel) for w in wheels[:4])
-            raw_deflections = tuple(float(w.suspension_deflection) for w in wheels[:4])
-            # TODO SRP: suspension_travels COMPUTED (deflection/0.10, clamped 0..1) — a
-            # calibration formula guessing a max deflection, not a decode.
-            cls._last_travels = tuple(min(1.0, max(0.0, d / 0.10)) for d in raw_deflections)
             cls._last_grips = tuple(float(w.grip_fraction) for w in wheels[:4])
-            # TODO SRP: suspension_velocities is a hardcoded stub, never actually derived
-            # from wheel data — dead field kept at (0,0,0,0).
-            cls._last_susp_vels = (0.0, 0.0, 0.0, 0.0)
-            cls._last_surface_types = tuple(int(w.surface_type) for w in wheels[:4])
-            cls._last_terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
-            # TODO SRP: wheels_on_track/is_on_track COMPUTED from surface_types (business
-            # rule: which surface codes count as "off track") — not decoded.
-            cls._last_wheels_on_track = sum(1 for s in cls._last_surface_types if s not in (2, 3, 4))
-            cls._last_is_on_track = (cls._last_wheels_on_track > 0)
+
+        # wheels_on_track/is_on_track/surface_types/terrain_names: no longer computed
+        # here — TelemetryStateStore.update_telemetry() (called below) derives them
+        # from this exact TelemInfo using the single canonical formula (>= 3 wheels on
+        # a legal surface, see §5.1 of the architecture plan); read back live in
+        # _build_telemetry_snapshot() and in the surface-event diagnostic below.
 
         cls._last_unfiltered_throttle = float(telem.unfiltered_throttle)
         cls._last_unfiltered_brake = float(telem.unfiltered_brake)
@@ -311,7 +301,8 @@ class LMUParser:
                 raw_lgv=cls._last_lgv,
             )
             from .overlay_anomaly_logger import OverlayAnomalyLogger
-            in_realtime = TelemetryStateStore.get_instance().in_realtime
+            store = TelemetryStateStore.get_instance()
+            in_realtime = store.in_realtime
             OverlayAnomalyLogger.get_instance().check_telemetry_anomaly(
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
@@ -338,10 +329,10 @@ class LMUParser:
             )
             TrackLimitsLogger.get_instance().log_surface_event(
                 source="TelemInfo(120Hz)",
-                is_on_track=cls._last_is_on_track,
-                wheels_on_track=cls._last_wheels_on_track,
-                surface_types=cls._last_surface_types,
-                terrain_names=cls._last_terrain_names,
+                is_on_track=store.is_on_track,
+                wheels_on_track=store.wheels_on_track,
+                surface_types=store.surface_types,
+                terrain_names=store.terrain_names,
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
@@ -573,6 +564,7 @@ class LMUParser:
     @classmethod
     def _build_telemetry_snapshot(cls) -> TelemetryData:
         """Instantiates TelemetryData with current state."""
+        store = TelemetryStateStore.get_instance()
         return TelemetryData(
             longitudinal_patch_vel=cls._last_lpv,
             longitudinal_ground_vel=cls._last_lgv,
@@ -580,19 +572,21 @@ class LMUParser:
             lateral_ground_vel=cls._last_lat_gv,
             engine_rpm=cls._last_engine_rpm,
             engine_max_rpm=cls._last_engine_max_rpm,
-            suspension_travels=cls._last_travels,
-            suspension_velocities=cls._last_susp_vels,
+            # suspension_travels/suspension_velocities: left at TelemetryData's default
+            # (0,0,0,0) — dead in the real path (from_telem_info recomputes travels
+            # itself from raw_telemetry; velocities was never anything but a stub),
+            # only reached by the from_wheel_velocities fallback before any TelemInfo
+            # has arrived, where it was already always (0,0,0,0).
             unfiltered_throttle=cls._last_unfiltered_throttle,
             unfiltered_brake=cls._last_unfiltered_brake,
             filtered_throttle=cls._last_filtered_throttle,
             filtered_brake=cls._last_filtered_brake,
             unfiltered_steering=cls._last_unfiltered_steering,
-            in_realtime=TelemetryStateStore.get_instance().in_realtime,
+            in_realtime=store.in_realtime,
             gear=cls._last_gear,
             fuel=cls._last_fuel,
             total_laps=cls._last_total_laps,
             laps_completed=cls._last_laps_completed,
-            aero_downforce=cls._last_aero_downforce,
             lap_flag=cls._last_lap_flag,
             track_cut_state=cls._last_track_cut_state,
             track_limits_steps=cls._last_track_limits_steps,
@@ -600,10 +594,10 @@ class LMUParser:
             track_limits_steps_per_point=cls._last_steps_per_point,
             track_limits_steps_per_penalty=cls._last_steps_per_penalty,
             grip_fractions=cls._last_grips,
-            is_on_track=cls._last_is_on_track,
-            wheels_on_track=cls._last_wheels_on_track,
-            surface_types=cls._last_surface_types,
-            terrain_names=cls._last_terrain_names,
+            is_on_track=store.is_on_track,
+            wheels_on_track=store.wheels_on_track,
+            surface_types=store.surface_types,
+            terrain_names=store.terrain_names,
             raw_scoring=cls.get_latest_scoring(),
             raw_telemetry=cls._last_telem_info,
         )

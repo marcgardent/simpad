@@ -650,7 +650,7 @@ class VehicleSensors:
             surface_types = tuple(int(w.surface_type) for w in wheels[:4])
             terrain_names = tuple(str(w.terrain_name).strip() for w in wheels[:4])
             wheels_on_track = sum(1 for s in surface_types if s not in (2, 3, 4))
-            is_on_track = (wheels_on_track > 0)
+            is_on_track = (wheels_on_track >= 3)
         else:
             lpv = (0.0, 0.0, 0.0, 0.0)
             lgv = (0.0, 0.0, 0.0, 0.0)
