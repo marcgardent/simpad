@@ -72,7 +72,7 @@ class TelemetryData:
     laps_completed: int = 0
     aero_downforce: float = 0.0  # unused by the real path (to_sensors() no longer passes it); kept only as the from_wheel_velocities fallback's input, always 0.0 there since raw_telemetry is None
     lap_flag: int = 2
-    track_cut_state: Optional[Union[str, int]] = None  # TODO MGT FUCK Union et Optionnal fait un enum ; TODO SRP: derived from lap_flag by an if/elif duplicated 3x (process_telemetry/process_compact_scoring/process_full_scoring)
+    track_cut_state: Optional[Union[str, int]] = None  # TODO MGT FUCK Union et Optionnal fait un enum ; sourced from TelemetryStateStore.track_cut_state (single canonical rule, see §6 Phase B of the architecture plan)
     track_limits_steps: int = 0
     num_penalties: int = 0
     track_limits_steps_per_point: int = 0
@@ -156,7 +156,6 @@ class LMUParser:
     _last_grips: tuple = (1.0, 1.0, 1.0, 1.0)
 
     _last_lap_flag: int = 2
-    _last_track_cut_state: Optional[Union[str, int]] = "green"
     _last_track_limits_steps: int = 0
     _last_num_penalties: int = 0
     _last_steps_per_point: int = 0
@@ -269,14 +268,9 @@ class LMUParser:
             tl_steps = int(telem.lmu.track_limits_steps)
             cls._last_track_limits_steps = tl_steps
 
-        # TODO SRP: track_cut_state COMPUTED from lap_flag (1 of 3 near-identical
-        # if/elif copies of this same rule — see process_compact_scoring/process_full_scoring).
-        if cls._last_lap_flag == 1:
-            cls._last_track_cut_state = "yellow"
-        elif cls._last_lap_flag == 0:
-            cls._last_track_cut_state = "invalid"
-        else:
-            cls._last_track_cut_state = "green"
+        # track_cut_state: no longer computed here — TelemetryStateStore.track_cut_state
+        # is the single canonical version of this if/elif-on-lap_flag rule (Phase B of
+        # the architecture plan), read live in _build_telemetry_snapshot() below.
 
         speed = float(telem.speed_mps)
 
@@ -358,15 +352,7 @@ class LMUParser:
 
         cls._last_laps_completed = int(scoring.total_laps)
         cls._last_lap_flag = int(scoring.count_lap_flag)
-        # TODO SRP: track_cut_state COMPUTED from lap_flag (2 of 3 near-identical
-        # if/elif copies of this same rule).
-        if cls._last_lap_flag == 1:
-            cls._last_track_cut_state = "yellow"
-        else:
-            if cls._last_lap_flag == 0:
-                cls._last_track_cut_state = "invalid"
-            else:
-                cls._last_track_cut_state = "green"
+        # track_cut_state: no longer computed here — see process_telemetry's NOTE above.
 
         # NOTE: does NOT call cls._delta_engine.update_scoring() here — TelemetryBus
         # already fed this exact CompactScoring packet to ReferenceLapManager.update_scoring()
@@ -446,15 +432,7 @@ class LMUParser:
 
             cls._last_num_penalties = int(player_veh.num_penalties)
 
-            # TODO SRP: track_cut_state COMPUTED from lap_flag (3 of 3 near-identical
-            # if/elif copies of this same rule).
-            if cls._last_lap_flag == 1:
-                cls._last_track_cut_state = "yellow"
-            else:
-                if cls._last_lap_flag == 0:
-                    cls._last_track_cut_state = "invalid"
-                else:
-                    cls._last_track_cut_state = "green"
+            # track_cut_state: no longer computed here — see process_telemetry's NOTE.
 
             try:
                 from .track_limits_logger import TrackLimitsLogger
@@ -588,7 +566,7 @@ class LMUParser:
             total_laps=cls._last_total_laps,
             laps_completed=cls._last_laps_completed,
             lap_flag=cls._last_lap_flag,
-            track_cut_state=cls._last_track_cut_state,
+            track_cut_state=store.track_cut_state,
             track_limits_steps=cls._last_track_limits_steps,
             num_penalties=cls._last_num_penalties,
             track_limits_steps_per_point=cls._last_steps_per_point,

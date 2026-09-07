@@ -95,6 +95,23 @@ class TestTelemetryStateStore(unittest.TestCase):
         self.assertTrue(self.store.is_on_track)
         self.assertEqual(self.store.lap_flag, 1)  # Still under investigation
 
+    def test_track_cut_state_derived_from_lap_flag(self):
+        """track_cut_state is a pure function of lap_flag: 1->yellow, 0->invalid, 2->green."""
+        # Default (no packet ever received yet): lap_flag defaults to 2 -> green.
+        self.assertEqual(self.store.track_cut_state, "green")
+
+        self.store.update_compact_scoring(CompactScoring(count_lap_flag=1, in_realtime=1), timestamp=time.time())
+        self.assertEqual(self.store.lap_flag, 1)
+        self.assertEqual(self.store.track_cut_state, "yellow")
+
+        self.store.update_compact_scoring(CompactScoring(count_lap_flag=0, in_realtime=1), timestamp=time.time())
+        self.assertEqual(self.store.lap_flag, 0)
+        self.assertEqual(self.store.track_cut_state, "invalid")
+
+        self.store.update_compact_scoring(CompactScoring(count_lap_flag=2, in_realtime=1), timestamp=time.time())
+        self.assertEqual(self.store.lap_flag, 2)
+        self.assertEqual(self.store.track_cut_state, "green")
+
     def test_engineer_context_ingests_direct_packets(self):
         """Verify RaceEngineer voluntary ingestion populates the consolidated store."""
         played = []

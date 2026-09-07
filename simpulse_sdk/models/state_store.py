@@ -697,6 +697,20 @@ class TelemetryStateStore:
             return "Valid" if self.lap_flag == 2 else "Invalid"
 
     @property
+    def track_cut_state(self) -> str:
+        """User-facing track-limits state derived from lap_flag: 'yellow' (under
+        investigation, count_lap_flag == 1), 'invalid' (deleted/penalty, == 0), or
+        'green' (clean, == 2). Pure function of lap_flag — the single canonical
+        version of a rule LMUParser used to duplicate 3x (once per packet type)."""
+        with self._mutex:
+            flag = self.lap_flag
+            if flag == 1:
+                return "yellow"
+            if flag == 0:
+                return "invalid"
+            return "green"
+
+    @property
     def last_validity_event(self) -> ValidityEvent:
         """Name of last validity transition event ('TIMING_IN_PROGRESS', 'TIME_DELETED', 'IDLE')."""
         with self._mutex:
