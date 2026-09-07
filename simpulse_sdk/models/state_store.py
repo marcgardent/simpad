@@ -24,6 +24,7 @@ from isimotor_rawudp_client import (
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
 from .presence import PresenceTracker
+from .reference_profile import ReferenceLapProfileView
 from .view import TelemetryView, TrackCutState
 
 T = TypeVar("T")
@@ -107,6 +108,7 @@ class TelemetryStateStore:
         self.track_rules = PacketSlot()        # TrackRules
         self.pit_menu = PacketSlot()           # PitMenu
         self.delta = PacketSlot()              # LapDeltaPacket derived state (120Hz continuous)
+        self.reference_profile = PacketSlot()  # ReferenceLapProfileView, pushed on profile change
 
         # Unified typed scoring models
         self.timing: BaseTimingState = BaseTimingState()
@@ -224,6 +226,7 @@ class TelemetryStateStore:
             self.track_rules = PacketSlot()
             self.pit_menu = PacketSlot()
             self.delta = PacketSlot()
+            self.reference_profile = PacketSlot()
             self.timing = BaseTimingState()
             self.grid = None
             self._presence = PresenceTracker()
@@ -606,6 +609,20 @@ class TelemetryStateStore:
             self.delta.update(data, ts, raw_bytes_len)
             if data.player_dist > 0.0 or self._last_lap_dist == 0.0:
                 self._last_lap_dist = data.player_dist
+
+    def update_reference_profile(
+        self,
+        data: Optional[ReferenceLapProfileView],
+        timestamp: Optional[float] = None,
+        raw_bytes_len: int = 0,
+    ) -> None:
+        """Ingests the active reference lap profile (immutable View), pushed by
+        ReferenceLapManager whenever it changes (new best lap, track/car switch,
+        reference-mode switch). Plugins read it via TelemetryView.reference_profile
+        instead of reaching for ReferenceLapManager.get_instance()/DeltaEngine."""
+        with self._mutex:
+            ts = timestamp if timestamp is not None else time.time()
+            self.reference_profile.update(data, ts, raw_bytes_len)
 
     def update_lap_validity(self, flag: int, timestamp: float) -> None:
         """Explicit update of authoritative lap validity flag."""

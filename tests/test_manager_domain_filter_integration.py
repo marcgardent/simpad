@@ -2,15 +2,21 @@
 Test d'intégration : Manager → EngineerContext → Filtre de Domaine du Traffic Spotter.
 Vérifie que le profil de référence est correctement injecté par le Manager
 et que le filtre de domaine fonctionne en conditions réelles (pas d'injection manuelle).
+
+Le profil de référence traverse désormais TelemetryStateStore.reference_profile
+(poussé par ReferenceLapManager sous forme de View immuable — voir
+ReferenceLapManager._push_reference_profile_view), pas ReferenceLapManager
+lui-même : le Manager ne reach plus jamais dans le singleton pour ça.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, TelemVect3
 from simpulse.builtin_plugins.race_engineer.manager import RaceEngineer
 from simpulse.builtin_plugins.race_engineer.subplugins.traffic_spotter import TrafficSpotterRole, TrafficSpotterState
 from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 
 
 def _make_profile(track_length=5000.0, base_speed_kmh=200.0):
@@ -99,10 +105,9 @@ def test_manager_injects_reference_profile_into_context():
     profile = _make_profile()
     mock_audio = MagicMock()
 
-    # Simuler le DeltaEngine global avec un profil valide
-    mock_delta_engine = MagicMock()
-    mock_delta_engine.all_time_best_profile = profile
-    mock_delta_engine.current_profile = None
+    # Injecté comme en production : ReferenceLapManager pousse la View immuable
+    # dans le Store, le Manager la relit depuis là (pas de mock du singleton).
+    TelemetryStateStore.get_instance().update_reference_profile(profile.to_view())
 
     engineer = RaceEngineer(audio_engine=mock_audio, auto_load_builtin_roles=False)
 
@@ -118,19 +123,14 @@ def test_manager_injects_reference_profile_into_context():
 
     scoring_normal = _scoring_both_in_domain()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
-        ref_mgr_mock = MockRefMgr.get_instance.return_value
-        ref_mgr_mock.delta_engine = mock_delta_engine
-        ref_mgr_mock.get_active_profile.return_value = profile
+    # Les deux dans le domaine → doit être filtré (pas d'alerte)
+    messages = engineer.update(scoring=scoring_normal)
 
-        # Les deux dans le domaine → doit être filtré (pas d'alerte)
-        messages = engineer.update(scoring=scoring_normal)
-
-        assert len(messages) == 0, (
-            f"Le spotter ne devrait PAS se déclencher quand les deux voitures sont dans le domaine. "
-            f"Messages reçus : {[m.phrase_key for m in messages]}"
-        )
-        assert spotter.state == TrafficSpotterState.IDLE
+    assert len(messages) == 0, (
+        f"Le spotter ne devrait PAS se déclencher quand les deux voitures sont dans le domaine. "
+        f"Messages reçus : {[m.phrase_key for m in messages]}"
+    )
+    assert spotter.state == TrafficSpotterState.IDLE
 
 
 def test_manager_domain_filter_allows_anomaly():
@@ -140,9 +140,7 @@ def test_manager_domain_filter_allows_anomaly():
     profile = _make_profile()
     mock_audio = MagicMock()
 
-    mock_delta_engine = MagicMock()
-    mock_delta_engine.all_time_best_profile = profile
-    mock_delta_engine.current_profile = None
+    TelemetryStateStore.get_instance().update_reference_profile(profile.to_view())
 
     engineer = RaceEngineer(audio_engine=mock_audio, auto_load_builtin_roles=False)
 
@@ -157,17 +155,12 @@ def test_manager_domain_filter_allows_anomaly():
 
     scoring_crash = _scoring_player_crashed()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
-        ref_mgr_mock = MockRefMgr.get_instance.return_value
-        ref_mgr_mock.delta_engine = mock_delta_engine
-        ref_mgr_mock.get_active_profile.return_value = profile
+    # Joueur hors domaine → l'alerte DOIT passer
+    messages = engineer.update(scoring=scoring_crash)
 
-        # Joueur hors domaine → l'alerte DOIT passer
-        messages = engineer.update(scoring=scoring_crash)
-
-        assert len(messages) == 1
-        assert messages[0].phrase_key == "incoming"
-        assert spotter.state == TrafficSpotterState.APPROACHING
+    assert len(messages) == 1
+    assert messages[0].phrase_key == "incoming"
+    assert spotter.state == TrafficSpotterState.APPROACHING
 
 
 def test_manager_no_profile_bypasses_filter():
@@ -177,10 +170,8 @@ def test_manager_no_profile_bypasses_filter():
     """
     mock_audio = MagicMock()
 
-    mock_delta_engine = MagicMock()
-    mock_delta_engine.all_time_best_profile = None
-    mock_delta_engine.current_profile = None
-
+    # Aucune View poussée dans le Store (reference_profile reste None) — le
+    # fixture autouse de conftest.py garantit un Store fraîchement resetté.
     engineer = RaceEngineer(audio_engine=mock_audio, auto_load_builtin_roles=False)
 
     spotter = TrafficSpotterRole(
@@ -193,13 +184,8 @@ def test_manager_no_profile_bypasses_filter():
 
     scoring = _scoring_both_in_domain()
 
-    with patch("simpulse.core.reference_lap.ReferenceLapManager") as MockRefMgr:
-        ref_mgr_mock = MockRefMgr.get_instance.return_value
-        ref_mgr_mock.delta_engine = mock_delta_engine
-        ref_mgr_mock.get_active_profile.return_value = None
+    # Sans profil, le filtre est bypassé → l'alerte passe (fail-open)
+    messages = engineer.update(scoring=scoring)
 
-        # Sans profil, le filtre est bypassé → l'alerte passe (fail-open)
-        messages = engineer.update(scoring=scoring)
-
-        assert len(messages) == 1
-        assert messages[0].phrase_key == "incoming"
+    assert len(messages) == 1
+    assert messages[0].phrase_key == "incoming"

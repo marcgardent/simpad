@@ -287,28 +287,14 @@ class RaceEngineer:
             logger.error(f"[RaceEngineer] Failed to generate TTS audio: {e}", exc_info=True)
             return 0, 0
 
-    def _get_active_reference_profile(self) -> Optional[ReferenceLapProfileView]:
+    def _get_active_reference_profile(self, store: TelemetryStateStore) -> Optional[ReferenceLapProfileView]:
         """
-        Resolves the active reference lap profile from Core ReferenceLapManager
-        (unified engine) and converts it to its immutable, plugin-facing View —
-        the mutable ReferenceLapProfile (file I/O, annotation editing) never
-        leaves this method.
+        Reads the active reference lap profile already pushed into the Store as
+        an immutable View by ReferenceLapManager (see
+        ReferenceLapManager._push_reference_profile_view) — no reach into
+        ReferenceLapManager/DeltaEngine singletons from plugin code.
         """
-        try:
-            from simpulse.core.reference_lap import ReferenceLapManager
-            ref_mgr = ReferenceLapManager.get_instance()
-            if ref_mgr:
-                prof = ref_mgr.get_active_profile()
-                if prof:
-                    return prof.to_view()
-                engine = getattr(ref_mgr, "delta_engine", None)
-                if engine is not None:
-                    prof = engine.all_time_best_profile or engine.current_profile
-                    if prof:
-                        return prof.to_view()
-        except Exception:
-            pass
-        return None
+        return store.reference_profile.data
 
     def update(
         self,
@@ -343,7 +329,7 @@ class RaceEngineer:
             scoring=scoring,
             timestamp=now,
             audio_engine=self.audio_engine,
-            reference_profile=self._get_active_reference_profile(),
+            reference_profile=self._get_active_reference_profile(active_store),
             store=active_store,
         )
 

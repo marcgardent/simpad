@@ -36,6 +36,7 @@ from isimotor_rawudp_client import TelemInfo
 
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
+from .reference_profile import ReferenceLapProfileView
 
 
 class TrackCutState(str, Enum):
@@ -67,6 +68,14 @@ class TelemetryView:
     # Authoritative Engine output (DeltaEngine, via ReferenceLapManager), None until
     # the first tick has run.
     delta: Optional[LapDeltaPacket] = None
+
+    # Active reference lap profile (immutable), pushed by ReferenceLapManager
+    # whenever it changes (new best lap, track/car switch, reference-mode
+    # switch). Plugins read this instead of reaching for
+    # ReferenceLapManager.get_instance()/DeltaEngine — see reference_profile.py
+    # module docstring: "plugins never see ... ReferenceLapManager/DeltaEngine
+    # singletons."
+    reference_profile: Optional[ReferenceLapProfileView] = None
 
     # Wheels / surface
     wheels_on_track: int = 4
@@ -116,6 +125,7 @@ class TelemetryView:
             timing=store.timing,
             grid=store.grid,
             delta=store.delta.data,
+            reference_profile=store.reference_profile.data,
             wheels_on_track=store.wheels_on_track,
             is_on_track=store.is_on_track,
             surface_types=store.surface_types,

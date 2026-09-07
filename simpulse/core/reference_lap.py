@@ -217,6 +217,21 @@ class ReferenceLapManager(QObject):
     # Telemetry Ingestion & Packet Building
     # =========================================================================
 
+    def _push_reference_profile_view(self) -> None:
+        """Pushes the active profile's immutable View into the shared Store,
+        mirroring update_delta() below, every time reference_profile_changed
+        fires. Plugins then read the active reference lap via
+        TelemetryView.reference_profile instead of reaching for
+        ReferenceLapManager.get_instance() — see reference_profile.py's module
+        docstring ("plugins never see ... ReferenceLapManager/DeltaEngine
+        singletons")."""
+        try:
+            from simpulse.core.telemetry.state_store import TelemetryStateStore
+            prof = self.get_active_profile()
+            TelemetryStateStore.get_instance().update_reference_profile(prof.to_view() if prof else None)
+        except Exception:
+            pass
+
     def update_physics(
         self,
         veh_speed_ms: float,
@@ -242,6 +257,7 @@ class ReferenceLapManager(QObject):
         )
         if self.delta_engine.has_reference != prev_has_ref:
             self.reference_profile_changed.emit(self.current_profile)
+            self._push_reference_profile_view()
 
         packet = self._build_delta_packet(player_dist=self.delta_engine.last_scoring_dist)
         self._last_emitted_packet = packet
@@ -282,6 +298,7 @@ class ReferenceLapManager(QObject):
 
         if self.delta_engine.current_profile != prev_prof:
             self.reference_profile_changed.emit(self.current_profile)
+            self._push_reference_profile_view()
 
         cur_laps = self.delta_engine._last_laps_completed
         cur_sector = self.delta_engine.current_sector
@@ -326,6 +343,7 @@ class ReferenceLapManager(QObject):
 
         if self.delta_engine.current_profile != prev_prof:
             self.reference_profile_changed.emit(self.current_profile)
+            self._push_reference_profile_view()
 
         cur_laps = self.delta_engine._last_laps_completed
         cur_sector = self.delta_engine.current_sector
