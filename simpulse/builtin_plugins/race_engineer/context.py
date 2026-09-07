@@ -258,43 +258,25 @@ class EngineerContext:
                 return ref_name
         return ""
     def get_reference_profile(self) -> Optional[ReferenceLapProfileView]:
-        """Returns active reference lap profile if it matches current track."""
-        scoring_track = self.get_track_name()
-
-        if self.reference_profile is not None:
-            ref_track = self.reference_profile.track_name
-            if scoring_track and ref_track:
-                t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
-                t2 = "".join(c for c in ref_track if c.isalnum()).lower()
-                if t1 and t2 and t1 != t2:
-                    return None
-            return self.reference_profile
-
-        if self.scoring is None and self.store is None:
-            # A standalone context relies on its injected reference_profile only; it must
-            # not reach into the global engine/residue of unrelated evaluations.
+        """
+        Returns active reference lap profile if it matches current track.
+        Sanctioned SDK path only: `self.reference_profile` is injected once per
+        tick by RaceEngineerManager._get_active_reference_profile() (the sole
+        authorized Core entry point). No fallback into ReferenceLapManager here
+        — a standalone/unit-test context without an injected profile simply has
+        none, rather than reaching into the global Core singleton/its residue.
+        """
+        if self.reference_profile is None:
             return None
-        try:
-            from simpulse.core.reference_lap import ReferenceLapManager
-            ref_mgr = ReferenceLapManager.get_instance()
-            # The unified live engine is the source of truth for reference lap profiles.
-            engine = getattr(ref_mgr, "delta_engine", None)
-            prof = None
-            if engine is not None:
-                prof = engine.all_time_best_profile or engine.current_profile
-            if prof is None:
-                prof = ref_mgr.get_active_profile()
-            if prof:
-                ref_track = prof.track_name
-                if scoring_track and ref_track:
-                    t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
-                    t2 = "".join(c for c in ref_track if c.isalnum()).lower()
-                    if t1 and t2 and t1 != t2:
-                        return None
-                return prof.to_view()
-        except Exception:
-            pass
-        return None
+
+        scoring_track = self.get_track_name()
+        ref_track = self.reference_profile.track_name
+        if scoring_track and ref_track:
+            t1 = "".join(c for c in scoring_track if c.isalnum()).lower()
+            t2 = "".join(c for c in ref_track if c.isalnum()).lower()
+            if t1 and t2 and t1 != t2:
+                return None
+        return self.reference_profile
 
     def get_reference_speed_mps(
         self,

@@ -122,29 +122,36 @@ proche des ~23 déjà notés). Catégorisation :
 3. **Violation réelle #1 — déjà documentée** : `race_engineer/manager.py` résout
    `ReferenceLapManager`/`DeltaEngine` (Core) — accepté comme unique point
    d'entrée légitime (cf. §2 point 2).
-4. **Violation réelle #2 — nouvellement repérée, pas corrigée** :
-   `EngineerContext.get_reference_profile()` (`race_engineer/context.py`) a un
-   chemin de repli qui reconstruit `ReferenceLapManager.get_instance()`
-   directement quand `self.reference_profile` est `None` mais qu'un
-   `scoring`/`store` est présent — donc **`context.py` n'est pas le seul point
-   d'entrée Core comme l'affirmait §2 point 2**. Corrigé cette session pour au
-   moins retourner `.to_view()` (cohérence de type), mais le court-circuit vers
-   `ReferenceLapManager` lui-même reste en place — un vrai fix supprimerait ce
-   fallback et forcerait tous les appelants à toujours passer par
-   `EngineerContext.reference_profile` injecté par le manager.
-5. **Violation réelle #3 — nouvellement repérée, pas corrigée, plus sérieuse** :
-   `race_engineer/subplugins/lap_validity.py::_evaluate_validity()` /
-   `emit_sound()` / `reset()` / `get_state_summary()` font
-   `TelemetryStateStore.get_instance()` en direct (import local dans la
-   fonction) et appellent des méthodes *mutantes* du Store
-   (`consume_validity_transition()`, `.reset()`) — pas juste une lecture. Le
-   chemin normal (`context.state_store`) est toujours pris en pratique (le
-   `context` passé par `role_base` n'est jamais `None`), donc pas de bug
-   observé, mais le code est écrit pour retomber sur le singleton mutable si un
-   jour `context` devient `None` (ou en test unitaire isolé). À corriger :
-   supprimer les branches `elif`/`else` de `_evaluate_validity` et les 3 accès
-   directs de `reset()`/`get_state_summary()`/`emit_sound()`, en s'appuyant
-   uniquement sur `context.state_store`.
+4. **Violation réelle #2 — ✅ corrigée** :
+   `EngineerContext.get_reference_profile()` (`race_engineer/context.py`) avait
+   un chemin de repli qui reconstruisait `ReferenceLapManager.get_instance()`
+   directement quand `self.reference_profile` était `None` mais qu'un
+   `scoring`/`store` était présent — donc `context.py` n'était *pas* le seul
+   point d'entrée Core comme l'affirmait §2 point 2. Fallback supprimé : la
+   méthode ne retourne plus que `self.reference_profile` (injecté une fois par
+   tick par le manager), `None` sinon — aucun appelant ne retombe plus sur le
+   singleton global ou son résidu inter-tests. 337/337 toujours verts (les 3
+   tests d'intégration `test_manager_domain_filter_integration.py` passaient
+   déjà par `RaceEngineer.update()`, donc par le point d'entrée légitime de
+   `manager.py`, pas par ce fallback).
+5. **Violation réelle #3 — ✅ en grande partie corrigée** :
+   `race_engineer/subplugins/lap_validity.py::_evaluate_validity()` prenait un
+   paramètre `state: TelemetryStateStore` mort (jamais transmis autrement que
+   via `context`, et aucun appelant — code ou test — n'invoque ces hooks avec
+   `context=None`) avec deux branches de repli (`isinstance(state, ...)` /
+   `TelemetryStateStore.get_instance()`) jamais exercées. Supprimées ; la
+   fonction ne prend plus que `context` et lit `context.state_store`. Plus
+   sérieux : `reset()` appelait `TelemetryStateStore.get_instance().reset()` —
+   un vrai bug de blast radius, puisque `RaceEngineer.set_role_enabled(role_id,
+   False)` appelle `slot.reset()`, donc désactiver *ce seul rôle* depuis l'UI
+   remettait à zéro l'état télémétrie **global** lu par tous les autres
+   rôles/plugins. Supprimé — `reset()` ne touche plus que son propre état
+   interne. `get_state_summary()` garde un accès direct en lecture seule à
+   `TelemetryStateStore.get_instance()` (pas de mutation, pas de `context`
+   disponible dans sa signature pour un affichage de statut UI hors-tick) —
+   accepté tel quel, pas une violation du même ordre. (`emit_sound()` ne touche
+   en réalité pas le Store du tout — juste `TrackLimitsLogger`, un service Core
+   distinct — l'inventaire initial le citait par erreur.)
 6. **`reference_lap_studio/plugin.py`** importe `simpulse.core.reference_lap`
    (le `ReferenceLapManager` lui-même) — légitime : c'est l'UI Studio dédiée à
    l'édition/l'enregistrement des profils de référence, pas un plugin
@@ -161,8 +168,7 @@ proche des ~23 déjà notés). Catégorisation :
    un canal interne dédié aux Engines, soit les remplacer par leur forme déjà
    consolidée (`timing`/`grid`).
 
-**Reste à faire** (pas traité cette session, effort ciblé plutôt qu'un audit) :
-items 4, 5 et 7 ci-dessus.
+**Reste à faire** : item 7 ci-dessus (4 et 5 traités).
 
 ### T3. Vérification manuelle sur session UDP réelle
 Le nouveau séquencement (merge → Engines → dispatch plugins) change délibérément

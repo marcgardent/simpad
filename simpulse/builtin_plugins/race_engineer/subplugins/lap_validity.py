@@ -98,29 +98,24 @@ class LapValidityRole(BaseRole):
         return (time.time() - self._last_event_time) < self.busy_duration_sec
 
     def on_physics_tick(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        return self._evaluate_validity(state, context)
+        return self._evaluate_validity(context)
 
     def on_scoring_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        return self._evaluate_validity(state, context)
+        return self._evaluate_validity(context)
 
     def on_grid_update(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        return self._evaluate_validity(state, context)
+        return self._evaluate_validity(context)
 
     def update(self, context: EngineerContext) -> Optional[EngineerMessage]:
-        return self._evaluate_validity(context.state_store, context)
+        return self._evaluate_validity(context)
 
-    def _evaluate_validity(self, state: TelemetryStateStore, context: EngineerContext) -> Optional[EngineerMessage]:
-        # Access central TelemetryStateStore
-        state_store: TelemetryStateStore
-        if context is not None:
-            state_store = context.state_store
-        elif isinstance(state, TelemetryStateStore):
-            state_store = state
-        else:
-            from simpulse.core.telemetry.state_store import TelemetryStateStore
-            state_store = TelemetryStateStore.get_instance()
+    def _evaluate_validity(self, context: EngineerContext) -> Optional[EngineerMessage]:
+        # Sanctioned SDK path only: context.state_store resolves the Store
+        # itself (injected, or its own get_instance() fallback) — no direct
+        # TelemetryStateStore access here.
+        state_store = context.state_store
 
-        now = context.timestamp if (context and context.timestamp is not None) else time.time()
+        now = context.timestamp if context.timestamp is not None else time.time()
         is_in_garage_or_pause = (state_store.in_garage or not state_store.in_realtime)
 
         # In garage / pause: stay silent, track flags without triggering transitions
@@ -200,13 +195,17 @@ class LapValidityRole(BaseRole):
             pass
 
     def reset(self) -> None:
+        """
+        Resets this role's own tracking only. Must NOT touch the shared
+        TelemetryStateStore singleton — a role being reset (e.g. disabled from
+        the UI via RaceEngineer.set_role_enabled) has no business wiping global
+        telemetry state that every other role/plugin still reads.
+        """
         self._last_lap_flag = None
         self._last_is_dirty = None
         self._last_event_time = 0.0
         self._last_event_name = "IDLE"
         self._was_in_garage = False
-        from simpulse.core.telemetry.state_store import TelemetryStateStore
-        TelemetryStateStore.get_instance().reset()
 
     def get_state_summary(self) -> Dict[str, Union[str, int, float, bool, List[str], None]]:
         summary = super().get_state_summary()
