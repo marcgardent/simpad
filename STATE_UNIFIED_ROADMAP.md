@@ -212,20 +212,39 @@ celui du tick précédent. Comportement attendu meilleur, mais jamais vérifié 
 conditions réelles (jeu qui tourne). À faire avant de considérer le pipeline
 pleinement validé en prod.
 
-### T4. Nettoyages mineurs déjà repérés, pas traités
-- `TelemetryStateStore.player_lap_dist` (state_store.py) est la seule
-  `@property` du Store sans son propre `with self._mutex:` (délègue à
-  `self.lap_dist`, qui l'a — pas de bug fonctionnel, juste une incohérence de
-  style).
-- `DeltaEngine.update_scoring()`/`update_physics()` (chemins paquet brut) gardés
-  comme filet de sécurité pour d'éventuels appelants directs restants. À
-  supprimer une fois confirmé qu'aucun test/appelant n'en a plus besoin.
-- Les ~40 `@property` scalaires ad hoc du Store (`speed_kmh`, `gear`, `fuel`,
-  …) gardées pour compat interne, mais plus aucun consommateur externe
-  (Engines/Plugins) n'est censé y toucher directement — tout doit passer par
-  `TelemetryView`. À supprimer une fois ce sevrage confirmé par grep.
-- Renommage `update_*` → `merge_*` sur le Store (discuté, pas fait — jugé trop
-  invasif pour le gain, cf. décision prise pendant la refonte).
+### T4. Nettoyages mineurs — traité
+
+- ✅ `TelemetryStateStore.player_lap_dist` enveloppe maintenant `self.lap_dist`
+  dans son propre `with self._mutex:` (`self._mutex` est un `RLock`, pas de
+  risque de deadlock) — cohérent avec les ~44 autres `@property` du Store.
+- **Le diagnostic initial était faux** : `DeltaEngine.update_scoring()`/
+  `update_physics()` (chemins paquet brut/scalaires) ne sont **pas** un filet
+  de sécurité mort — ce sont l'implémentation réelle sous-jacente.
+  `ReferenceLapManager.update_physics_from_view()`/`update_scoring()`
+  délèguent directement à eux, et des dizaines de tests (`test_delta_engine.py`,
+  `test_sector_*`, …) les appellent en direct. Gardés, inchangés.
+  **En creusant, la vraie trouvaille** : `DeltaEngine.update_physics_from_view()`
+  (`simpulse/core/telemetry/delta_engine.py`, à ne pas confondre avec
+  `ReferenceLapManager.update_physics_from_view()` qui fait un travail différent
+  et complet — construction du `LapDeltaPacket`, émission de signaux) n'avait
+  **aucun appelant, ni en production ni dans un test** — un doublon mort issu
+  d'une passe de refonte antérieure. Supprimé, avec l'import `TelemetryView`
+  devenu inutile dans ce fichier.
+- **Diagnostic initial également faux** pour les ~40 `@property` scalaires ad
+  hoc du Store (`speed_kmh`, `gear`, `fuel`, `wheels_on_track`, …) : elles ont
+  bien des consommateurs externes légitimes — `TelemetryView.from_store()` (qui
+  les lit une à une pour construire la View) et `EngineerContext` dans
+  `context.py`, qui les ré-expose une à une (`self.state_store.speed_kmh`, etc.)
+  via son propre `state_store` property, le point d'entrée Core sanctionné
+  établi plus haut. Vérifié par grep sur tous les sous-plugins race_engineer et
+  les autres builtin_plugins : aucun ne lit une propriété scalaire du Store
+  directement, tous passent par `context.<propriété>`/`view.<champ>`. Rien à
+  supprimer — le sevrage annoncé par le TODO était déjà fait, juste jamais
+  vérifié/acté dans ce document.
+- Renommage `update_*` → `merge_*` sur le Store : toujours pas fait, toujours
+  jugé trop invasif pour le gain (décision inchangée).
+
+337/337 tests toujours verts après ces changements.
 
 ---
 

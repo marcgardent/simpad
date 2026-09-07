@@ -818,7 +818,8 @@ class TelemetryStateStore:
     @property
     def player_lap_dist(self) -> float:
         """Authoritative high-frequency player lap distance in meters from Delta dead-reckoning."""
-        return self.lap_dist
+        with self._mutex:
+            return self.lap_dist
 
     @property
     def live_delta(self) -> float:
