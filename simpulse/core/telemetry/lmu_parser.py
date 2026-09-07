@@ -65,7 +65,7 @@ class TelemetryData:
     filtered_throttle: Optional[float] = None
     filtered_brake: Optional[float] = None
     unfiltered_steering: float = 0.0
-    in_realtime: bool = True  # TODO SRP: garage/pause state machine, re-derived independently (different heuristic each time) in process_telemetry, process_compact_scoring, process_full_scoring, process_system_event and the ExtendedState branch of process_packet — see _last_in_realtime/_in_garage_trap
+    in_realtime: bool = True  # sourced from TelemetryStateStore's PresenceTracker (single fused source); this default is only used by the from_wheel_velocities fallback path
     gear: int = 0
     fuel: float = 0.0
     total_laps: int = 0
@@ -127,13 +127,6 @@ class LMUParser:
     Standard binary SIMP UDP packet decoder (isiMotor-RawUDP / Le Mans Ultimate).
     """
 
-    # TODO SRP: garage/pause detection state machine — 5 independent, slightly different
-    # heuristics recompute these two flags (process_telemetry via speed thresholds,
-    # process_compact_scoring via in_garage_stall+speed, process_full_scoring via
-    # game_phase+speed, process_system_event via event_id, ExtendedState branch of
-    # process_packet via in_realtime_fc+speed). One state, five divergent derivations.
-    _last_in_realtime: bool = True
-    _in_garage_trap: bool = False
 
     # Unique DeltaEngine instance
     _delta_engine: DeltaEngine = DeltaEngine()
@@ -295,29 +288,19 @@ class LMUParser:
         else:
             cls._last_track_cut_state = "green"
 
-        # TODO SRP: garage/pause detection (1 of 5 independent heuristics for the same
-        # in_realtime/_in_garage_trap state — see class docstring TODO above).
         speed = float(telem.speed_mps)
-        is_strictly_in_garage_stall = False
-        if cls._last_compact_scoring and cls._last_compact_scoring.in_garage_stall:
-            is_strictly_in_garage_stall = True
-        elif cls._last_full_scoring and cls._last_full_scoring.player_vehicle and cls._last_full_scoring.player_vehicle.in_garage_stall:
-            is_strictly_in_garage_stall = True
-        elif cls._last_full_scoring and cls._last_full_scoring.game_phase == 0 and speed < 1.0:
-            is_strictly_in_garage_stall = True
 
-        if is_strictly_in_garage_stall:
-            cls._in_garage_trap = True
-            cls._last_in_realtime = False
-        elif speed >= 3.0:
-            # Active on-track detection from 10.8 km/h
-            cls._in_garage_trap = False
-            cls._last_in_realtime = True
-        elif cls._in_garage_trap:
-            # Maintain pause/garage state if completely stopped after explicit exit
-            cls._last_in_realtime = False
-        else:
-            cls._last_in_realtime = True
+        # Presence (in_realtime/in_garage) is fused once by TelemetryStateStore's
+        # PresenceTracker (simpulse_sdk/models/presence.py) from every relevant
+        # channel — this parser neither computes nor caches it. In production
+        # PluginManager.dispatch_packet already fed this exact TelemInfo to the Store
+        # before routing here; this call is redundant there but load-bearing for
+        # callers that invoke process_telemetry() directly, bypassing TelemetryBus
+        # (must run before _build_telemetry_snapshot() below, not after).
+        try:
+            TelemetryStateStore.get_instance().update_telemetry(telem, timestamp=time.time())
+        except Exception:
+            pass
 
         snap = cls._build_telemetry_snapshot()
         try:
@@ -328,12 +311,13 @@ class LMUParser:
                 raw_lgv=cls._last_lgv,
             )
             from .overlay_anomaly_logger import OverlayAnomalyLogger
+            in_realtime = TelemetryStateStore.get_instance().in_realtime
             OverlayAnomalyLogger.get_instance().check_telemetry_anomaly(
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
                 gear=cls._last_gear,
-                in_realtime=cls._last_in_realtime,
+                in_realtime=in_realtime,
                 source="LMUParser.TelemInfo",
             )
             from .track_limits_logger import TrackLimitsLogger
@@ -350,7 +334,7 @@ class LMUParser:
                 speed_kmh=speed * 3.6,
                 throttle_pct=cls._last_unfiltered_throttle * 100.0,
                 brake_pct=cls._last_unfiltered_brake * 100.0,
-                raw_data_summary=f"lap_num={telem.lap_number} gear={telem.gear} flap_legal={telem.rear_flap_legal_status} in_rt={cls._last_in_realtime}",
+                raw_data_summary=f"lap_num={telem.lap_number} gear={telem.gear} flap_legal={telem.rear_flap_legal_status} in_rt={in_realtime}",
             )
             TrackLimitsLogger.get_instance().log_surface_event(
                 source="TelemInfo(120Hz)",
@@ -365,7 +349,6 @@ class LMUParser:
                 sector=cls._delta_engine.current_sector,
                 lap_flag=cls._last_lap_flag,
             )
-            TelemetryStateStore.get_instance().update_telemetry(telem, timestamp=time.time())
         except Exception:
             pass
         return snap
@@ -374,12 +357,10 @@ class LMUParser:
     def process_compact_scoring(cls, scoring: CompactScoring) -> TelemetryData:
         """Processes a binary CompactScoring packet (SIMP Type 2)."""
         cls._last_compact_scoring = scoring
-        # TODO SRP: garage/pause detection (2 of 5 independent heuristics for the same
-        # in_realtime/_in_garage_trap state — see class docstring TODO above).
-        current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
-        is_in_garage = bool(scoring.in_garage_stall) or (not bool(scoring.in_realtime) and current_speed < 3.0)
-        cls._in_garage_trap = is_in_garage
-        cls._last_in_realtime = not is_in_garage
+        # Presence: fused once by TelemetryStateStore's PresenceTracker from this
+        # exact packet — TelemetryBus already routed it there before LMUParser ever
+        # runs; this parser does not re-derive it (see process_telemetry's NOTE and
+        # simpulse_sdk/models/presence.py).
 
         if 0 < scoring.max_laps < 1000:
             cls._last_total_laps = int(scoring.max_laps)
@@ -452,14 +433,9 @@ class LMUParser:
         cls._last_full_scoring = session
         player_veh = session.player_vehicle
 
-        # TODO SRP: garage/pause detection (3 of 5 independent heuristics for the same
-        # in_realtime/_in_garage_trap state — see class docstring TODO above).
+        # Presence: fused once by TelemetryStateStore's PresenceTracker from this
+        # exact packet — see process_compact_scoring's NOTE above.
         current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
-        is_in_garage = False
-        if session.game_phase == 0 and current_speed < 3.0:
-            is_in_garage = True
-        elif not session.in_realtime and current_speed < 3.0:
-            is_in_garage = True
 
         if session.lmu:
             cls._last_steps_per_point = int(session.lmu.track_limits_steps_per_point)
@@ -467,8 +443,6 @@ class LMUParser:
 
         if player_veh and (player_veh.is_player or player_veh.control == 0):
             cls._player_slot_id = int(player_veh.id)
-            if player_veh.in_garage_stall:
-                is_in_garage = True
 
             cls._last_laps_completed = int(player_veh.total_laps)
             cls._last_lap_flag = int(player_veh.count_lap_flag)
@@ -536,9 +510,6 @@ class LMUParser:
             except Exception:
                 pass
 
-        cls._in_garage_trap = is_in_garage
-        cls._last_in_realtime = not is_in_garage
-
         if 0 < session.max_laps < 1000:
             cls._last_total_laps = int(session.max_laps)
 
@@ -553,25 +524,19 @@ class LMUParser:
     @classmethod
     def process_system_event(cls, event: SystemEvent) -> TelemetryData:
         """Processes a session / cockpit SystemEvent (SIMP Type 3)."""
-        # TODO SRP: garage/pause detection (4 of 5 independent heuristics for the same
-        # in_realtime/_in_garage_trap state — see class docstring TODO above).
-        prev_rt = cls._last_in_realtime
-        if event.event_id in (1, 3):
-            cls._in_garage_trap = False
-            cls._last_in_realtime = True
-        elif event.event_id in (2, 4):
-            cls._in_garage_trap = True
-            cls._last_in_realtime = False
-
-        if prev_rt != cls._last_in_realtime:
-            try:
-                from .overlay_anomaly_logger import OverlayAnomalyLogger
-                OverlayAnomalyLogger.get_instance().log_event(
-                    "SYSTEM_EVENT_REALTIME_TOGGLE",
-                    f"SystemEvent(event_id={event.event_id}) toggled in_realtime from {prev_rt} to {cls._last_in_realtime}"
-                )
-            except Exception:
-                pass
+        # Presence: fused once by TelemetryStateStore's PresenceTracker from this
+        # exact event — see process_compact_scoring's NOTE above. In production the
+        # Store has already ingested this event by the time LMUParser sees it, so
+        # there is no reliable "before" value to diff here any more — log the
+        # resulting state, informational only, not a claimed before/after toggle.
+        try:
+            from .overlay_anomaly_logger import OverlayAnomalyLogger
+            OverlayAnomalyLogger.get_instance().log_event(
+                "SYSTEM_EVENT_REALTIME",
+                f"SystemEvent(event_id={event.event_id}) -> in_realtime={TelemetryStateStore.get_instance().in_realtime}"
+            )
+        except Exception:
+            pass
 
         return cls._build_telemetry_snapshot()
 
@@ -591,17 +556,8 @@ class LMUParser:
             return cls.process_system_event(pkt)
         elif isinstance(pkt, ExtendedState):
             cls._last_extended_state = pkt
-            # TODO SRP: garage/pause detection (5 of 5 independent heuristics for the
-            # same in_realtime/_in_garage_trap state — see class docstring TODO above).
-            if hasattr(pkt, "in_realtime_fc"):
-                is_in_realtime = bool(pkt.in_realtime_fc)
-                current_speed = float(cls._last_telem_info.speed_mps) if cls._last_telem_info else 0.0
-                if not is_in_realtime and current_speed < 1.0:
-                    cls._in_garage_trap = True
-                    cls._last_in_realtime = False
-                elif current_speed >= 1.0:
-                    cls._in_garage_trap = False
-                    cls._last_in_realtime = True
+            # Presence: fused once by TelemetryStateStore's PresenceTracker from this
+            # exact packet — see process_compact_scoring's NOTE above.
             return cls._build_telemetry_snapshot()
         elif isinstance(pkt, WeatherControl):
             cls._last_weather = pkt
@@ -631,7 +587,7 @@ class LMUParser:
             filtered_throttle=cls._last_filtered_throttle,
             filtered_brake=cls._last_filtered_brake,
             unfiltered_steering=cls._last_unfiltered_steering,
-            in_realtime=cls._last_in_realtime,
+            in_realtime=TelemetryStateStore.get_instance().in_realtime,
             gear=cls._last_gear,
             fuel=cls._last_fuel,
             total_laps=cls._last_total_laps,

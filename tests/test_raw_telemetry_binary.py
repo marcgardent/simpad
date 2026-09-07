@@ -9,6 +9,7 @@ from simpulse.core.telemetry.sensors import VehicleSensors
 from simpulse.core.telemetry.lmu_parser import LMUParser, TelemetryData
 from simpulse.core.telemetry.delta_engine import DeltaEngine
 from simpulse.core.telemetry.udp_server import UDPServer
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.builtin_plugins.race_engineer.context import EngineerContext
 
 from isimotor_rawudp_client import (
@@ -23,6 +24,13 @@ from isimotor_rawudp_client import (
     HWControlCommand,
     WeatherControlCommand,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_state_store():
+    TelemetryStateStore.get_instance().reset()
+    yield
+    TelemetryStateStore.get_instance().reset()
 
 
 def _create_mock_telem_wheel(
@@ -365,24 +373,28 @@ def test_lmu_parser_process_telemetry():
 def test_lmu_parser_process_compact_scoring():
     """Vérifie le traitement d'un paquet CompactScoring par LMUParser."""
     scoring = _create_mock_compact_scoring()
+    # in_realtime is fused by TelemetryStateStore's PresenceTracker from this exact
+    # packet — feed the Store first, mirroring PluginManager.dispatch_packet's order.
+    TelemetryStateStore.get_instance().update_compact_scoring(scoring, timestamp=time.time())
     snap = LMUParser.process_compact_scoring(scoring)
 
     assert snap is not None
     assert snap.total_laps == 25
     assert snap.laps_completed == 5
-    assert snap.in_realtime is True
+    assert TelemetryStateStore.get_instance().in_realtime is True
     assert LMUParser.get_latest_compact_scoring() is scoring
 
 
 def test_lmu_parser_process_full_scoring():
     """Vérifie le traitement d'une session FullScoringSession multi-voitures."""
     session = _create_mock_full_scoring()
+    TelemetryStateStore.get_instance().update_full_scoring(session, timestamp=time.time())
     snap = LMUParser.process_full_scoring(session)
 
     assert snap is not None
     assert snap.total_laps == 25
     assert snap.laps_completed == 8
-    assert snap.in_realtime is True
+    assert TelemetryStateStore.get_instance().in_realtime is True
     assert LMUParser.get_latest_full_scoring() is session
     assert LMUParser.get_latest_scoring() is session
 
@@ -390,12 +402,16 @@ def test_lmu_parser_process_full_scoring():
 def test_lmu_parser_system_events():
     """Vérifie la mise à jour de l'état temps-réel via SystemEvent."""
     enter_event = SystemEvent(event_id=1)  # Enter realtime
+    TelemetryStateStore.get_instance().update_system_events(enter_event, timestamp=time.time())
     snap = LMUParser.process_system_event(enter_event)
-    assert snap.in_realtime is True
+    assert TelemetryStateStore.get_instance().in_realtime is True
+    assert snap is not None
 
     exit_event = SystemEvent(event_id=2)  # Exit realtime
+    TelemetryStateStore.get_instance().update_system_events(exit_event, timestamp=time.time())
     snap_exit = LMUParser.process_system_event(exit_event)
-    assert snap_exit.in_realtime is False
+    assert TelemetryStateStore.get_instance().in_realtime is False
+    assert snap_exit is not None
 
 
 def test_delta_engine_with_sdk_models():
@@ -471,14 +487,20 @@ def test_lmu_parser_binary_simp_packet_decode():
     """Vérifie le décodage binaire d'un paquet SIMP via LMUParser.parse."""
     from isimotor_rawudp_client.constants import PKT_TYPE_SYSTEM_EVENT
     from isimotor_rawudp_client.decoder.header import encode_header
+    from isimotor_rawudp_client import SystemEvent
 
     hdr = encode_header(packet_type=PKT_TYPE_SYSTEM_EVENT, payload_size=6)
     payload = bytes([1, 0, 0, 0, 0, 0])  # event_id=1 (EnterRealtime)
     data = hdr + payload
 
+    # in_realtime is fused by TelemetryStateStore's PresenceTracker, fed in
+    # production via PluginManager.dispatch_packet — parse() only hands LMUParser
+    # the raw bytes, so feed the equivalent decoded event explicitly here to make
+    # the dependency visible rather than accidental (see migration plan).
+    TelemetryStateStore.get_instance().update_system_events(SystemEvent(event_id=1), timestamp=time.time())
     snap = LMUParser.parse(data)
     assert snap is not None
-    assert snap.in_realtime is True
+    assert TelemetryStateStore.get_instance().in_realtime is True
 
 
 def test_udp_server_binary_simp_socket_transfer():
@@ -512,8 +534,9 @@ def test_lmu_parser_auto_realtime_recovery():
     from isimotor_rawudp_client import SystemEvent
 
     # Sortie vers les menus / garage
+    TelemetryStateStore.get_instance().update_system_events(SystemEvent(event_id=2), timestamp=time.time())
     LMUParser.process_system_event(SystemEvent(event_id=2))
-    assert LMUParser._last_in_realtime is False
+    assert TelemetryStateStore.get_instance().in_realtime is False
 
     # Arrivée de télémétrie de roulage active (vitesse 40 m/s, rapport 3, accélérateur 0.8)
     telem = _create_mock_telem_info(speed_mps=40.0)
@@ -535,9 +558,10 @@ def test_garage_stall_preserves_inactive_realtime():
         sector=1,
         total_laps=5,
     )
+    TelemetryStateStore.get_instance().update_compact_scoring(scoring, timestamp=time.time())
     snap_sc = LMUParser.process_compact_scoring(scoring)
     assert snap_sc.in_realtime is False
-    assert LMUParser._in_garage_trap is True
+    assert TelemetryStateStore.get_instance().in_garage is True
 
     # Réception d'un paquet TelemInfo dans le garage (vitesse 0, boîte en 1ère vitesse, gaz au repos)
     telem_garage = _create_mock_telem_info(speed_mps=0.0)

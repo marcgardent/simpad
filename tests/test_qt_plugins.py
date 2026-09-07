@@ -553,6 +553,12 @@ def test_telemetry_bus_full_scoring_garage_integration(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
     bus = TelemetryBus()
+    # Wire the Store: in_realtime is now fused by TelemetryStateStore's
+    # PresenceTracker, fed via PluginManager.dispatch_packet on packet_received —
+    # without this connection the Store (and hence LMUParser's presence reads)
+    # never sees these packets. Pre-existing gap surfaced by that migration; every
+    # sibling test in this file that needs correct in_realtime already wires this.
+    pm.connect_telemetry_bus(bus)
     osm = OverlayStateMachine(display_mode=OverlayDisplayMode.AUTO)
     bus.telemetry_updated.connect(osm.update_telemetry)
 

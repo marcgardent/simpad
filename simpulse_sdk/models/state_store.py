@@ -23,6 +23,7 @@ from isimotor_rawudp_client import (
 )
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
+from .presence import PresenceTracker
 
 T = TypeVar("T")
 
@@ -101,6 +102,12 @@ class TelemetryStateStore:
         self.timing: BaseTimingState = BaseTimingState()
         self.grid: Optional[FullGridScoringState] = None
 
+        # Dedicated fusion of TelemInfo/CompactScoring/FullScoringSession/
+        # SystemEvent/ExtendedState into one hysteresis-guarded presence state (see
+        # in_realtime/in_garage properties below, which delegate to it). Replaces
+        # LMUParser's former 5 independent, mutually-divergent heuristics.
+        self._presence: PresenceTracker = PresenceTracker()
+
         # Persistent state memory across packet boundaries
         self._last_wheels_on_track: int = 4
         self._last_is_on_track: bool = True
@@ -123,8 +130,6 @@ class TelemetryStateStore:
         self._last_speed_kmh: float = 0.0
         self._last_throttle_pct: float = 0.0
         self._last_brake_pct: float = 0.0
-        self._last_in_realtime: bool = True
-        self._last_in_garage: bool = False
         self._last_gear: int = 0
         self._last_engine_rpm: float = 0.0
         self._last_engine_max_rpm: float = 7500.0
@@ -211,6 +216,7 @@ class TelemetryStateStore:
             self.delta = PacketSlot()
             self.timing = BaseTimingState()
             self.grid = None
+            self._presence = PresenceTracker()
 
             self._last_wheels_on_track = 4
             self._last_is_on_track = True
@@ -233,8 +239,6 @@ class TelemetryStateStore:
             self._last_speed_kmh = 0.0
             self._last_throttle_pct = 0.0
             self._last_brake_pct = 0.0
-            self._last_in_realtime = True
-            self._last_in_garage = False
             self._last_gear = 0
             self._last_engine_rpm = 0.0
             self._last_engine_max_rpm = 7500.0
@@ -255,7 +259,7 @@ class TelemetryStateStore:
         Internal transition detector for lap validity flag.
         Dispatches edge triggers and updates internal timing status.
         """
-        is_in_garage_or_pause = self._last_in_garage or not self._last_in_realtime
+        is_in_garage_or_pause = self._presence.in_garage or not self._presence.in_realtime
 
         # In garage / pause: stay silent, update flag without triggering transitions
         if is_in_garage_or_pause:
@@ -316,6 +320,8 @@ class TelemetryStateStore:
         with self._mutex:
             self.telemetry.update(data, timestamp, raw_bytes_len)
 
+            self._presence.on_telemetry(getattr(data, "speed_mps", 0.0))
+
             # Extract wheels and surface types
             wheels = getattr(data, "wheels", None)
             if wheels and len(wheels) >= 4:
@@ -359,8 +365,7 @@ class TelemetryStateStore:
         with self._mutex:
             self.compact_scoring.update(data, timestamp, raw_bytes_len)
 
-            self._last_in_realtime = data.in_realtime
-            self._last_in_garage = data.in_garage_stall
+            self._presence.on_compact_scoring(data.in_garage_stall, data.in_realtime)
 
             self._process_lap_validity(data.count_lap_flag, timestamp)
 
@@ -441,8 +446,14 @@ class TelemetryStateStore:
                         player_veh = cand
                         break
             norm_sec = 1
+            # Must run unconditionally (even without a resolved player vehicle this
+            # tick) — mirrors the former LMUParser heuristic's unconditional write.
+            self._presence.on_full_scoring(
+                data.game_phase,
+                data.in_realtime,
+                player_veh.in_garage_stall if player_veh is not None else False,
+            )
             if player_veh is not None:
-                self._last_in_garage = player_veh.in_garage_stall
                 self._last_penalties = player_veh.num_penalties
                 self._last_total_laps = player_veh.total_laps
                 self._last_lap_dist = player_veh.lap_dist
@@ -550,6 +561,7 @@ class TelemetryStateStore:
         """Ingests system session / cockpit event."""
         with self._mutex:
             self.system.update(data, timestamp, raw_bytes_len)
+            self._presence.on_system_event(data.event_id)
 
     def update_system_events(self, data: SystemEvent, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests system session / cockpit event (plural alias)."""
@@ -564,6 +576,9 @@ class TelemetryStateStore:
         """Ingests extended vehicle state (lights, wipers, ignition, flags)."""
         with self._mutex:
             self.extended_state.update(data, timestamp, raw_bytes_len)
+            in_realtime_fc = getattr(data, "in_realtime_fc", None)
+            if in_realtime_fc is not None:
+                self._presence.on_extended_state(bool(in_realtime_fc))
 
     def update_force_feedback(self, data: ForceFeedback, timestamp: float, raw_bytes_len: int = 0) -> None:
         """Ingests force feedback packet."""
@@ -761,15 +776,17 @@ class TelemetryStateStore:
 
     @property
     def in_realtime(self) -> bool:
-        """True if game is running in realtime (not paused / in garage)."""
+        """True if game is running in realtime (not paused / in garage). Delegates
+        to the PresenceTracker fusion of TelemInfo/CompactScoring/FullScoringSession/
+        SystemEvent/ExtendedState — never recomputed here."""
         with self._mutex:
-            return self._last_in_realtime
+            return self._presence.in_realtime
 
     @property
     def in_garage(self) -> bool:
-        """True if player is in garage."""
+        """True if player is in garage. Delegates to PresenceTracker — see in_realtime."""
         with self._mutex:
-            return self._last_in_garage
+            return self._presence.in_garage
 
     @property
     def gear(self) -> int:

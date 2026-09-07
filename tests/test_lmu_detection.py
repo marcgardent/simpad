@@ -3,12 +3,22 @@ Tests for LMU InGame detection and pit/garage menu trap prevention.
 """
 
 import json
+import time
+import pytest
 from pathlib import Path
 from simpulse.core.telemetry.lmu_parser import LMUParser, TelemetryData
+from simpulse.core.telemetry.state_store import TelemetryStateStore
 from simpulse.core.utils.window_utils import is_lmu_foreground, get_foreground_window_title, get_foreground_process_name
 
 
 from isimotor_rawudp_client import FullScoringSession, VehicleScoring, CompactScoring
+
+
+@pytest.fixture(autouse=True)
+def reset_state_store():
+    TelemetryStateStore.get_instance().reset()
+    yield
+    TelemetryStateStore.get_instance().reset()
 
 
 def test_lmu_scoring_garage_menu_trap():
@@ -22,9 +32,12 @@ def test_lmu_scoring_garage_menu_trap():
         in_pits=True,
     )
     session = FullScoringSession(in_realtime=True, vehicles=[player])
+    # in_realtime is fused by TelemetryStateStore's PresenceTracker from this exact
+    # packet — feed the Store first, mirroring PluginManager.dispatch_packet's order.
+    TelemetryStateStore.get_instance().update_full_scoring(session, timestamp=time.time())
     res = LMUParser.process_full_scoring(session)
     assert res is not None
-    assert res.in_realtime is False, "Scoring packet in garage stall must evaluate in_realtime as False"
+    assert TelemetryStateStore.get_instance().in_realtime is False, "Scoring packet in garage stall must evaluate in_realtime as False"
 
 
 def test_lmu_scoring_game_phase_garage():
@@ -38,27 +51,30 @@ def test_lmu_scoring_game_phase_garage():
         in_pits=False,
     )
     session = FullScoringSession(game_phase=0, in_realtime=True, vehicles=[player])
+    TelemetryStateStore.get_instance().update_full_scoring(session, timestamp=time.time())
     res = LMUParser.process_full_scoring(session)
     assert res is not None
-    assert res.in_realtime is False, "game_phase=0 must evaluate in_realtime as False (Garage)"
+    assert TelemetryStateStore.get_instance().in_realtime is False, "game_phase=0 must evaluate in_realtime as False (Garage)"
 
 
 def test_lmu_extended_state_garage_monitor():
     """Verify that ExtendedState with in_realtime_fc=False evaluates in_realtime as False."""
     from isimotor_rawudp_client import ExtendedState
     ext = ExtendedState(in_realtime_fc=False)
+    TelemetryStateStore.get_instance().update_extended_state(ext, timestamp=time.time())
     res = LMUParser.process_packet(ext)
     assert res is not None
-    assert res.in_realtime is False
+    assert TelemetryStateStore.get_instance().in_realtime is False
 
 
 def test_lmu_system_event_exit_realtime():
     """Verify that SystemEvent event_id=2 (ExitRealtime) evaluates in_realtime as False."""
     from isimotor_rawudp_client import SystemEvent
     evt = SystemEvent(event_id=2)
+    TelemetryStateStore.get_instance().update_system_events(evt, timestamp=time.time())
     res = LMUParser.process_system_event(evt)
     assert res is not None
-    assert res.in_realtime is False
+    assert TelemetryStateStore.get_instance().in_realtime is False
 
 
 def test_lmu_sector3_detection():

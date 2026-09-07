@@ -260,6 +260,7 @@ class TelemetryBus(QObject):
             if override_sensors is not None:
                 sensors = override_sensors
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
+                self._apply_presence_fields(sensors)
                 self.process_frame(sensors, delta_pkt)
             elif isinstance(data, VehicleSensors):
                 self.process_frame(data, delta_pkt)
@@ -267,6 +268,7 @@ class TelemetryBus(QObject):
                 snap = LMUParser.process_packet(data)
                 sensors = snap.to_sensors() if snap is not None else self._latest_sensors
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
+                self._apply_presence_fields(sensors)
                 self.process_frame(sensors, delta_pkt)
 
     def _apply_delta_fields(self, sensors: VehicleSensors, delta_pkt: Optional[LapDeltaPacket]) -> LapDeltaPacket:
@@ -300,6 +302,16 @@ class TelemetryBus(QObject):
         sensors.lap_flag = effective.lap_flag
         sensors.current_sector = effective.current_sector
         return effective
+
+    def _apply_presence_fields(self, sensors: VehicleSensors) -> None:
+        """Stamps sensors.in_realtime from the single authoritative
+        TelemetryStateStore (backed by PresenceTracker) — same centralization
+        pattern as _apply_delta_fields, but sourced from the Store, not
+        ReferenceLapManager/DeltaEngine. Defensive: LMUParser's own TelemetryData
+        is already correct after the presence migration, but this is the only
+        place that also covers the override_sensors path (mock mode).
+        """
+        sensors.in_realtime = TelemetryStateStore.get_instance().in_realtime
 
     def process_frame(self, sensors: VehicleSensors, delta_packet: Optional[LapDeltaPacket] = None) -> None:
         """Handle incoming high-level telemetry frame and broadcast to observers."""
