@@ -115,10 +115,11 @@ class LapDeltaPacket:
     expected_sector3_is_pr: bool = False
     expected_lap_is_pr: bool = False
     # Reference lap times for display: mine this session, best-of-session (any
-    # other car), and my all-time best.
+    # other car). "My all-time best" is NOT here — it's a static value read
+    # from a JSON file, not live telemetry; see VehicleSensors.reference_profile
+    # (pushed only when it actually changes, not recomputed per packet).
     my_session_best_lap_time_str: str = "--:--.---"
     session_best_lap_time_str: str = "--:--.---"
-    my_all_time_best_lap_time_str: str = "--:--.---"
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
     last_lap_status: LapColorStatus = LapColorStatus.DEFAULT

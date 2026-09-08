@@ -178,7 +178,7 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                 pr_font.setPixelSize(max(8, int(round(9.0 * scale_y))))
                 pr_font.setBold(True)
                 painter.setFont(pr_font)
-                painter.setPen(QPen(QColor(255, 105, 180, 255)))
+                painter.setPen(QPen(QColor(255, 255, 255, 255)))
                 painter.drawText(
                     QRectF(s_x, sector_y - (11.0 * scale_y), sector_w, 10.0 * scale_y),
                     Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,

@@ -158,6 +158,16 @@ class DeltaEngine:
         self._ref_lap_time: float = 999999.0
         self._all_time_best_lap_time: float = 999999.0
         self._session_best_lap_time: float = 999999.0
+        # The game's OWN reported best_lap_time for the player this session
+        # (mBestLapTime/bestLapTime on every scoring packet) — authoritative
+        # and always available once a timed lap is set, unlike
+        # _session_best_lap_time above which only updates once OUR OWN engine
+        # has successfully captured a full spatial recording of that lap
+        # (>=10 samples, coverage checks, etc.). "MY BEST" display and the
+        # green/yellow session-scoped colour logic should never go blank just
+        # because our own capture pipeline missed a lap the game already
+        # knows about — see _session_lap_bound.
+        self._game_session_best_lap_time: float = 999999.0
         # Paddock bests (OTHER cars, this session).  ``lap`` and cumulative split
         # clocks are recorded from Full/dict scoring packets that list the rivals.
         # S2 here is the cumulative time at loop 2 (comparable to cur_sector2).
@@ -190,6 +200,14 @@ class DeltaEngine:
         self._last_scoring_time_into: float = 0.0
         self._last_scoring_timestamp: float = 0.0
         self._last_lap_start_et: float = 0.0
+        # Self-tracked fallback lap-start ET, refreshed on every lap crossing (see
+        # _handle_lap_transition). CompactScoring (always-on 10Hz channel) never
+        # carries lap_start_et/time_into_lap -- those are FullScoringSession-only
+        # fields -- so without this fallback, a session running on CompactScoring
+        # alone (FullScoringSession delayed/dropped/failing to resolve the player
+        # vehicle, e.g. a full-grid multiplayer race) would compute time_into=0.0
+        # forever: no lap samples collected, no live delta, no expected status.
+        self._local_lap_start_et: float = 0.0
         self._last_checkpoint_idx: int = -1
 
         # Current-sector tracking, S1/S2 checkpoint capture, HUD split display and
@@ -387,19 +405,22 @@ class DeltaEngine:
 
     @property
     def reference_mode(self) -> DeltaReferenceMode:
-        """Returns active reference mode."""
+        """Historical setting, kept for config/API compatibility. No longer
+        selects which profile drives the live delta/HUD — that's always the
+        All-Time Best profile now (see _apply_active_profile). Not read by
+        anything in this engine any more."""
         return self._ref_mode
 
     @reference_mode.setter
     def reference_mode(self, mode: DeltaReferenceMode) -> None:
-        """Modifies reference mode and applies corresponding profile."""
+        """Stores the value only (config/API compatibility) — does not change
+        the active profile. See the ``reference_mode`` getter docstring."""
         if isinstance(mode, str):
             try:
                 mode = DeltaReferenceMode(mode)
             except ValueError:
                 mode = DeltaReferenceMode.ALL_TIME_BEST
         self._ref_mode = mode
-        self._apply_active_profile()
 
     @property
     def freeze_duration(self) -> float:
@@ -459,17 +480,18 @@ class DeltaEngine:
         self._apply_active_profile()
 
     def _apply_active_profile(self) -> None:
-        """Applies reference profile according to selected mode."""
-        target_prof = None
+        """Applies the reference profile driving the live delta/HUD colours.
 
-        if self._ref_mode == DeltaReferenceMode.LAST_LAP:
-            target_prof = self._last_lap_profile
-        elif self._ref_mode == DeltaReferenceMode.STINT_BEST:
-            target_prof = self._stint_best_profile
-        elif self._ref_mode == DeltaReferenceMode.SESSION_BEST:
-            target_prof = self._session_best_profile
-        elif self._ref_mode == DeltaReferenceMode.ALL_TIME_BEST:
-            target_prof = self._all_time_best_profile
+        Always the All-Time Best profile — NOT gated by ``reference_mode``.
+        Letting the user pick which profile drives the spatial delta curve
+        (session/stint/last-lap) meant the HUD could silently show "no
+        reference" for an entire session because a non-all-time mode has
+        nothing recorded yet (that's the exact confusion this caused). Session
+        best / paddock best still exist as SCALAR colour baselines (see
+        sector_colors.expected_status) — that's a separate, always-on
+        comparison, unrelated to which spatial profile computes live_delta.
+        """
+        target_prof = self._all_time_best_profile
 
         self._current_profile = target_prof
         if target_prof is not None and target_prof.t_grid and len(target_prof.t_grid) > 1:
@@ -515,12 +537,18 @@ class DeltaEngine:
         lap_flag: int,
         in_garage: bool,
         in_pits: bool,
+        current_et: float = 0.0,
     ) -> None:
         """SLAP Helper: Finalizes previous lap and resets state for new lap."""
         # Initialization on first received packet
         if self._last_laps_completed < 0:
             self._last_laps_completed = laps_comp
             self._current_lap_samples = []
+            # Best-effort local lap-start reference for the CompactScoring-only
+            # fallback (see _local_lap_start_et) — we join mid-lap so this slightly
+            # undercounts time_into until the next clean line crossing corrects it.
+            if current_et > 0.0:
+                self._local_lap_start_et = current_et
             return
 
         # Case 1: Session reset / Restart (mTotalLaps returns to 0 or decreases)
@@ -531,6 +559,8 @@ class DeltaEngine:
             self._current_lap_samples = []
             self._sectors.reset_lap_capture(clear_primed=True)
             self._last_laps_completed = laps_comp
+            if current_et > 0.0:
+                self._local_lap_start_et = current_et
             return
 
         # Case 2: Crossing start/finish line (new completed lap)
@@ -540,22 +570,32 @@ class DeltaEngine:
                 f"last_lap_time={last_lap_time:.3f}s, flag={lap_flag}, in_pits={in_pits}, in_garage={in_garage}"
             )
 
-            # Evaluation of color status for completed lap
+            # Evaluation of color status for completed lap — delegates to the same
+            # shared rule as the live "expected" projection and the sector splits
+            # (sector_colors.expected_status): purple = beat the paddock (other
+            # cars) this session, green = beat my own session best, yellow = valid
+            # but no improvement. This used to be reimplemented inline here with a
+            # DIFFERENT rule (purple on ANY personal-best improvement) that never
+            # looked at paddock data at all, so beating your own session best —
+            # which should be green — always won the purple branch first and green/
+            # yellow were effectively dead code for the completed-lap badge.
             prev_session_best = self._session_best_lap_time
             prev_all_time_best = self._all_time_best_lap_time
-            prev_ref_time = self._ref_lap_time
+            prev_paddock_best = self._paddock_best_lap if self._paddock_known else None
 
             if lap_flag != 2 or in_pits or in_garage:
                 lap_status = LapColorStatus.INVALID
             elif last_lap_time > 0.0:
-                if last_lap_time <= (prev_session_best + 0.001) or last_lap_time <= (prev_all_time_best + 0.001):
-                    lap_status = LapColorStatus.PURPLE
-                elif prev_ref_time < 999900.0 and last_lap_time < prev_ref_time:
-                    lap_status = LapColorStatus.GREEN
-                elif prev_ref_time < 999900.0 and last_lap_time >= prev_ref_time:
-                    lap_status = LapColorStatus.YELLOW
-                else:
-                    lap_status = LapColorStatus.PURPLE if (prev_session_best >= 999900.0) else LapColorStatus.GREEN
+                from .sector_colors import expected_status
+                status = expected_status(
+                    last_lap_time,
+                    ever=None,
+                    paddock=prev_paddock_best,
+                    session=prev_session_best if prev_session_best < 999900.0 else None,
+                    invalid=False,
+                    source="delta.completed_lap",
+                )
+                lap_status = LapColorStatus.DEFAULT if status == ExpectedStatus.WHITE else LapColorStatus(status.value)
             else:
                 lap_status = LapColorStatus.DEFAULT
 
@@ -586,6 +626,11 @@ class DeltaEngine:
                 in_pits=in_pits,
             )
             self._current_lap_samples = []
+            # New lap starts now: refresh the CompactScoring-only fallback reference
+            # (see _local_lap_start_et) whether or not FullScoringSession ever
+            # supplies its own authoritative lap_start_et for this lap.
+            if current_et > 0.0:
+                self._local_lap_start_et = current_et
             self._sectors.reset_lap_capture(clear_primed=False)
 
         self._last_laps_completed = laps_comp
@@ -956,6 +1001,7 @@ class DeltaEngine:
             self._last_checkpoint_idx = -1
             self._sectors.reset_lap_capture(clear_primed=True)
             self._last_scoring_timestamp = 0.0
+            self._local_lap_start_et = current_et if current_et > 0.0 else 0.0
 
             # Reset session and stint best
             self._session_best_profile = None
@@ -964,6 +1010,7 @@ class DeltaEngine:
             self._session_best_lap_time = 999999.0
             self._stint_best_lap_time = 999999.0
             self._last_lap_time = 999999.0
+            self._game_session_best_lap_time = 999999.0
 
             # Load reference profile for track/car from disk
             self._load_reference_profile()
@@ -971,12 +1018,32 @@ class DeltaEngine:
         if track_len > 0.0:
             self._track_length = track_len
 
+        # Game's own authoritative player best-lap-time this session — see
+        # _game_session_best_lap_time's docstring. Stateless: every packet
+        # already carries the game's current best_lap_time directly, so just
+        # take it as-is each time (no persisted min-tracking, no reset dance
+        # to get right relative to the track-change block above).
+        if 0.0 < best_lap < 999900.0:
+            self._game_session_best_lap_time = best_lap
+
         # Authoritative calculation of elapsed lap time: current_et - lap_start_et
         if lap_start_et > 0.0 and current_et >= lap_start_et:
             time_into = current_et - lap_start_et
             self._last_lap_start_et = lap_start_et
+        elif time_into_lap > 0.0:
+            time_into = time_into_lap
+            self._last_lap_start_et = current_et - time_into_lap
+        elif self._local_lap_start_et > 0.0 and current_et >= self._local_lap_start_et:
+            # CompactScoring-only fallback: neither lap_start_et nor time_into_lap
+            # are available (those are FullScoringSession-only fields — CompactScoring
+            # never carries them). Without this, a session running on CompactScoring
+            # alone (FullScoringSession delayed/dropped/failing to resolve the player
+            # vehicle, e.g. a full-grid multiplayer race) would freeze time_into at
+            # 0.0 forever: no lap samples collected, no live delta, no expected status.
+            time_into = current_et - self._local_lap_start_et
+            self._last_lap_start_et = self._local_lap_start_et
         else:
-            time_into = time_into_lap if time_into_lap > 0.0 else 0.0
+            time_into = 0.0
 
         if raw_sec in (1, 2, 3):
             curr_sec = raw_sec
@@ -997,7 +1064,7 @@ class DeltaEngine:
         # lap (total_laps rolled over); an identical 3->1 sequence without a new lap
         # is a stale echo and must not snap the HUD back up to the S1 box.
         lap_crossed = (laps_comp > self._last_laps_completed)
-        self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits)
+        self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits, current_et=current_et)
         self._handle_sector_transition(curr_sec, time_into=time_into, player_dist=player_dist, lap_crossed=lap_crossed)
 
         is_flying_lap = (lap_flag == 2 and time_into > 0.0)
@@ -1587,7 +1654,16 @@ class DeltaEngine:
 
     @property
     def _session_lap_bound(self) -> Optional[float]:
-        return self._session_best_lap_time if (self._session_best_lap_time or 0.0) < 999900.0 else None
+        """My best lap time this session — the tighter of the game's own
+        authoritative report and our own successfully-captured recording (see
+        _game_session_best_lap_time's docstring: the game's value is known as
+        soon as a timed lap is set, even when our own capture pipeline missed
+        it, so it must never be blank just because ours is)."""
+        game = self._game_session_best_lap_time if (self._game_session_best_lap_time or 0.0) < 999900.0 else None
+        ours = self._session_best_lap_time if (self._session_best_lap_time or 0.0) < 999900.0 else None
+        if game is not None and ours is not None:
+            return min(game, ours)
+        return game if game is not None else ours
 
     @property
     def _paddock_lap_bound(self) -> Optional[float]:
@@ -1619,12 +1695,21 @@ class DeltaEngine:
     @property
     def expected_lap_is_pr(self) -> bool:
         """True when the projected lap time already beats my all-time best
-        ("PR" — personal record). Purely informational; never drives colour."""
+        ("PR" — personal record). Purely informational; never drives colour.
+
+        Strictly-better-than (not "or equal"): in ALL_TIME_BEST mode,
+        current_profile IS all_time_best_profile, so the projection at
+        live_delta == 0.0 (e.g. right at the start of every lap, before any
+        input has actually diverged from the reference) is EXACTLY equal to
+        ``ever`` — an inclusive ``<=`` there would flag "PR" by default before
+        the driver has proven anything. Requiring a real epsilon margin below
+        ``ever`` means the flag only lights up once genuinely running ahead.
+        """
         ever = self._ever_lap_bound
         if ever is None or not self.has_reference:
             return False
         v = self.estimated_lap_time
-        return 0.0 < v and v <= ever + 0.001
+        return 0.0 < v and v < ever - 0.001
 
     # ------------------------------------------------------------ expected sectors
     @property
@@ -1669,7 +1754,11 @@ class DeltaEngine:
             expected, ever=None, paddock=paddock, session=session, invalid=False,
             source="delta.expected_sector",
         )
-        is_pr = ever is not None and 0.0 < expected <= ever + 0.001
+        # Strictly-better-than (not "or equal") — same reasoning as
+        # expected_lap_is_pr: in ALL_TIME_BEST mode `ref` and `ever` are the
+        # same profile, so at delta == 0.0 (sector not reached yet) expected
+        # == ever exactly; an inclusive "<=" would flag PR by default.
+        is_pr = ever is not None and 0.0 < expected < ever - 0.001
         return sector_time_display_str(expected), status, is_pr
 
     @property
@@ -1721,11 +1810,13 @@ class DeltaEngine:
         b = self._paddock_lap_bound
         return format_lap_time(b) if b is not None else "--:--.---"
 
-    @property
-    def my_all_time_best_lap_time_str(self) -> str:
-        """My all-time best lap ('mon meilleur best ever')."""
-        b = self._ever_lap_bound
-        return format_lap_time(b) if b is not None else "--:--.---"
+    # NOTE: no my_all_time_best_lap_time_str property here — it's a static
+    # value read straight from a JSON file, not live telemetry, so it doesn't
+    # belong on the per-packet LapDeltaPacket/VehicleSensors path. Consumers
+    # read it from VehicleSensors.reference_profile.lap_time instead (pushed
+    # only when the profile actually changes — see ReferenceLapManager.
+    # _push_reference_profile_view). _ever_lap_bound below stays: it's a live
+    # comparison used by the PR-flag colour logic, a different concern.
 
     @property
     def sector1_delta(self) -> float:

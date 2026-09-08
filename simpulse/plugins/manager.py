@@ -61,6 +61,9 @@ class PluginManager(QObject):
         self._error_counts: Dict[str, int] = {}
         self._plugin_paths: Dict[str, Path] = {}
         self._load_errors: Dict[Path, str] = {}
+        # Built once in connect_telemetry_bus() and handed to every plugin's
+        # PluginContext — see simpulse.core.reference_lap_api.ReferenceLapApi.
+        self._reference_lap_api: Optional[Any] = None
 
     @property
     def plugins(self) -> Dict[str, SimPulsePlugin]:
@@ -175,10 +178,15 @@ class PluginManager(QObject):
         if file_path:
             self._plugin_paths[pid] = file_path
 
-        # Create execution context with strongly-typed config manager and the
+        # Create execution context with strongly-typed config manager, the
         # consolidated telemetry View (ctx.get_state_view()) for use outside the
-        # polymorphic on_* state hooks.
-        ctx = PluginContext(pid, self.config_manager, state_store=TelemetryStateStore.get_instance())
+        # polymorphic on_* state hooks, and the reference-lap SDK (ctx.
+        # get_reference_lap_api()) — see connect_telemetry_bus().
+        ctx = PluginContext(
+            pid, self.config_manager,
+            state_store=TelemetryStateStore.get_instance(),
+            reference_lap_api=self._reference_lap_api,
+        )
 
         try:
             plugin.on_load(ctx)
@@ -321,6 +329,15 @@ class PluginManager(QObject):
         telemetry_bus.packet_received.connect(self.dispatch_packet)
         telemetry_bus.telemetry_updated.connect(self.dispatch_telemetry)
         telemetry_bus.delta_updated.connect(self.dispatch_delta)
+
+        # Build the one ReferenceLapApi façade around the bus's ReferenceLapManager
+        # — every plugin registered from here on gets it via its PluginContext
+        # (see register_plugin). This is the sanctioned replacement for a plugin
+        # calling ReferenceLapManager.get_instance() itself.
+        ref_mgr = getattr(telemetry_bus, "reference_lap_mgr", None)
+        if ref_mgr is not None:
+            from simpulse.core.reference_lap_api import ReferenceLapApi
+            self._reference_lap_api = ReferenceLapApi(ref_mgr)
 
     def disconnect_telemetry_bus(self, telemetry_bus: Any) -> None:
         """Disconnect this PluginManager's dispatch handlers from TelemetryBus signals."""

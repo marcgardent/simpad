@@ -149,6 +149,53 @@ class ReferenceLapManager(QObject):
             return list(prof.annotations)
         return []
 
+    def get_active_profile_view(self):
+        """Plugin-facing read-only snapshot of the active profile — see
+        ReferenceLapApi.get_active_profile(). Frozen dataclass, no file I/O,
+        no mutable Core model exposed."""
+        prof = self.get_active_profile()
+        return prof.to_view() if prof else None
+
+    def list_reference_laps(self) -> List["ReferenceLapSummary"]:
+        """Catalog of every reference-lap file on disk — see
+        ReferenceLapApi.list_reference_laps(). This is the ONE place that
+        lists _REF_LAPS_DIR; plugins (reference_lap_studio in particular) must
+        call this instead of globbing the directory themselves."""
+        from simpulse_sdk.models.reference_profile import ReferenceLapSummary
+        summaries: List[ReferenceLapSummary] = []
+        if not DEFAULT_REF_LAPS_DIR.exists():
+            return summaries
+        for f in sorted(DEFAULT_REF_LAPS_DIR.glob("ref_*.json")):
+            if f.name.endswith(".marks.json"):
+                continue
+            loaded = ReferenceLapProfile.load_from_file(f)
+            if loaded is None:
+                continue
+            summaries.append(ReferenceLapSummary(
+                file_path=str(f),
+                track_name=loaded.track_name,
+                vehicle_class=loaded.vehicle_class or loaded.vehicle_name,
+                lap_time=loaded.lap_time,
+                num_annotations=len(loaded.annotations),
+            ))
+        return summaries
+
+    def load_reference_lap(self, file_path: Union[str, Path]) -> bool:
+        """Loads a specific reference-lap file from disk and makes it the
+        active All-Time Best profile — see ReferenceLapApi.load_reference_lap().
+        Replaces the studio plugin's former direct writes to DeltaEngine's
+        private `_all_time_best_profile`/`_all_time_best_lap_time` fields."""
+        p = Path(file_path)
+        if not p.exists():
+            return False
+        loaded = ReferenceLapProfile.load_from_file(p)
+        if loaded is None:
+            return False
+        self.delta_engine.set_reference_profile(loaded)  # existing public API — no private-field pokes
+        self.reference_profile_changed.emit(self.current_profile)
+        self._push_reference_profile_view()
+        return True
+
     # =========================================================================
     # Mutations & Configuration
     # =========================================================================
@@ -192,6 +239,7 @@ class ReferenceLapManager(QObject):
         if prof:
             ann = prof.add_annotation(ann_type, distance, gear=gear, label=label, color=color, auto_save=auto_save)
             self.annotations_changed.emit(prof.annotations)
+            self._push_reference_profile_view()
             return ann
         return None
 
@@ -201,6 +249,7 @@ class ReferenceLapManager(QObject):
             ok = prof.remove_annotation(annotation_id, auto_save=auto_save)
             if ok:
                 self.annotations_changed.emit(prof.annotations)
+                self._push_reference_profile_view()
             return ok
         return False
 
@@ -210,6 +259,7 @@ class ReferenceLapManager(QObject):
             ok = prof.move_annotation(annotation_id, new_distance, auto_save=auto_save)
             if ok:
                 self.annotations_changed.emit(prof.annotations)
+                self._push_reference_profile_view()
             return ok
         return False
 
@@ -230,7 +280,8 @@ class ReferenceLapManager(QObject):
             prof = self.get_active_profile()
             TelemetryStateStore.get_instance().update_reference_profile(prof.to_view() if prof else None)
         except Exception:
-            pass
+            logger.exception("[ReferenceLapManager] _push_reference_profile_view failed — "
+                              "the Store's reference_profile was NOT updated this call")
 
     def update_physics(
         self,
@@ -423,7 +474,6 @@ class ReferenceLapManager(QObject):
             expected_lap_is_pr=de.expected_lap_is_pr,
             my_session_best_lap_time_str=de.my_session_best_lap_time_str,
             session_best_lap_time_str=de.session_best_lap_time_str,
-            my_all_time_best_lap_time_str=de.my_all_time_best_lap_time_str,
             last_lap_time=de.last_completed_lap_time,
             last_lap_time_str=de.last_completed_lap_time_str,
             last_lap_status=de.last_completed_lap_status,

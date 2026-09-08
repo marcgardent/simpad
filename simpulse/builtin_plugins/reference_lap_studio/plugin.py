@@ -32,14 +32,11 @@ from PySide6.QtWidgets import (
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
     ITabProvider, ITelemetrySubscriber, IDeltaSubscriber,
-    LapDeltaPacket, DeltaReferenceMode, format_lap_time,
-    VehicleSensors, TelemetryStateStore, TelemetryView
+    LapDeltaPacket, format_lap_time,
+    VehicleSensors, TelemetryStateStore, TelemetryView,
+    AnnotationType, ReferenceLapProfileView, ReferenceLapSummary, TrackAnnotationView,
 )
-from simpulse.core.reference_lap import (
-    ReferenceLapManager, ReferenceLapProfile,
-    TrackAnnotation, AnnotationType,
-    DEFAULT_REF_LAPS_DIR
-)
+from simpulse.core.reference_lap_api import ReferenceLapApi
 from simpulse.core.utils.audio import AudioAnnouncer
 
 logger = logging.getLogger("simpulse.plugin.reference_lap_studio")
@@ -106,6 +103,11 @@ class SpatialTelemetryCanvas(QWidget):
         self._last_car_update: float = 0.0
         self._is_dragging_cursor = False
         self._dragged_annotation_id: Optional[str] = None
+        # Live drag position for the annotation being dragged — a purely local
+        # visual override (see paintEvent's annotation loop). Never mutates the
+        # read-only ReferenceLapProfileView; committed via ref_api.move_annotation()
+        # on release only. Replaces the former direct `ann.distance = dist` write.
+        self._drag_preview_dist: Optional[float] = None
         self._hovered_annotation_id: Optional[str] = None
 
         # Hardware-accelerated Offscreen Pixmap Cache
@@ -200,7 +202,7 @@ class SpatialTelemetryCanvas(QWidget):
 
         elif event.button() == Qt.MouseButton.LeftButton:
             # Left Click: Select or Drag existing Marker (WITHOUT moving the cursor)
-            clicked_ann: Optional[TrackAnnotation] = None
+            clicked_ann: Optional[TrackAnnotationView] = None
             for ann in prof.annotations:
                 ann_x = self._dist_to_x(ann.distance, w, track_len)
                 if abs(event.position().x() - ann_x) <= 14.0:
@@ -209,6 +211,7 @@ class SpatialTelemetryCanvas(QWidget):
 
             if clicked_ann:
                 self._dragged_annotation_id = clicked_ann.id
+                self._drag_preview_dist = clicked_ann.distance
                 self.annotation_selected.emit(clicked_ann.id)
                 self.update()
 
@@ -222,11 +225,9 @@ class SpatialTelemetryCanvas(QWidget):
         dist = self._x_to_dist(event.position().x(), w, track_len)
 
         if self._dragged_annotation_id:
-            # Dragging annotation with Left Click: Update memory coordinates ONLY (Zero Lag!)
-            for ann in prof.annotations:
-                if ann.id == self._dragged_annotation_id:
-                    ann.distance = dist
-                    break
+            # Dragging annotation with Left Click: local preview only (Zero Lag!)
+            # — never mutates the read-only profile, see _drag_preview_dist.
+            self._drag_preview_dist = dist
             self.update()
         elif self._is_dragging_cursor:
             # Scrubbing cursor strictly with Right Click
@@ -236,7 +237,8 @@ class SpatialTelemetryCanvas(QWidget):
         prev_hover = self._hovered_annotation_id
         self._hovered_annotation_id = None
         for ann in prof.annotations:
-            ann_x = self._dist_to_x(ann.distance, w, track_len)
+            ann_dist = self._drag_preview_dist if ann.id == self._dragged_annotation_id else ann.distance
+            ann_x = self._dist_to_x(ann_dist, w, track_len)
             if abs(event.position().x() - ann_x) <= 14.0:
                 self._hovered_annotation_id = ann.id
                 break
@@ -247,11 +249,10 @@ class SpatialTelemetryCanvas(QWidget):
         if event.button() == Qt.MouseButton.RightButton:
             self._is_dragging_cursor = False
         elif event.button() == Qt.MouseButton.LeftButton:
-            if self._dragged_annotation_id:
-                prof = self.tab_widget.active_profile
-                if prof:
-                    prof.save_marks_to_file()
+            if self._dragged_annotation_id and self._drag_preview_dist is not None:
+                self.tab_widget.ref_api.move_annotation(self._dragged_annotation_id, self._drag_preview_dist)
                 self._dragged_annotation_id = None
+                self._drag_preview_dist = None
                 self.tab_widget.refresh_annotations_table()
         self.update()
 
@@ -259,7 +260,7 @@ class SpatialTelemetryCanvas(QWidget):
     # Off-screen QPixmap Static Layer Pre-rendering
     # =========================================================================
 
-    def _rebuild_static_pixmap(self, prof: Optional[ReferenceLapProfile], w: int, h: int) -> None:
+    def _rebuild_static_pixmap(self, prof: Optional[ReferenceLapProfileView], w: int, h: int) -> None:
         pixmap = QPixmap(max(10, w), max(10, h))
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -420,7 +421,8 @@ class SpatialTelemetryCanvas(QWidget):
         # 2. Dynamic Track Annotations & Flags
         painter.setFont(self._font_badge)
         for ann in prof.annotations:
-            ann_x = self._dist_to_x(ann.distance, fw, track_len)
+            ann_dist = self._drag_preview_dist if ann.id == self._dragged_annotation_id else ann.distance
+            ann_x = self._dist_to_x(ann_dist, fw, track_len)
             is_hovered = (self._hovered_annotation_id == ann.id)
             is_selected = (self.tab_widget.selected_annotation_id == ann.id)
 
@@ -487,7 +489,7 @@ class ReferenceLapStudioTabWidget(QWidget):
     def __init__(self, plugin: ReferenceLapStudioPlugin, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.plugin = plugin
-        self.ref_manager: ReferenceLapManager = plugin.ref_manager
+        self.ref_api: ReferenceLapApi = plugin.ref_api
         self.selected_annotation_id: Optional[str] = None
         self._available_files: List[Path] = []
         self._is_idle: bool = False
@@ -495,10 +497,12 @@ class ReferenceLapStudioTabWidget(QWidget):
         self._setup_ui()
         self._setup_shortcuts()
 
-        # Connect ReferenceLapManager signals
-        self.ref_manager.reference_profile_changed.connect(self._on_profile_changed)
-        self.ref_manager.annotations_changed.connect(self._on_annotations_changed)
-        self.ref_manager.delta_updated.connect(self._on_delta_updated)
+        # Connect the SDK's re-exposed signals (see ReferenceLapApi). Not
+        # delta_updated: ReferenceLapStudioPlugin.on_delta_frame already
+        # forwards player_dist to the canvas via the sanctioned plugin dispatch
+        # path — connecting here too would deliver every update twice.
+        self.ref_api.profile_changed.connect(self._on_profile_changed)
+        self.ref_api.annotations_changed.connect(self._on_annotations_changed)
 
         self._refresh_files_list()
         self.refresh_ui()
@@ -510,8 +514,8 @@ class ReferenceLapStudioTabWidget(QWidget):
             self.canvas.update()
 
     @property
-    def active_profile(self) -> Optional[ReferenceLapProfile]:
-        return self.ref_manager.get_active_profile()
+    def active_profile(self) -> Optional[ReferenceLapProfileView]:
+        return self.ref_api.get_active_profile()
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -546,13 +550,15 @@ class ReferenceLapStudioTabWidget(QWidget):
         self.btn_refresh.clicked.connect(self._refresh_files_list)
         h_layout.addWidget(self.btn_refresh)
 
-        h_layout.addWidget(QLabel("Mode:", header_frame))
-        self.combo_mode = QComboBox(header_frame)
-        self.combo_mode.setFixedHeight(26)
-        for m in DeltaReferenceMode:
-            self.combo_mode.addItem(m.value.replace("_", " ").title(), m)
-        self.combo_mode.currentIndexChanged.connect(self._on_mode_selected)
-        h_layout.addWidget(self.combo_mode)
+        # No user-facing reference-mode picker: the live delta/HUD colours
+        # always compare against the All-Time Best profile (DeltaEngine._apply_
+        # active_profile) — letting it be user-switchable was the source of a
+        # recurring "why is there no reference / no colour" confusion, since a
+        # non-all-time mode has nothing recorded until a lap is done in THAT
+        # exact scope. This label is purely informational.
+        lbl_ref_fixed = QLabel("Ref: All-Time Best", header_frame)
+        lbl_ref_fixed.setStyleSheet("color: #94a3b8;")
+        h_layout.addWidget(lbl_ref_fixed)
 
         h_layout.addSpacing(8)
 
@@ -742,18 +748,20 @@ class ReferenceLapStudioTabWidget(QWidget):
         self.combo_files.clear()
         self.combo_files.addItem("(Live Session Reference Lap)", None)
 
-        search_dir = DEFAULT_REF_LAPS_DIR
-        if search_dir.exists():
-            files = sorted([f for f in search_dir.glob("ref_*.json") if not f.name.endswith(".marks.json")])
-            self._available_files = files
-            for f in files:
-                self.combo_files.addItem(f.name, f)
+        summaries: List[ReferenceLapSummary] = self.ref_api.list_reference_laps()
+        self._available_files = [Path(s.file_path) for s in summaries]
+        for s in summaries:
+            self.combo_files.addItem(Path(s.file_path).name, s.file_path)
 
         self.combo_files.blockSignals(False)
 
     def refresh_ui(self) -> None:
         prof = self.active_profile
         if prof:
+            # active_profile is always the All-Time Best profile now (the one
+            # spatial reference driving the live delta/HUD — see DeltaEngine.
+            # _apply_active_profile), so whatever the Studio shows here IS what
+            # the overlay is using. No more mode-dependent "preview only" case.
             lap_str = format_lap_time(prof.lap_time) if prof.lap_time > 0 else "--:--.---"
             self.lbl_lap_time.setText(f"Lap: {lap_str}")
             self.lbl_track_len.setText(f"Len: {prof.track_length:.0f} m")
@@ -891,7 +899,7 @@ class ReferenceLapStudioTabWidget(QWidget):
         self.canvas.cursor_dist = distance
 
     def _remove_marker_by_id(self, ann_id: str) -> None:
-        ok = self.ref_manager.remove_annotation(ann_id)
+        ok = self.ref_api.remove_annotation(ann_id)
         if ok:
             if self.selected_annotation_id == ann_id:
                 self.selected_annotation_id = None
@@ -918,24 +926,13 @@ class ReferenceLapStudioTabWidget(QWidget):
 
     def _on_file_selected(self, idx: int) -> None:
         file_path = self.combo_files.currentData()
-        if file_path:
-            p = Path(file_path)
-            if p.exists():
-                loaded = ReferenceLapProfile.load_from_file(p)
-                if loaded:
-                    self.ref_manager.delta_engine._all_time_best_profile = loaded
-                    self.ref_manager.delta_engine._all_time_best_lap_time = loaded.lap_time
-                    self.ref_manager.delta_engine._apply_active_profile()
-                    self.refresh_ui()
-                    return
-        self.ref_manager.delta_engine._apply_active_profile()
-        self.refresh_ui()
-
-    def _on_mode_selected(self, idx: int) -> None:
-        mode = self.combo_mode.currentData()
-        if mode:
-            self.ref_manager.set_reference_mode(mode)
+        if file_path and self.ref_api.load_reference_lap(file_path):
             self.refresh_ui()
+            return
+        # "(Live Session Reference Lap)" (no file_path) or a failed load:
+        # nothing to force — the live pipeline keeps the active profile current
+        # on its own; just re-render whatever it currently holds.
+        self.refresh_ui()
 
     def _on_cursor_moved(self, dist: float) -> None:
         self._update_readout(dist)
@@ -966,7 +963,7 @@ class ReferenceLapStudioTabWidget(QWidget):
             QMessageBox.information(self, "No Profile", "Please wait for a reference lap to be loaded before adding annotations.")
             return
 
-        ann = self.ref_manager.add_annotation(ann_type, distance=self.canvas.cursor_dist)
+        ann = self.ref_api.add_annotation(ann_type, distance=self.canvas.cursor_dist)
         if ann:
             self.selected_annotation_id = ann.id
             self.refresh_ui()
@@ -975,7 +972,7 @@ class ReferenceLapStudioTabWidget(QWidget):
         prof = self.active_profile
         if not prof:
             return
-        ann = self.ref_manager.add_annotation(AnnotationType.GEAR, distance=self.canvas.cursor_dist, gear=gear)
+        ann = self.ref_api.add_annotation(AnnotationType.GEAR, distance=self.canvas.cursor_dist, gear=gear)
         if ann:
             self.selected_annotation_id = ann.id
             self.refresh_ui()
@@ -1003,7 +1000,9 @@ class ReferenceLapStudioTabWidget(QWidget):
                 break
 
     def _cb_sync_to_car(self) -> None:
-        car_d = self.ref_manager.delta_engine.last_scoring_dist
+        # Live player distance, kept current by ReferenceLapStudioPlugin.on_delta_frame
+        # -> canvas.set_live_car_distance() (the sanctioned plugin dispatch path).
+        car_d = self.canvas._live_car_dist
         if car_d >= 0.0:
             self.canvas.cursor_dist = car_d
 
@@ -1011,16 +1010,12 @@ class ReferenceLapStudioTabWidget(QWidget):
     # Telemetry Updates
     # =========================================================================
 
-    def _on_profile_changed(self, prof: Optional[ReferenceLapProfile]) -> None:
+    def _on_profile_changed(self, prof: object) -> None:
         self.refresh_ui()
 
     def _on_annotations_changed(self, anns: list) -> None:
         self.refresh_annotations_table()
         self.canvas.update()
-
-    def _on_delta_updated(self, pkt: LapDeltaPacket) -> None:
-        if not getattr(self, "_is_idle", False) and self.isVisible() and pkt.player_dist >= 0:
-            self.canvas.set_live_car_distance(pkt.player_dist)
 
 
 class ReferenceLapStudioPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber):
@@ -1039,13 +1034,18 @@ class ReferenceLapStudioPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscribe
             icon="🗺️",
             tags=("reference_lap", "telemetry", "editor", "annotations", "pace_notes")
         ))
-        self.ref_manager: ReferenceLapManager = ReferenceLapManager.get_instance()
+        # ref_api is set in on_load() — PluginContext (and the ReferenceLapApi
+        # it carries) isn't available until then. No more reaching for
+        # ReferenceLapManager.get_instance() ourselves; see simpulse.core.
+        # reference_lap_api.ReferenceLapApi.
+        self.ref_api: Optional[ReferenceLapApi] = None
         self.config: ReferenceLapStudioConfig = ReferenceLapStudioConfig()
         self._active_tab: Optional[ReferenceLapStudioTabWidget] = None
 
     def on_load(self, context: PluginContext) -> None:
         super().on_load(context)
         self.config = context.get_typed_config(ReferenceLapStudioConfig)
+        self.ref_api = context.get_reference_lap_api()
 
     # ITabProvider
     def get_tab_title(self) -> str:

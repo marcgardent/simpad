@@ -332,7 +332,20 @@ class GearSpeedHudPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IHu
         if sensors.delta_time_str and sensors.delta_time_str != "--:--.---":
             delta_rect = QRectF(12, 98, 236, 16)
             painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-            delta_val = sensors.delta_time
-            delta_color = QColor(34, 197, 94) if delta_val <= 0 else QColor(239, 68, 68)
+            # Single colour scale everywhere a delta is shown — purple (beats
+            # paddock) / green (beats my session best) / yellow (no improvement)
+            # / grey (invalid) — never red, never the raw sign of the delta. See
+            # official_cockpit_hud/widgets/delta_timer.py for the same rule.
+            expected_tok = str(getattr(sensors, "expected_status", "") or "").strip()
+            if sensors.lap_flag == 0 or expected_tok == "invalid":
+                delta_color = QColor(156, 163, 175)
+            elif expected_tok == "purple":
+                delta_color = QColor(168, 85, 247)
+            elif expected_tok == "green":
+                delta_color = QColor(34, 197, 94)
+            elif expected_tok == "yellow":
+                delta_color = QColor(234, 179, 8)
+            else:
+                delta_color = QColor(255, 255, 255)
             painter.setPen(delta_color)
             painter.drawText(delta_rect, Qt.AlignmentFlag.AlignRight, f"Δ {sensors.delta_time_str}")

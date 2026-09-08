@@ -39,6 +39,19 @@ class TrackAnnotationView:
 
 
 @dataclass(frozen=True)
+class ReferenceLapSummary:
+    """Lightweight catalog entry for one reference-lap file on disk — what
+    `ReferenceLapApi.list_reference_laps()` returns. No grids/annotations
+    (that's `ReferenceLapProfileView`, fetched only for the active profile);
+    this is just enough to populate a file picker without reading every file."""
+    file_path: str = ""
+    track_name: str = ""
+    vehicle_class: str = ""
+    lap_time: float = 0.0
+    num_annotations: int = 0
+
+
+@dataclass(frozen=True)
 class ReferenceLapProfileView:
     """
     Read-only meter-by-meter spatial snapshot of a reference lap, plus its

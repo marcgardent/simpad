@@ -22,6 +22,7 @@ from simpulse_sdk import (
 )
 from simpulse.plugins.manager import PluginManager
 from simpulse.core.config import ConfigManager
+from simpulse.core.reference_lap import ReferenceLapManager
 
 
 @pytest.fixture(scope="session")
@@ -87,6 +88,11 @@ def test_builtin_plugins_contract_and_lifecycle_compliance(qapp, tmp_path, built
     """
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
+    # Wire the reference-lap SDK the same way TelemetryBus.reference_lap_mgr
+    # normally would via connect_telemetry_bus() — reference_lap_studio's tab
+    # needs it (context.get_reference_lap_api()) to construct without crashing.
+    from simpulse.core.reference_lap_api import ReferenceLapApi
+    pm._reference_lap_api = ReferenceLapApi(ReferenceLapManager(config_manager=cfg_mgr))
     pm.discover_and_load([builtin_plugins_dir])
 
     assert len(pm.load_errors) == 0

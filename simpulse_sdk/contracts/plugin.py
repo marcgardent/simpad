@@ -5,13 +5,19 @@ SimPulse SDK — Plugin Base Class & Execution Context.
 from __future__ import annotations
 import logging
 from abc import ABC
-from typing import Optional, List, Type, TypeVar
+from typing import Optional, List, Type, TypeVar, TYPE_CHECKING
 
 from simpulse_sdk.models.plugin_metadata import PluginMetadata, PluginState
 from simpulse_sdk.models.telemetry import ChannelRequirement
 from simpulse_sdk.models.state_store import TelemetryStateStore
 from simpulse_sdk.models.view import TelemetryView
 from simpulse_sdk.contracts.config import IPluginConfigProvider
+
+if TYPE_CHECKING:
+    # Core-layer type, referenced for static typing only (see module docstring
+    # of simpulse.core.reference_lap_api) — never imported at runtime, so the
+    # SDK layer stays free of a hard dependency on simpulse.core.*.
+    from simpulse.core.reference_lap_api import ReferenceLapApi
 
 TConfig = TypeVar("TConfig")
 
@@ -30,10 +36,12 @@ class PluginContext:
         plugin_id: str,
         config_provider: IPluginConfigProvider,
         state_store: Optional[TelemetryStateStore] = None,
+        reference_lap_api: Optional["ReferenceLapApi"] = None,
     ):
         self.plugin_id = plugin_id
         self._config_provider = config_provider
         self._state_store = state_store
+        self._reference_lap_api = reference_lap_api
         self.logger = logging.getLogger(f"simpulse.plugin.{plugin_id}")
 
     def get_typed_config(self, dataclass_cls: Type[TConfig]) -> TConfig:
@@ -57,6 +65,16 @@ class PluginContext:
         """
         store = self._state_store or TelemetryStateStore.get_instance()
         return store.snapshot()
+
+    def get_reference_lap_api(self) -> Optional["ReferenceLapApi"]:
+        """Plugin-facing SDK for reference-lap catalog concerns (list/load
+        reference files, read the active profile, add/remove/move
+        annotations) — see simpulse.core.reference_lap_api.ReferenceLapApi.
+        This is the ONLY sanctioned way to touch reference-lap state; plugins
+        must never reach for ReferenceLapManager/DeltaEngine themselves. None
+        only in contexts built without host wiring (e.g. some unit tests).
+        """
+        return self._reference_lap_api
 
 
 class SimPulsePlugin(ABC):

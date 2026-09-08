@@ -32,6 +32,7 @@ from simpulse.core.reference_lap import (
     TrackAnnotation,
     AnnotationType,
 )
+from simpulse.core.reference_lap_api import ReferenceLapApi
 from simpulse.plugins.manager import PluginManager
 from simpulse.core.telemetry_bus import TelemetryBus
 from simpulse.builtin_plugins.official_cockpit_hud import OfficialCockpitHudPlugin
@@ -301,7 +302,10 @@ def test_reference_lap_studio_plugin_and_tab_lifecycle(qapp, tmp_path):
     ref_mgr = ReferenceLapManager(config_manager=cfg_mgr)
 
     plugin = ReferenceLapStudioPlugin()
-    plugin.ref_manager = ref_mgr
+    # register_plugin() -> on_load() pulls ref_api from the PluginContext, which
+    # in turn comes from PluginManager._reference_lap_api (normally set by
+    # connect_telemetry_bus() — wire it directly here, no bus needed for this test).
+    plugin_mgr._reference_lap_api = ReferenceLapApi(ref_mgr)
     plugin_mgr.register_plugin(plugin)
 
     assert plugin.metadata.id == "simpulse.builtin.reference_lap_studio"
@@ -312,7 +316,8 @@ def test_reference_lap_studio_plugin_and_tab_lifecycle(qapp, tmp_path):
     tab = plugin.create_tab_widget()
     assert isinstance(tab, ReferenceLapStudioTabWidget)
 
-    # Establish fake profile
+    # Establish fake profile via the engine's public API (set_reference_profile)
+    # — no private-field pokes, matching what ReferenceLapApi.load_reference_lap does.
     prof = ReferenceLapProfile(
         track_name="Silverstone",
         vehicle_name="AstonMartin",
@@ -326,9 +331,7 @@ def test_reference_lap_studio_plugin_and_tab_lifecycle(qapp, tmp_path):
     ref_mgr.delta_engine._track_name = "Silverstone"
     ref_mgr.delta_engine._vehicle_name = "AstonMartin"
     ref_mgr.delta_engine._track_length = 4000.0
-    ref_mgr.delta_engine._all_time_best_profile = prof
-    ref_mgr.delta_engine._all_time_best_lap_time = 75.0
-    ref_mgr.delta_engine._apply_active_profile()
+    ref_mgr.delta_engine.set_reference_profile(prof)
 
     tab.refresh_ui()
 
@@ -342,24 +345,24 @@ def test_reference_lap_studio_plugin_and_tab_lifecycle(qapp, tmp_path):
 
     # Add Brake marker via Tab action
     tab.add_marker_at_cursor(AnnotationType.BRAKE)
-    assert len(tab.ref_manager.get_annotations()) == 1
+    assert len(tab.ref_api.get_annotations()) == 1
     assert tab.table_marks.rowCount() == 1
 
     # Add Turn marker via Tab action
     tab.canvas.cursor_dist = 1400.0
     tab.add_marker_at_cursor(AnnotationType.TURN)
-    assert len(tab.ref_manager.get_annotations()) == 2
+    assert len(tab.ref_api.get_annotations()) == 2
     assert tab.table_marks.rowCount() == 2
 
     # Add Gear marker
     tab.canvas.cursor_dist = 1420.0
     tab.add_gear_marker(3)
-    assert len(tab.ref_manager.get_annotations()) == 3
+    assert len(tab.ref_api.get_annotations()) == 3
     assert tab.table_marks.rowCount() == 3
 
     # Delete selected marker
     tab._cb_delete_selected()
-    assert len(tab.ref_manager.get_annotations()) == 2
+    assert len(tab.ref_api.get_annotations()) == 2
     assert tab.table_marks.rowCount() == 2
 
 
@@ -371,7 +374,7 @@ def test_spatial_telemetry_canvas_rendering(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "config_qt.json")
     ref_mgr = ReferenceLapManager(config_manager=cfg_mgr)
     plugin = ReferenceLapStudioPlugin()
-    plugin.ref_manager = ref_mgr
+    plugin.ref_api = ReferenceLapApi(ref_mgr)
 
     tab = plugin.create_tab_widget()
 
@@ -396,9 +399,7 @@ def test_spatial_telemetry_canvas_rendering(qapp, tmp_path):
     prof.set_marks_filepath(tmp_path / "ref_nurburgring_bmw.marks.json")
     prof.add_annotation(AnnotationType.BRAKE, distance=1000.0, auto_save=False)
     prof.add_annotation(AnnotationType.TURN, distance=1100.0, auto_save=False)
-    ref_mgr.delta_engine._all_time_best_profile = prof
-    ref_mgr.delta_engine._all_time_best_lap_time = 60.0
-    ref_mgr.delta_engine._apply_active_profile()
+    ref_mgr.delta_engine.set_reference_profile(prof)
 
     tab.canvas.cursor_dist = 500.0
     tab.canvas.set_live_car_distance(800.0)

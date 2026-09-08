@@ -84,3 +84,7 @@ if TYPE_CHECKING:
 * Changer le titre de l'ui ! SimPulse
 * Faire un mode IDLE de l'UI quand le jeu video est en Live, overlay actif. Pour consommer moins de ressource.
 
+
+
+# Exception AST
+couper les couille au exception silencieuse ;  catch:pass

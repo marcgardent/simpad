@@ -287,19 +287,28 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertEqual(self.engine._all_time_best_lap_time, 48.0)
         self.assertEqual(self.engine._last_lap_time, 52.0)
 
-        # Check switching reference mode
+        # reference_mode is stored (config/API compatibility) but no longer
+        # selects which profile drives the live delta/HUD — that's always the
+        # All-Time Best profile, regardless of mode. See
+        # DeltaEngine._apply_active_profile.
         self.engine.reference_mode = DeltaReferenceMode.LAST_LAP
-        self.assertEqual(self.engine.current_profile.lap_time, 52.0)
+        self.assertEqual(self.engine.current_profile.lap_time, 48.0)
+
+        self.engine.reference_mode = DeltaReferenceMode.SESSION_BEST
+        self.assertEqual(self.engine.current_profile.lap_time, 48.0)
 
         self.engine.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
         self.assertEqual(self.engine.current_profile.lap_time, 48.0)
 
-    def test_mid_sector_reference_mode_switch(self):
-        """Verify that changing reference mode in the middle of Sector 2 dynamically recalculates sector deltas."""
+    def test_reference_mode_never_switches_active_profile(self):
+        """The live delta/HUD spatial reference is ALWAYS the All-Time Best
+        profile — reference_mode (all_time/session/stint/last-lap) no longer
+        selects which profile drives it (see DeltaEngine._apply_active_profile).
+        Switching mode mid-sector must not perturb an in-progress delta/sector
+        calculation at all: it's a pure no-op on current_profile."""
         from simpulse.core.telemetry.delta_engine import DeltaReferenceMode
         from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
 
-        # Setup 2 distinct reference profiles for a 1000m track
         # Profile A (All-Time Best): 50.0s lap (S1=16.65s at 333m, S2=33.3s at 666m)
         prof_a = ReferenceLapProfile(
             track_name="TestTrack",
@@ -309,7 +318,7 @@ class TestDeltaEngine(unittest.TestCase):
             num_points=1001,
             t_grid=[(d / 1000.0) * 50.0 for d in range(1001)],
         )
-        # Profile B (Session Best): 60.0s lap (S1=19.98s at 333m, S2=39.96s at 666m)
+        # Profile B (Session Best): a different lap — must NOT affect anything below.
         prof_b = ReferenceLapProfile(
             track_name="TestTrack",
             lap_time=60.0,
@@ -322,26 +331,25 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._all_time_best_profile = prof_a
         self.engine._session_best_profile = prof_b
         self.engine.reference_mode = DeltaReferenceMode.ALL_TIME_BEST
+        self.engine._apply_active_profile()
+        self.assertIs(self.engine.current_profile, prof_a)
 
-        # 1. Drive Sector 1 and cross into Sector 2 at 333m in 15.0s (vs Prof A S1=16.65s -> Delta S1 = -1.65s)
+        # Drive Sector 1 and cross into Sector 2 at 333m in 15.0s (vs Prof A S1=16.65s -> Delta S1 = -1.65s)
         self.engine._handle_sector_transition(2, time_into=15.0, player_dist=333.0)
         # Drive inside Sector 2 at 500m in 23.0s (Prof A ref=25.0s -> live delta = -2.0s)
         self.engine._calculate_delta(500.0, 23.0)
-
         self.assertAlmostEqual(self.engine._sector1_delta, -1.65, delta=0.01)
         self.assertAlmostEqual(self.engine._sector2_delta, -0.35, delta=0.01)  # -2.0 - (-1.65) = -0.35s
 
-        # 2. Switch reference mode to SESSION_BEST (Profile B) in the middle of Sector 2!
+        # Switching reference_mode to SESSION_BEST mid-sector must be a no-op:
+        # current_profile stays Profile A, and the delta recomputed against the
+        # SAME profile must match exactly (Profile B is never consulted).
         self.engine.reference_mode = DeltaReferenceMode.SESSION_BEST
-
-        # With Profile B:
-        # Ref time at 333m was 19.98s -> S1 Delta should now be: 15.0 - 19.98 = -4.98s
-        # Ref time at 500m is 30.0s -> Live Delta should now be: 23.0 - 30.0 = -7.0s
-        # S2 Delta should now be: -7.0 - (-4.98) = -2.02s
+        self.assertIs(self.engine.current_profile, prof_a)
         self.engine._calculate_delta(500.0, 23.0)
-        self.assertAlmostEqual(self.engine._sector1_delta, -4.98, delta=0.01)
-        self.assertAlmostEqual(self.engine._sector2_delta, -2.02, delta=0.01)
-        self.assertAlmostEqual(self.engine.live_delta, -7.0, delta=0.01)
+        self.assertAlmostEqual(self.engine._sector1_delta, -1.65, delta=0.01)
+        self.assertAlmostEqual(self.engine._sector2_delta, -0.35, delta=0.01)
+        self.assertAlmostEqual(self.engine.live_delta, -2.0, delta=0.01)
 
     def test_estimated_lap_time(self):
         """Verify estimated lap time projection and formatting."""
@@ -368,12 +376,17 @@ class TestDeltaEngine(unittest.TestCase):
         self.engine._ref_num_points = 1001
         self.engine.freeze_duration = 2.0  # 2 seconds freeze
         self.engine._last_laps_completed = 0
+        # Session best from an earlier lap this session, so the 48.0s crossing
+        # below has something meaningful to beat (no paddock data -> green, not
+        # purple/default; see test_lap_transition_status_colors for the full
+        # purple/green/yellow matrix).
+        self.engine._session_best_lap_time = 50.0
 
         # End of flying lap: dist = 999m, time_into = 48.0s -> Delta = -1.95s
         self.engine._calculate_delta(999.0, 48.0)
         self.assertLess(self.engine.live_delta, 0.0)
 
-        # Cross finish line (first valid lap 48.0s -> faster than 50.0s ref -> purple/green)
+        # Cross finish line (first valid lap 48.0s -> faster than 50.0s session best -> green)
         self.engine._handle_lap_transition(
             laps_comp=1,
             last_lap_time=48.0,
@@ -391,7 +404,7 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertTrue(self.engine.is_lap_freeze_active)
         self.assertEqual(self.engine.last_completed_lap_time, 48.0)
         self.assertEqual(self.engine.last_completed_lap_time_str, "00:48.000")
-        self.assertIn(self.engine.last_completed_lap_status, ("purple", "green"))
+        self.assertEqual(self.engine.last_completed_lap_status, "green")
 
     def test_ema_smoothing_filter(self):
         """Verify exponential moving average smoothing filter on live delta."""
@@ -560,39 +573,51 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertEqual(format_lap_time(999999.0), "--:--.---")
 
     def test_lap_transition_status_colors(self):
-        """Verify status colors: purple for session best, green for personal improvement, yellow for slower, grey for invalid."""
+        """Verify status colors, delegated to sector_colors.expected_status (single
+        source of truth shared with the live projection and sector splits):
+        purple = beats the paddock (other cars) this session, green = beats my own
+        session best (no paddock reference beaten), yellow = valid but no
+        improvement, grey/default = invalid or nothing to compare against yet."""
         self.engine._track_name = "TestTrack"
         self.engine._track_length = 1000.0
         self.engine.freeze_duration = 3.5
 
-        # Initial state: session best = 90.0s, reference = 92.0s
+        # Initial state: session best = 90.0s, no paddock (other cars) data yet.
         self.engine._session_best_lap_time = 90.0
         self.engine._all_time_best_lap_time = 90.0
-        self.engine._ref_lap_time = 92.0
         self.engine._last_laps_completed = 1
 
-        # Case 1: Driver runs 89.5s -> New Session / All-time Best -> Purple
+        # Case 1: Driver runs 89.5s, beats session best, no paddock reference -> Green
         self.engine._handle_lap_transition(laps_comp=2, last_lap_time=89.5, lap_flag=2, in_garage=False, in_pits=False)
-        self.assertEqual(self.engine.last_completed_lap_status, "purple")
+        self.assertEqual(self.engine.last_completed_lap_status, "green")
         self.assertEqual(self.engine.last_completed_lap_time_str, "01:29.500")
         self.assertTrue(self.engine.is_lap_freeze_active)
 
-        # Case 2: Session best is 89.5s, active ref is 91.0s. Driver runs 90.2s -> Personal Improvement -> Green
+        # Case 2: Now a paddock (rival) best of 89.0s is known. Session best is
+        # 89.5s. Driver runs 88.5s -> beats BOTH paddock and session -> Purple.
         self.engine._session_best_lap_time = 89.5
-        self.engine._ref_lap_time = 91.0
-        self.engine._handle_lap_transition(laps_comp=3, last_lap_time=90.2, lap_flag=2, in_garage=False, in_pits=False)
-        self.assertEqual(self.engine.last_completed_lap_status, "green")
-        self.assertEqual(self.engine.last_completed_lap_time_str, "01:30.200")
+        self.engine._paddock_known = True
+        self.engine._paddock_best_lap = 89.0
+        self.engine._handle_lap_transition(laps_comp=3, last_lap_time=88.5, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "purple")
+        self.assertEqual(self.engine.last_completed_lap_time_str, "01:28.500")
 
-        # Case 3: Active ref is 90.2s. Driver runs 91.8s -> Slower / No improvement -> Yellow
-        self.engine._session_best_lap_time = 89.5
-        self.engine._ref_lap_time = 90.2
-        self.engine._handle_lap_transition(laps_comp=4, last_lap_time=91.8, lap_flag=2, in_garage=False, in_pits=False)
+        # Case 3: Paddock best is still 89.0s, but session best regressed to 90.0s
+        # (e.g. a rival set 89.0s in between). Driver runs 89.5s -> beats their own
+        # session best (90.0s) but NOT the paddock (89.0s) -> Green.
+        self.engine._session_best_lap_time = 90.0
+        self.engine._handle_lap_transition(laps_comp=4, last_lap_time=89.5, lap_flag=2, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.last_completed_lap_status, "green")
+        self.assertEqual(self.engine.last_completed_lap_time_str, "01:29.500")
+
+        # Case 4: Session best is 88.5s. Driver runs 91.8s -> Slower / No improvement -> Yellow
+        self.engine._session_best_lap_time = 88.5
+        self.engine._handle_lap_transition(laps_comp=5, last_lap_time=91.8, lap_flag=2, in_garage=False, in_pits=False)
         self.assertEqual(self.engine.last_completed_lap_status, "yellow")
         self.assertEqual(self.engine.last_completed_lap_time_str, "01:31.800")
 
-        # Case 4: Driver runs 88.0s but cut track (lap_flag = 0) -> Invalid / Grey
-        self.engine._handle_lap_transition(laps_comp=5, last_lap_time=88.0, lap_flag=0, in_garage=False, in_pits=False)
+        # Case 5: Driver runs 88.0s but cut track (lap_flag = 0) -> Invalid / Grey
+        self.engine._handle_lap_transition(laps_comp=6, last_lap_time=88.0, lap_flag=0, in_garage=False, in_pits=False)
         self.assertEqual(self.engine.last_completed_lap_status, "invalid")
 
     def test_mixed_udp_stream_continuous_delta_and_locked_sectors(self):

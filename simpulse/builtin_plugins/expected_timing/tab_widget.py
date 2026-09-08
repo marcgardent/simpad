@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel
 from simpulse_sdk import VehicleSensors
+from simpulse.builtin_plugins.expected_timing.plugin import _all_time_best_str
 
 if TYPE_CHECKING:
     from simpulse.builtin_plugins.expected_timing.plugin import ExpectedTimingPlugin
@@ -64,8 +65,8 @@ class ExpectedTimingTabWidget(QWidget):
         self.sec_lbl.setText(parts)
         self.refs_lbl.setText(
             f"my session best {sensors.my_session_best_lap_time_str}   "
-            f"session best {sensors.session_best_lap_time_str}   "
-            f"my all-time best {sensors.my_all_time_best_lap_time_str}"
+            f"paddock best {sensors.session_best_lap_time_str}   "
+            f"my all-time best {_all_time_best_str(sensors)}"
         )
         self.state_lbl.setText(
             f"expected token: {tok if sensors.has_delta_reference else '- (no active reference)'} · "

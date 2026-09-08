@@ -11,8 +11,18 @@ handler):
   * Δ lap      → sensors.delta_time / delta display string
   * S1/S2/S3   → sensors.expected_sectorN_time / sensors.expected_sectorN_status
                  (projected sector time, NOT the raw completed-split time)
-  * REFERENCES → sensors.my_session_best_lap_time_str / session_best_lap_time_str /
-                 sensors.my_all_time_best_lap_time_str
+  * REFERENCES → three unambiguously-labelled clocks, each a genuinely
+                 different baseline:
+                   "MY SESSION BEST"   sensors.my_session_best_lap_time_str
+                                       (my own best lap THIS session)
+                   "PADDOCK BEST"      sensors.session_best_lap_time_str
+                                       (best lap of any OTHER car, this session)
+                   "MY ALL-TIME BEST"  sensors.reference_profile.lap_time
+                                       (my best ever, any session — a static
+                                       value read from a JSON file, pushed only
+                                       when it actually changes; NOT a
+                                       per-packet field, see _all_time_best_str
+                                       below)
 
 Colour convention — NO PINK: every colour token this overlay paints
 (`purple`/`green`/`yellow`/`white`/`invalid`) is scoped to the CURRENT SESSION
@@ -44,6 +54,7 @@ from simpulse_sdk import (
     IHudWidgetProvider,
     HudSlot,
     VehicleSensors,
+    format_lap_time,
 )
 
 from simpulse.builtin_plugins.expected_timing.config import ExpectedTimingConfig
@@ -61,7 +72,17 @@ _TOKEN_RGB = {
     "default": (148, 163, 184),
 }
 
-_PR_COLOR = QColor(255, 105, 180)  # the retired "pink" tone, now reserved for the PR tag only
+_PR_COLOR = QColor(255, 255, 255)  # PR is a text tag, not a colour tier — plain white
+
+
+def _all_time_best_str(sensors: VehicleSensors) -> str:
+    """"My all-time best" — read straight from the pushed-on-change reference
+    profile (sensors.reference_profile), never from a per-packet field. See
+    the module docstring and VehicleSensors.reference_profile's own docstring."""
+    prof = sensors.reference_profile
+    if prof is None or prof.lap_time <= 0.0:
+        return "--:--.---"
+    return format_lap_time(prof.lap_time)
 
 
 def _col(token: str) -> QColor:
@@ -242,11 +263,11 @@ class ExpectedTimingPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
             painter.drawLine(int(pad), int(y), int(width - pad), int(y))
             y += gap
             refs = [
-                ("MY BEST", sensors.my_session_best_lap_time_str),
-                ("SESSION BEST", sensors.session_best_lap_time_str),
-                ("ALL-TIME PR", sensors.my_all_time_best_lap_time_str),
+                ("MY SESSION BEST", sensors.my_session_best_lap_time_str),
+                ("PADDOCK BEST", sensors.session_best_lap_time_str),
+                ("MY ALL-TIME BEST", _all_time_best_str(sensors)),
             ]
-            rw = (width - 2 * pad - 2 * gap) / 3.0
+            rw = (width - 2 * pad - (len(refs) - 1) * gap) / len(refs)
             for i, (label, t_v) in enumerate(refs):
                 x0 = pad + i * (rw + gap)
                 painter.setFont(F(7, True))

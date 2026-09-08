@@ -49,6 +49,7 @@ from simpulse_sdk.models.ecu import (
 from simpulse_sdk.models.reference_profile import (
     AnnotationType,
     ReferenceLapProfileView,
+    ReferenceLapSummary,
     TrackAnnotationView,
 )
 from simpulse_sdk.models.plugin_metadata import (
@@ -111,6 +112,7 @@ __all__ = [
     "LapStatus",
     "AnnotationType",
     "ReferenceLapProfileView",
+    "ReferenceLapSummary",
     "TrackAnnotationView",
     "PluginMetadata",
     "PluginState",

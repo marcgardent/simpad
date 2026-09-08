@@ -5,7 +5,7 @@
     "overlay_enabled": true,
     "mock_telemetry": false,
     "hud_debug_boxes": false,
-    "delta_reference_mode": "session_best",
+    "delta_reference_mode": "all_time_best",
     "delta_freeze_duration": 3.5,
     "delta_ema_samples": 0,
     "abs_threshold": 0.15,
@@ -37,17 +37,17 @@
     }
   },
   "loggers": {
-    "telemetry": false,
-    "engineer": false,
-    "schedule": false,
-    "haptics": false,
-    "gui": false,
-    "utils": false,
-    "track_limits": false,
-    "overlay_anomaly": false,
-    "delta_debug": false,
-    "sector_eval": false,
-    "sector_paint": false
+    "telemetry": true,
+    "engineer": true,
+    "schedule": true,
+    "haptics": true,
+    "gui": true,
+    "utils": true,
+    "track_limits": true,
+    "overlay_anomaly": true,
+    "delta_debug": true,
+    "sector_eval": true,
+    "sector_paint": true
   },
   "plugins_enabled": {
     "simpulse.builtin.race_engineer": true,

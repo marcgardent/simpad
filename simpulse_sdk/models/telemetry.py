@@ -10,6 +10,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union, Self
 from warnings import deprecated
 
+from simpulse_sdk.models.reference_profile import ReferenceLapProfileView
+
 from isimotor_rawudp_client import (
     TelemInfo,
     TelemWheel,
@@ -331,7 +333,12 @@ class _VehicleSensorsFields:
     expected_lap_is_pr: bool = False
     my_session_best_lap_time_str: str = "--:--.---"
     session_best_lap_time_str: str = "--:--.---"
-    my_all_time_best_lap_time_str: str = "--:--.---"
+    # Read-only snapshot of the active reference profile, pushed by Core only
+    # when it actually changes (ReferenceLapManager._push_reference_profile_view)
+    # — NOT recomputed per packet. Static, rarely-changing display data (e.g.
+    # "my all-time best lap time" = reference_profile.lap_time) belongs here,
+    # not as its own per-packet field: see simpulse.builtin_plugins.expected_timing.
+    reference_profile: Optional[ReferenceLapProfileView] = None
     explicit_aero_load: float = 0.0
     current_sector: int = 1
     sector1_delta: float = 0.0
@@ -946,14 +953,19 @@ class _VehicleSensorsFields:
             remaining_laps = 0
             if 0 < view.timing.max_laps < 1000:
                 remaining_laps = max(0, view.timing.max_laps - view.timing.total_laps)
-            return cls.from_telem_info(
+            sensors = cls.from_telem_info(
                 telem=view.raw_telemetry,
                 remaining_laps=remaining_laps,
                 lap_flag=view.lap_flag,
                 track_cut_state=view.track_cut_state,
                 in_realtime=view.in_realtime,
             )
-        return cls(in_realtime=view.in_realtime, lap_flag=view.lap_flag)
+        else:
+            sensors = cls(in_realtime=view.in_realtime, lap_flag=view.lap_flag)
+        # Push-on-change reference profile snapshot (see the field's docstring
+        # above) — same object the Store already carries, no extra plumbing.
+        sensors.reference_profile = view.reference_profile
+        return sensors
 
     # ── Timing, Sector & Aero Properties ──────────────────────────────────────
     @property

@@ -56,7 +56,7 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             elif lap_status == "green":
                 # Personal improvement -> Green
                 text_color = QColor(34, 197, 94, 255)
-            elif lap_status in ("yellow", "red"):
+            elif lap_status == "yellow":
                 # No improvement / slower -> Yellow
                 text_color = QColor(234, 179, 8, 255)
             else:
@@ -83,13 +83,10 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
                 # PROJ slower than my session
                 text_color = QColor(234, 179, 8, 255)
             else:
-                # white / reference missing -> classic sign fallback
-                if expected_str.startswith("-"):
-                    text_color = QColor(34, 197, 94, 255)
-                elif expected_str in ("--", "0.000", "+0.000", "-0.000", "0", ""):
-                    text_color = QColor(255, 255, 255, 255)
-                else:
-                    text_color = QColor(239, 68, 68, 255)
+                # No usable reference yet (white) -> neutral, never red/green by
+                # sign. Purple/green/yellow/grey is the ONE colour scale for
+                # every delta display (lap or sector) — no other tier exists.
+                text_color = QColor(255, 255, 255, 255)
 
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
@@ -114,7 +111,7 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             pr_font.setPixelSize(max(10, int(round(13.0 * scale_y))))
             pr_font.setBold(True)
             painter.setFont(pr_font)
-            painter.setPen(QPen(QColor(255, 105, 180, 255)))
+            painter.setPen(QPen(QColor(255, 255, 255, 255)))
             painter.drawText(
                 QRectF(0, y_pos - (15.0 * scale_y), canvas_w, 14.0 * scale_y),
                 Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
