@@ -20,6 +20,11 @@ class OfficialCockpitHudConfig:
     show_assists: bool = True
     show_tires: bool = True
     show_delta: bool = True
+    delta_display_mode: str = "delta"  # "delta" (live +/-) or "expected" (projected finish time)
+    # Moving-average window, in seconds of GAME time (0.0-2.0), for the Delta
+    # Timer's and Sector Times' live numeric readouts (HudTimeWindowAverage)
+    # — 0.0 disables smoothing (reports the latest raw sample as-is).
+    hud_smoothing_window_s: float = 0.15
     show_sectors: bool = True
     show_aero: bool = True
     show_lap_status: bool = True

@@ -26,6 +26,7 @@ from isimotor_rawudp_client import (
 )
 
 from simpulse_sdk.models.delta import ExpectedStatus, LapColorStatus, SectorInfo, SplitStatus
+from simpulse_sdk.models.timing import TimeStatus
 from simpulse_sdk.models.view import TelemetryView, TrackCutState
 from simpulse_sdk.models.wheels import WheelSet
 from simpulse_sdk.models.ecu import (
@@ -311,28 +312,33 @@ class _VehicleSensorsFields:
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
     expected_status: ExpectedStatus = ExpectedStatus.WHITE  # unified pink/purple/green/yellow/white of the projected lap
-    sector1_time: str = "--"
-    sector1_status: SplitStatus = SplitStatus.DEFAULT
-    sector2_time: str = "--"
-    sector2_status: SplitStatus = SplitStatus.DEFAULT
-    sector3_time: str = "--"
-    sector3_status: SplitStatus = SplitStatus.DEFAULT
-    # Expected (projected) sector times: reference split + live splitN delta —
-    # colour is session-scoped only (purple/green/yellow/white, never pink);
-    # beating my all-time-best split is instead flagged via *_is_pr (see
-    # simpulse.builtin_plugins.expected_timing, the only consumer).
-    expected_sector1_time: str = "--"
-    expected_sector1_status: ExpectedStatus = ExpectedStatus.WHITE
-    expected_sector1_is_pr: bool = False
-    expected_sector2_time: str = "--"
-    expected_sector2_status: ExpectedStatus = ExpectedStatus.WHITE
-    expected_sector2_is_pr: bool = False
-    expected_sector3_time: str = "--"
-    expected_sector3_status: ExpectedStatus = ExpectedStatus.WHITE
-    expected_sector3_is_pr: bool = False
-    expected_lap_is_pr: bool = False
-    my_session_best_lap_time_str: str = "--:--.---"
-    session_best_lap_time_str: str = "--:--.---"
+    # DEPRECATED (renamed to `_xxx`, see the @deprecated properties on
+    # VehicleSensors below) — use `time_status.sectorN`/`time_status.lap`
+    # instead (TIME_STATUS_SPEC.md Step 1: renamed first so every read site
+    # lights up in the IDE/linter ahead of Step 3's migration, behaviour
+    # unchanged in the meantime).
+    _sector1_time: str = "--"
+    _sector1_status: SplitStatus = SplitStatus.DEFAULT
+    _sector2_time: str = "--"
+    _sector2_status: SplitStatus = SplitStatus.DEFAULT
+    _sector3_time: str = "--"
+    _sector3_status: SplitStatus = SplitStatus.DEFAULT
+    # DEPRECATED — reference split + live splitN delta, session-scoped colour
+    # only (never pink); beating my all-time-best split was flagged via
+    # *_is_pr. See time_status.sectorN instead.
+    _expected_sector1_time: str = "--"
+    _expected_sector1_status: ExpectedStatus = ExpectedStatus.WHITE
+    _expected_sector1_is_pr: bool = False
+    _expected_sector2_time: str = "--"
+    _expected_sector2_status: ExpectedStatus = ExpectedStatus.WHITE
+    _expected_sector2_is_pr: bool = False
+    _expected_sector3_time: str = "--"
+    _expected_sector3_status: ExpectedStatus = ExpectedStatus.WHITE
+    _expected_sector3_is_pr: bool = False
+    _expected_lap_is_pr: bool = False
+    # DEPRECATED — use time_status.lap instead.
+    _my_session_best_lap_time_str: str = "--:--.---"
+    _session_best_lap_time_str: str = "--:--.---"
     # Read-only snapshot of the active reference profile, pushed by Core only
     # when it actually changes (ReferenceLapManager._push_reference_profile_view)
     # — NOT recomputed per packet. Static, rarely-changing display data (e.g.
@@ -341,18 +347,22 @@ class _VehicleSensorsFields:
     reference_profile: Optional[ReferenceLapProfileView] = None
     explicit_aero_load: float = 0.0
     current_sector: int = 1
-    sector1_delta: float = 0.0
-    sector2_delta: float = 0.0
-    sector3_delta: float = 0.0
+    _sector1_delta: float = 0.0
+    _sector2_delta: float = 0.0
+    _sector3_delta: float = 0.0
     lap_flag: int = 2
     track_cut_state: Optional[Union[TrackCutState, int]] = None
     has_delta_reference: bool = False
     is_pit_lap: bool = False
     last_lap_time: float = 0.0
     last_lap_time_str: str = "--:--.---"
-    last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
-    last_lap_is_pr: bool = False  # completed lap beat my all-time best ("PR" tag, no colour)
+    # DEPRECATED — use time_status.lap.target / time_status.lap.is_personal_record_target.
+    _last_lap_status: LapColorStatus = LapColorStatus.DEFAULT
+    _last_lap_is_pr: bool = False  # completed lap beat my all-time best ("PR" tag, no colour)
     is_lap_freeze_active: bool = False
+    # THE unified timing/colour model (see TIME_STATUS_SPEC.md) — replaces all
+    # the deprecated fields above once the migration reaches Step 4.
+    time_status: TimeStatus = field(default_factory=TimeStatus)
 
     # On-track state and engaged gear
     in_realtime: bool = True
@@ -550,17 +560,17 @@ class _VehicleSensorsFields:
                 delta_time=delta_time,
                 estimated_lap_time=estimated_lap_time,
                 estimated_lap_time_str=estimated_lap_time_str,
-                sector1_time=sector1_time,
-                sector1_status=sector1_status,
-                sector2_time=sector2_time,
-                sector2_status=sector2_status,
-                sector3_time=sector3_time,
-                sector3_status=sector3_status,
+                _sector1_time=sector1_time,
+                _sector1_status=sector1_status,
+                _sector2_time=sector2_time,
+                _sector2_status=sector2_status,
+                _sector3_time=sector3_time,
+                _sector3_status=sector3_status,
                 explicit_aero_load=explicit_aero_load,
                 current_sector=current_sector,
-                sector1_delta=sector1_delta,
-                sector2_delta=sector2_delta,
-                sector3_delta=sector3_delta,
+                _sector1_delta=sector1_delta,
+                _sector2_delta=sector2_delta,
+                _sector3_delta=sector3_delta,
                 lap_flag=lap_flag,
                 track_cut_state=track_cut_state,
                 has_delta_reference=has_delta_reference,
@@ -669,24 +679,24 @@ class _VehicleSensorsFields:
             delta_time=delta_time,
             estimated_lap_time=estimated_lap_time,
             estimated_lap_time_str=estimated_lap_time_str,
-            sector1_time=sector1_time,
-            sector1_status=sector1_status,
-            sector2_time=sector2_time,
-            sector2_status=sector2_status,
-            sector3_time=sector3_time,
-            sector3_status=sector3_status,
+            _sector1_time=sector1_time,
+            _sector1_status=sector1_status,
+            _sector2_time=sector2_time,
+            _sector2_status=sector2_status,
+            _sector3_time=sector3_time,
+            _sector3_status=sector3_status,
             explicit_aero_load=explicit_aero_load,
             current_sector=current_sector,
-            sector1_delta=sector1_delta,
-            sector2_delta=sector2_delta,
-            sector3_delta=sector3_delta,
+            _sector1_delta=sector1_delta,
+            _sector2_delta=sector2_delta,
+            _sector3_delta=sector3_delta,
             lap_flag=lap_flag,
             track_cut_state=track_cut_state,
             has_delta_reference=has_delta_reference,
             is_pit_lap=is_pit_lap,
             last_lap_time=last_lap_time,
             last_lap_time_str=last_lap_time_str,
-            last_lap_status=last_lap_status,
+            _last_lap_status=last_lap_status,
             is_lap_freeze_active=is_lap_freeze_active,
             in_realtime=True,
             is_on_track=is_on_track,
@@ -982,43 +992,46 @@ class _VehicleSensorsFields:
     def sector_delta_str(self, sector_num: int) -> str:
         """Formatted Live Delta for an active sector (e.g. '-0.150' or '+0.240')."""
         if sector_num == 1:
-            val = self.sector1_delta
+            val = self._sector1_delta
         elif sector_num == 2:
-            val = self.sector2_delta
+            val = self._sector2_delta
         elif sector_num == 3:
-            val = self.sector3_delta
+            val = self._sector3_delta
         else:
             val = 0.0
         if val < 0.0:
             return f"-{abs(val):.3f}"
         elif val > 0.0:
             return f"+{val:.3f}"
-        elif val == 0.0 and (self.delta_time != 0.0 or self.sector1_time != "--" or self.sector1_delta != 0.0 or self.sector2_delta != 0.0 or self.sector3_delta != 0.0):
+        elif val == 0.0 and (self.delta_time != 0.0 or self._sector1_time != "--" or self._sector1_delta != 0.0 or self._sector2_delta != 0.0 or self._sector3_delta != 0.0):
             return "+0.000"
         return "--"
 
     @property
     def sectors_list(self) -> List[SectorInfo]:
-        """Structured list of 3 sectors for SectorTimesWidget."""
+        """Structured list of 3 sectors for SectorTimesWidget. Reads the
+        private `_sectorN_*` storage directly (not the deprecated `sectorN_*`
+        properties) so this non-deprecated, still-current API doesn't spam
+        DeprecationWarning on every tick — see TIME_STATUS_SPEC.md Step 1."""
         return [
             SectorInfo(
-                time=self.sector1_time,
-                status=self.sector1_status,
-                delta=self.sector1_delta,
+                time=self._sector1_time,
+                status=self._sector1_status,
+                delta=self._sector1_delta,
                 delta_str=self.sector_delta_str(1),
                 is_current=(self.current_sector == 1),
             ),
             SectorInfo(
-                time=self.sector2_time,
-                status=self.sector2_status,
-                delta=self.sector2_delta,
+                time=self._sector2_time,
+                status=self._sector2_status,
+                delta=self._sector2_delta,
                 delta_str=self.sector_delta_str(2),
                 is_current=(self.current_sector == 2),
             ),
             SectorInfo(
-                time=self.sector3_time,
-                status=self.sector3_status,
-                delta=self.sector3_delta,
+                time=self._sector3_time,
+                status=self._sector3_status,
+                delta=self._sector3_delta,
                 delta_str=self.sector_delta_str(3),
                 is_current=(self.current_sector == 3),
             ),
@@ -1726,3 +1739,214 @@ class VehicleSensors(_VehicleSensorsFields):
             ecu_rear_arb=ch.rear_arb, ecu_rear_arb_max=ch.rear_arb_max,
             ecu_wiper_state=cp.wiper_state, ecu_lift_and_coast=pt.lift_and_coast,
         )
+
+    # ── Deprecated flat timing/sector aliases (TIME_STATUS_SPEC.md Step 1) ───
+    # Use `.time_status.sectorN`/`.time_status.lap` instead — see the field
+    # docstrings above. Setters write through to the renamed `_xxx` field so
+    # TelemetryBus._apply_delta_fields keeps working unchanged in the meantime.
+    @property
+    @deprecated("Use .time_status.sector1.delta_time instead")
+    def sector1_delta(self) -> float:
+        return self._sector1_delta
+
+    @sector1_delta.setter
+    def sector1_delta(self, value: float) -> None:
+        self._sector1_delta = value
+
+    @property
+    @deprecated("Use .time_status.sector2.delta_time instead")
+    def sector2_delta(self) -> float:
+        return self._sector2_delta
+
+    @sector2_delta.setter
+    def sector2_delta(self, value: float) -> None:
+        self._sector2_delta = value
+
+    @property
+    @deprecated("Use .time_status.sector3.delta_time instead")
+    def sector3_delta(self) -> float:
+        return self._sector3_delta
+
+    @sector3_delta.setter
+    def sector3_delta(self, value: float) -> None:
+        self._sector3_delta = value
+
+    @property
+    @deprecated("Use .time_status.sector1.expected_time_str (while frozen) instead")
+    def sector1_time(self) -> str:
+        return self._sector1_time
+
+    @sector1_time.setter
+    def sector1_time(self, value: str) -> None:
+        self._sector1_time = value
+
+    @property
+    @deprecated("Use .time_status.sector1.target instead")
+    def sector1_status(self) -> SplitStatus:
+        return self._sector1_status
+
+    @sector1_status.setter
+    def sector1_status(self, value: SplitStatus) -> None:
+        self._sector1_status = value
+
+    @property
+    @deprecated("Use .time_status.sector2.expected_time_str (while frozen) instead")
+    def sector2_time(self) -> str:
+        return self._sector2_time
+
+    @sector2_time.setter
+    def sector2_time(self, value: str) -> None:
+        self._sector2_time = value
+
+    @property
+    @deprecated("Use .time_status.sector2.target instead")
+    def sector2_status(self) -> SplitStatus:
+        return self._sector2_status
+
+    @sector2_status.setter
+    def sector2_status(self, value: SplitStatus) -> None:
+        self._sector2_status = value
+
+    @property
+    @deprecated("Use .time_status.sector3.expected_time_str (while frozen) instead")
+    def sector3_time(self) -> str:
+        return self._sector3_time
+
+    @sector3_time.setter
+    def sector3_time(self, value: str) -> None:
+        self._sector3_time = value
+
+    @property
+    @deprecated("Use .time_status.sector3.target instead")
+    def sector3_status(self) -> SplitStatus:
+        return self._sector3_status
+
+    @sector3_status.setter
+    def sector3_status(self, value: SplitStatus) -> None:
+        self._sector3_status = value
+
+    @property
+    @deprecated("Use .time_status.sector1.expected_time_str instead")
+    def expected_sector1_time(self) -> str:
+        return self._expected_sector1_time
+
+    @expected_sector1_time.setter
+    def expected_sector1_time(self, value: str) -> None:
+        self._expected_sector1_time = value
+
+    @property
+    @deprecated("Use .time_status.sector1.target instead")
+    def expected_sector1_status(self) -> ExpectedStatus:
+        return self._expected_sector1_status
+
+    @expected_sector1_status.setter
+    def expected_sector1_status(self, value: ExpectedStatus) -> None:
+        self._expected_sector1_status = value
+
+    @property
+    @deprecated("Use .time_status.sector1.is_personal_record_target instead")
+    def expected_sector1_is_pr(self) -> bool:
+        return self._expected_sector1_is_pr
+
+    @expected_sector1_is_pr.setter
+    def expected_sector1_is_pr(self, value: bool) -> None:
+        self._expected_sector1_is_pr = value
+
+    @property
+    @deprecated("Use .time_status.sector2.expected_time_str instead")
+    def expected_sector2_time(self) -> str:
+        return self._expected_sector2_time
+
+    @expected_sector2_time.setter
+    def expected_sector2_time(self, value: str) -> None:
+        self._expected_sector2_time = value
+
+    @property
+    @deprecated("Use .time_status.sector2.target instead")
+    def expected_sector2_status(self) -> ExpectedStatus:
+        return self._expected_sector2_status
+
+    @expected_sector2_status.setter
+    def expected_sector2_status(self, value: ExpectedStatus) -> None:
+        self._expected_sector2_status = value
+
+    @property
+    @deprecated("Use .time_status.sector2.is_personal_record_target instead")
+    def expected_sector2_is_pr(self) -> bool:
+        return self._expected_sector2_is_pr
+
+    @expected_sector2_is_pr.setter
+    def expected_sector2_is_pr(self, value: bool) -> None:
+        self._expected_sector2_is_pr = value
+
+    @property
+    @deprecated("Use .time_status.sector3.expected_time_str instead")
+    def expected_sector3_time(self) -> str:
+        return self._expected_sector3_time
+
+    @expected_sector3_time.setter
+    def expected_sector3_time(self, value: str) -> None:
+        self._expected_sector3_time = value
+
+    @property
+    @deprecated("Use .time_status.sector3.target instead")
+    def expected_sector3_status(self) -> ExpectedStatus:
+        return self._expected_sector3_status
+
+    @expected_sector3_status.setter
+    def expected_sector3_status(self, value: ExpectedStatus) -> None:
+        self._expected_sector3_status = value
+
+    @property
+    @deprecated("Use .time_status.sector3.is_personal_record_target instead")
+    def expected_sector3_is_pr(self) -> bool:
+        return self._expected_sector3_is_pr
+
+    @expected_sector3_is_pr.setter
+    def expected_sector3_is_pr(self, value: bool) -> None:
+        self._expected_sector3_is_pr = value
+
+    @property
+    @deprecated("Use .time_status.lap.is_personal_record_target instead")
+    def expected_lap_is_pr(self) -> bool:
+        return self._expected_lap_is_pr
+
+    @expected_lap_is_pr.setter
+    def expected_lap_is_pr(self, value: bool) -> None:
+        self._expected_lap_is_pr = value
+
+    @property
+    @deprecated("Use .time_status.wall_of_fame.my_best_session.total_str instead")
+    def my_session_best_lap_time_str(self) -> str:
+        return self._my_session_best_lap_time_str
+
+    @my_session_best_lap_time_str.setter
+    def my_session_best_lap_time_str(self, value: str) -> None:
+        self._my_session_best_lap_time_str = value
+
+    @property
+    @deprecated("Use .time_status.wall_of_fame.paddock_session_best.total_str instead")
+    def session_best_lap_time_str(self) -> str:
+        return self._session_best_lap_time_str
+
+    @session_best_lap_time_str.setter
+    def session_best_lap_time_str(self, value: str) -> None:
+        self._session_best_lap_time_str = value
+
+    @property
+    @deprecated("Use .time_status.lap.target instead")
+    def last_lap_status(self) -> LapColorStatus:
+        return self._last_lap_status
+
+    @last_lap_status.setter
+    def last_lap_status(self, value: LapColorStatus) -> None:
+        self._last_lap_status = value
+
+    @property
+    @deprecated("Use .time_status.lap.is_personal_record_target instead")
+    def last_lap_is_pr(self) -> bool:
+        return self._last_lap_is_pr
+
+    @last_lap_is_pr.setter
+    def last_lap_is_pr(self, value: bool) -> None:
+        self._last_lap_is_pr = value

@@ -52,6 +52,16 @@ from simpulse_sdk.models.reference_profile import (
     ReferenceLapSummary,
     TrackAnnotationView,
 )
+from simpulse_sdk.models.timing import (
+    TimeLap,
+    TimeTarget,
+    TimeSectorViewModel,
+    TimeLapViewModel,
+    TimeStatus,
+    WallOfFameTimes,
+    resolve_target,
+    resolve_is_personal_record_target,
+)
 from simpulse_sdk.models.plugin_metadata import (
     PluginMetadata,
     PluginState,
@@ -114,6 +124,14 @@ __all__ = [
     "ReferenceLapProfileView",
     "ReferenceLapSummary",
     "TrackAnnotationView",
+    "TimeLap",
+    "TimeTarget",
+    "TimeSectorViewModel",
+    "TimeLapViewModel",
+    "TimeStatus",
+    "WallOfFameTimes",
+    "resolve_target",
+    "resolve_is_personal_record_target",
     "PluginMetadata",
     "PluginState",
     "PluginErrorReport",

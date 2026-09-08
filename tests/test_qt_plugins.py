@@ -667,12 +667,12 @@ def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
         lap_flag=2,
         fuel_level=42.5,
         remaining_laps=18,
-        sector1_time="32.105",
-        sector1_status="purple",
-        sector2_time="44.230",
-        sector2_status="green",
-        sector3_time="31.890",
-        sector3_status="default",
+        _sector1_time="32.105",
+        _sector1_status="purple",
+        _sector2_time="44.230",
+        _sector2_status="green",
+        _sector3_time="31.890",
+        _sector3_status="default",
     )
 
     plugin.on_telemetry_frame(sensors)
@@ -706,7 +706,7 @@ def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
         gear=4,
         last_lap_time=92.45,
         last_lap_time_str="01:32.450",
-        last_lap_status="purple",
+        _last_lap_status="purple",
         is_lap_freeze_active=True,
         lap_flag=2,
     )

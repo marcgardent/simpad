@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from simpulse.builtin_plugins.official_cockpit_hud.plugin import OfficialCockpitHudPlugin
 
 
+def _format_smoothing_window(window_ms: int) -> str:
+    """Display label for the Delta/Sector smoothing slider — 'Xms' below 1s,
+    'X.Xs' at/above it (the slider goes up to 16s)."""
+    if window_ms >= 1000:
+        return f"{window_ms / 1000.0:.1f}s"
+    return f"{window_ms}ms"
+
+
 class OfficialCockpitHudTabWidget(QWidget):
     """
     Studio Tab Widget for the Official Cockpit HUD.
@@ -125,6 +133,22 @@ class OfficialCockpitHudTabWidget(QWidget):
         self.chk_hud_visible.toggled.connect(self._on_hud_toggled)
         c_layout.addWidget(self.chk_hud_visible, 1, 2, 1, 2)
 
+        # Delta/Sector smoothing slider (HudTimeWindowAverage — see
+        # widgets/display_cache.py): averaging window in milliseconds of
+        # GAME time (not PC/wall-clock time) for the Delta Timer and Sector
+        # Times live readouts. 0ms disables smoothing (latest raw sample).
+        # Range capped at 2s — the 16s debug-only ceiling (for proving the
+        # effect isn't a placebo, see hud_smoothing_logger.py) is gone now
+        # that's confirmed; nothing usable in a real HUD needs more than this.
+        window_ms = int(round(self.plugin.config.hud_smoothing_window_s * 1000))
+        self.lbl_smoothing = QLabel(f"Delta/Sector Smoothing: {_format_smoothing_window(window_ms)} (game time)", cfg_group)
+        c_layout.addWidget(self.lbl_smoothing, 2, 0)
+        self.slider_smoothing = QSlider(Qt.Orientation.Horizontal, cfg_group)
+        self.slider_smoothing.setRange(0, 2000)
+        self.slider_smoothing.setValue(window_ms)
+        self.slider_smoothing.valueChanged.connect(self._on_smoothing_window_changed)
+        c_layout.addWidget(self.slider_smoothing, 2, 1, 1, 3)
+
         layout.addWidget(cfg_group)
 
         # ── 4. Modular Sub-Component Toggles ──
@@ -167,6 +191,15 @@ class OfficialCockpitHudTabWidget(QWidget):
         self.chk_delta.setChecked(self.plugin.config.show_delta)
         self.chk_delta.toggled.connect(lambda v: self._update_flag("show_delta", v))
         m_layout.addWidget(self.chk_delta, 1, 2)
+
+        # Delta Timer display mode: live Delta (+/-) vs projected Expected time
+        self.delta_mode_combo = QComboBox(mod_group)
+        self.delta_mode_combo.addItem("Show Delta (+/-)", "delta")
+        self.delta_mode_combo.addItem("Show Expected (finish time)", "expected")
+        idx = self.delta_mode_combo.findData(self.plugin.config.delta_display_mode)
+        self.delta_mode_combo.setCurrentIndex(idx if idx != -1 else 0)
+        self.delta_mode_combo.currentIndexChanged.connect(self._on_delta_display_mode_changed)
+        m_layout.addWidget(self.delta_mode_combo, 1, 3)
 
         # S1, S2, S3 Sectors
         self.chk_sectors = QCheckBox("S1, S2, S3 Sector Times & Deltas", mod_group)
@@ -265,6 +298,16 @@ class OfficialCockpitHudTabWidget(QWidget):
     def _on_hud_toggled(self, checked: bool) -> None:
         self.plugin.config.hud_enabled = checked
         self.plugin.save_config()
+
+    def _on_smoothing_window_changed(self, window_ms: int) -> None:
+        self.plugin.config.hud_smoothing_window_s = window_ms / 1000.0
+        self.lbl_smoothing.setText(f"Delta/Sector Smoothing: {_format_smoothing_window(window_ms)} (game time)")
+        self.plugin.save_config()
+
+    def _on_delta_display_mode_changed(self, index: int) -> None:
+        self.plugin.config.delta_display_mode = self.delta_mode_combo.currentData()
+        self.plugin.save_config()
+        self.preview_canvas.update()
 
     def _update_flag(self, field_name: str, val: bool) -> None:
         setattr(self.plugin.config, field_name, val)

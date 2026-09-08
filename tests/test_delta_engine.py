@@ -863,6 +863,173 @@ class TestUpdateScoringFromView(unittest.TestCase):
         self.assertEqual(raw_engine._last_sector1_status, "purple")
 
 
+class TestTrackChangeClearsStalePosition(unittest.TestCase):
+    """A track/vehicle change must not leave _last_scoring_dist/
+    _last_scoring_time_into holding the PREVIOUS track's position — otherwise
+    _load_reference_profile() -> _apply_active_profile() computes (or clears
+    sector deltas against) a delta using cross-track distance/time, right at
+    every track change."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_ref_dir = delta_engine_module._REF_LAPS_DIR
+        delta_engine_module._REF_LAPS_DIR = Path(self.temp_dir)
+
+    def tearDown(self):
+        delta_engine_module._REF_LAPS_DIR = self.original_ref_dir
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_stale_position_cleared_on_track_change(self):
+        eng = DeltaEngine()
+        eng._apply_scoring_update(
+            now=0.0, track_name="TrackA", track_len=1000.0, current_et=0.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=0.0, player_dist=0.0,
+            raw_sec=1, in_garage=False, in_pits=False, lap_flag=2,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        # Drive out on TrackA, well past the origin.
+        eng._apply_scoring_update(
+            now=1.0, track_name="TrackA", track_len=1000.0, current_et=25.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=25.0, player_dist=500.0,
+            raw_sec=2, in_garage=False, in_pits=False, lap_flag=2,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        self.assertEqual(eng._last_scoring_dist, 500.0)
+        self.assertEqual(eng._last_scoring_time_into, 25.0)
+
+        # Spy on _calculate_delta to prove _apply_active_profile() (called
+        # synchronously inside the track-change handling below, well before
+        # this function's own end-of-call position update) never sees
+        # TrackA's stale (500.0, 25.0) position while switching to TrackB.
+        seen_calls = []
+        original_calculate_delta = eng._calculate_delta
+        eng._calculate_delta = lambda dist, t: (seen_calls.append((dist, t)), original_calculate_delta(dist, t))[1]
+
+        # Change track — must reset the stale position, not carry it over.
+        eng._apply_scoring_update(
+            now=2.0, track_name="TrackB", track_len=2000.0, current_et=0.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=0.0, player_dist=0.0,
+            raw_sec=1, in_garage=False, in_pits=False, lap_flag=2,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        self.assertNotIn((500.0, 25.0), seen_calls, "TrackA's stale position leaked into TrackB's delta calc")
+        self.assertEqual(eng._last_scoring_dist, 0.0)
+        self.assertEqual(eng._last_scoring_time_into, 0.0)
+        self.assertEqual(eng.live_delta, 0.0)
+
+
+class TestLiveDeltaSurvivesInvalidLap(unittest.TestCase):
+    """Live delta/expected must keep updating during an invalidated lap
+    (lap_flag != 2, e.g. a track-limits cut) — the driver has separate
+    visual/audio invalid-lap indicators elsewhere, so freezing/blanking the
+    live number too is an unwanted redundant one. Only pits/garage (where
+    there's genuinely no meaningful delta) should still zero it."""
+
+    def setUp(self):
+        self.engine = DeltaEngine()
+        self.engine._apply_scoring_update(
+            now=0.0, track_name="T1", track_len=1000.0, current_et=0.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=0.0, player_dist=0.0,
+            raw_sec=1, in_garage=False, in_pits=False, lap_flag=2,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        self.engine._ref_lap_time = 50.0
+        self.engine._ref_spatial_step = 1.0
+        self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
+        self.engine._ref_num_points = 1001
+
+    def _update(self, **overrides):
+        base = dict(
+            now=1.0, track_name="T1", track_len=1000.0, current_et=45.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=45.0, player_dist=200.0,
+            raw_sec=1, in_garage=False, in_pits=False, lap_flag=1,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        base.update(overrides)
+        self.engine._apply_scoring_update(**base)
+
+    def test_invalidated_lap_keeps_live_delta(self):
+        # dist=200m -> ref_time=10.0s; actual time_into=45.0s -> delta=+35.0s,
+        # same as test_slow_driving_delta_explodes_positive, but lap_flag=1
+        # (invalidated) instead of 2 (valid).
+        self._update(lap_flag=1)
+        self.assertAlmostEqual(self.engine.live_delta, 35.0)
+
+    def test_pits_still_zero_live_delta(self):
+        self._update(lap_flag=1, in_pits=True)
+        self.assertEqual(self.engine.live_delta, 0.0)
+
+    def test_garage_still_zero_live_delta(self):
+        self._update(lap_flag=1, in_garage=True)
+        self.assertEqual(self.engine.live_delta, 0.0)
+
+    def test_update_physics_also_keeps_live_delta_during_invalid_lap(self):
+        """Same gating fix on the 100Hz physics path (update_physics), not
+        just the scoring path (_apply_scoring_update)."""
+        self._update(lap_flag=1)
+        self.assertAlmostEqual(self.engine.live_delta, 35.0)
+        # A subsequent 100Hz physics tick (no new scoring packet) must not
+        # zero it back out just because the last known lap_flag was 1.
+        self.engine.update_physics(
+            veh_speed_ms=50.0, dt=0.01, elapsed_time=45.01, lap_start_et=0.0, current_sector=1,
+        )
+        self.assertGreater(self.engine.live_delta, 0.0)
+
+
+class TestGarageResetsSectorTracking(unittest.TestCase):
+    """Entering the garage must not leave current_sector reporting S2/S3 from
+    before — the driver can re-emerge anywhere, so there's no valid position
+    to keep. See _apply_scoring_update's `if in_garage:` block."""
+
+    def _update(self, **overrides):
+        base = dict(
+            now=0.0, track_name="T1", track_len=1000.0, current_et=0.0,
+            veh_name="Car", veh_class="GT3", laps_comp=0,
+            lap_start_et=0.0, time_into_lap=0.0, player_dist=0.0,
+            raw_sec=1, in_garage=False, in_pits=False, lap_flag=2,
+            last_lap_time=0.0, cur_s1=0.0, cur_s2=0.0, last_s1=0.0, last_s2=0.0,
+            best_s1=0.0, best_s2=0.0, best_lap=0.0, vehicles_src=[],
+        )
+        base.update(overrides)
+        self.engine._apply_scoring_update(**base)
+
+    def setUp(self):
+        self.engine = DeltaEngine()
+        self._update(raw_sec=1)
+        self._update(now=1.0, current_et=40.0, time_into_lap=40.0, player_dist=400.0, raw_sec=2)
+        self._update(now=2.0, current_et=80.0, time_into_lap=80.0, player_dist=800.0, raw_sec=3)
+        self.assertEqual(self.engine.current_sector, 3)
+
+    def test_garage_entry_resets_to_sector_1(self):
+        self._update(now=3.0, raw_sec=3, in_garage=True, in_pits=True)
+        self.assertEqual(self.engine.current_sector, 1)
+
+    def test_garage_stays_reset_across_multiple_packets(self):
+        """A stale raw_sec reported repeatedly while parked must not re-lock
+        the tracking back onto it."""
+        self._update(now=3.0, raw_sec=3, in_garage=True, in_pits=True)
+        self._update(now=4.0, raw_sec=3, in_garage=True, in_pits=True)
+        self._update(now=5.0, raw_sec=3, in_garage=True, in_pits=True)
+        self.assertEqual(self.engine.current_sector, 1)
+
+    def test_exiting_garage_reprimes_cleanly(self):
+        self._update(now=3.0, raw_sec=3, in_garage=True, in_pits=True)
+        # Drive back out, reporting S1 again for the new lap.
+        self._update(now=4.0, current_et=1.0, time_into_lap=1.0, player_dist=10.0,
+                     raw_sec=1, in_garage=False, in_pits=False)
+        self.assertEqual(self.engine.current_sector, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

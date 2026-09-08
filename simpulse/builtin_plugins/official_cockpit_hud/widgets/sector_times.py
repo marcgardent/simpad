@@ -4,7 +4,10 @@ Sector Times Widget — 3-sector time boxes (S1, S2, S3) positioned below Delta 
 
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
-from .base_widget import BaseQtHudWidget, CockpitWidgetContext
+from simpulse_sdk import TimeTarget, format_sector_time
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext, format_signed_delta
+from .display_cache import HudTimeWindowAverage
+from .hud_smoothing_logger import record_passthrough, record_smoothing
 
 
 # IHM-only presentation: the model may deliver the same frozen split under either
@@ -48,19 +51,48 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     Lap Sectors S1, S2, S3 (Positioned below Delta and Gear).
 
     Colour is aligned with the Delta Timer widget above it — SESSION-scoped
-    only, sourced from sensors.expected_sectorN_status (never the sign of the
-    live delta, never pink):
-        * Purple (sector projection beats paddock / other cars this session)
-        * Green  (beats my session best for this sector)
-        * Yellow (valid, slower than my session)
-        * Grey   (invalid / no reference)
+    only, sourced from sensors.time_status.sectorN.target (never the sign of
+    the live delta, never pink):
+        * Purple (TimeTarget.PADDOCK — beats paddock / other cars this session)
+        * Green  (TimeTarget.SESSION — beats my session best for this sector)
+        * Yellow (TimeTarget.BEHIND — valid, slower than my session)
+        * Grey   (TimeTarget.NONE — no reference; invalid has its own
+                  indicator elsewhere, never hidden behind `target`)
     Beating my all-time-best split ("ever") is a "PR" tag drawn on the box,
-    not a colour — see sensors.expected_sectorN_is_pr.
+    not a colour — see sensors.time_status.sectorN.is_personal_record_target.
+
+    Each box's live (in-progress) text shows either the live Delta or the
+    projected Expected split time — same user-selectable
+    CockpitWidgetContext.delta_display_mode as the Delta Timer above, applied
+    per-box here too — as a simple moving average over the last
+    ``hud_smoothing_window_s`` seconds of GAME time (HudTimeWindowAverage —
+    see display_cache.py and QtDeltaTimerWidget's docstring): it's a
+    projection either way, not raw telemetry, so smoothing it for
+    readability is fine. The frozen split text (once a sector is done) is
+    left unaveraged — it only changes once per lap crossing, nothing to
+    smooth, and averaging it in would just delay showing the fresh result.
+
+    Per-box visibility follows TIME_STATUS_SPEC.md's rule to the letter (a
+    sector's box is one of exactly three states, never a fourth "leftover
+    previous lap" one):
+      * currently being driven          -> live delta (averaged, see above).
+      * already completed THIS lap      -> that split's time, frozen.
+      * not reached yet THIS lap        -> empty box, no time, no colour —
+        UNLESS the finish-line freeze window is active (is_lap_freeze_active,
+        DeltaEngine.freeze_duration), in which case every box shows the
+        just-completed lap's actual split time instead (freeze takes
+        priority over "is_current", since crossing the line immediately
+        makes the new lap's S1 the current sector).
+    A box never carries a PREVIOUS lap's split forward outside that freeze
+    window — see DeltaEngine._handle_lap_transition (freeze) vs
+    SectorEngine.reset_lap_capture (new-lap reset).
     """
 
     def __init__(self, font_family: str = "Anta"):
         self.font_family = font_family
         self._last_rendered_sector: int = -1
+        self._delta_avgs = [HudTimeWindowAverage(), HudTimeWindowAverage(), HudTimeWindowAverage()]
+        self._was_current = [False, False, False]
 
     def paint(
         self,
@@ -84,12 +116,12 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                     current_sector=curr_sec,
                     raw_sector=curr_sec,
                     source="QtSectorTimesWidget",
-                    s1_time=sensors.sector1_time,
-                    s2_time=sensors.sector2_time,
-                    s3_time=sensors.sector3_time,
-                    s1_delta=sensors.sector1_delta,
-                    s2_delta=sensors.sector2_delta,
-                    s3_delta=sensors.sector3_delta,
+                    s1_time=sectors[0].time,
+                    s2_time=sectors[1].time,
+                    s3_time=sectors[2].time,
+                    s1_delta=sectors[0].delta,
+                    s2_delta=sectors[1].delta,
+                    s3_delta=sectors[2].delta,
                     lap_dist=sensors.lap_dist if hasattr(sensors, "lap_dist") else 0.0,
                     speed_kmh=sensors.vehicle_speed * 3.6,
                 )
@@ -115,48 +147,95 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         font.setBold(True)
         painter.setFont(font)
 
+        time_status_sectors = sensors.time_status.sectors
+        is_freeze = sensors.is_lap_freeze_active
+
         for i in range(min(3, len(sectors))):
             s_x = start_x + (i * (sector_w + sector_spacing))
             sec = sectors[i]
             s_time = sec.time
             is_current = sec.is_current
             delta_str = sec.delta_str
+            box_num = i + 1
+            label = f"sector{box_num}"
 
             # Colour is aligned with the Delta Timer above: SESSION-scoped
-            # expected_sectorN_status only (purple/green/yellow/grey), the
+            # time_status.sectorN.target only (purple/green/yellow/grey), the
             # same field whether the sector is still live or already frozen.
-            expected_tok = str(getattr(sensors, f"expected_sector{i + 1}_status", "white") or "white").strip()
-            is_pr = bool(getattr(sensors, f"expected_sector{i + 1}_is_pr", False))
+            target = time_status_sectors[i].target
+            is_pr = time_status_sectors[i].is_personal_record_target
 
-            # Text: live sector delta while ongoing, else frozen split time
-            # presented in a stable IHM format whatever the model spelling
-            # ('38.437' or '00:38.437').
-            if is_current and delta_str != "--":
-                disp_text = delta_str
+            # Exactly one of three states per box — see class docstring.
+            # "Not reached yet this lap" never carries the previous lap's
+            # split forward; only the finish-line freeze window (checked
+            # first, ahead of is_current — see docstring) does.
+            if is_freeze:
+                mode = "frozen"
+            elif is_current and delta_str != "--":
+                mode = "live"
+            elif box_num < curr_sec:
+                mode = "frozen"
             else:
-                disp_text = _present_split_time(s_time)
+                mode = "empty"
 
-            if expected_tok in ("invalid", "white"):
-                bg_color = QColor(15, 23, 42, 255)
-                border_color = QColor(51, 65, 85, 255)
-            elif expected_tok == "purple":
+            if mode == "live":
+                # Same user-selectable Delta vs Expected choice as the Delta
+                # Timer above (CockpitWidgetContext.delta_display_mode) —
+                # applies here too, not just to the lap badge.
+                if context.delta_display_mode == "expected":
+                    raw_value = time_status_sectors[i].expected_time
+                    raw_text = time_status_sectors[i].expected_time_str
+                else:
+                    raw_value = sec.delta
+                    raw_text = delta_str
+                self._delta_avgs[i].window_s = context.hud_smoothing_window_s
+                averaged = self._delta_avgs[i].sample(raw_value, raw_text, context.game_time_s)
+                if averaged is None:
+                    disp_text = raw_text
+                    record_passthrough(label, raw_text, context.hud_smoothing_window_s, context.game_time_s)
+                else:
+                    if context.delta_display_mode == "expected":
+                        disp_text = format_sector_time(averaged)
+                    else:
+                        disp_text = format_signed_delta(averaged)
+                    record_smoothing(
+                        label, raw_value, raw_text, averaged, disp_text,
+                        context.hud_smoothing_window_s, context.game_time_s,
+                    )
+            else:
+                if self._was_current[i]:
+                    # Just stopped being the current sector: start the next
+                    # lap's averaging window fresh, don't carry this box's
+                    # last live samples forward.
+                    self._delta_avgs[i].reset()
+                disp_text = "--" if mode == "empty" else _present_split_time(s_time)
+            self._was_current[i] = (mode == "live")
+
+            if mode == "empty":
+                # Empty box: no time, no colour, no PR tag (TIME_STATUS_SPEC.md
+                # — a sector not yet reached this lap is not "white/none", it's
+                # simply not drawn as a fact yet).
+                target = TimeTarget.NONE
+                is_pr = False
+
+            if target == TimeTarget.PADDOCK:
                 bg_color = QColor(147, 51, 234, 255)
                 border_color = QColor(168, 85, 247, 255)
-            elif expected_tok == "green":
+            elif target == TimeTarget.SESSION:
                 bg_color = QColor(22, 163, 74, 255)
                 border_color = QColor(34, 197, 94, 255)
-            elif expected_tok == "yellow":
+            elif target == TimeTarget.BEHIND:
                 bg_color = QColor(161, 98, 7, 255)
                 border_color = QColor(234, 179, 8, 255)
-            else:
+            else:  # TimeTarget.NONE — no reference (invalid has its own indicator elsewhere)
                 bg_color = QColor(15, 23, 42, 255)
                 border_color = QColor(51, 65, 85, 255)
 
             # Marked white border for current active sector
             _cap_text.append(disp_text)
-            _cap_mode.append("live" if (is_current and delta_str != "--") else "frozen")
+            _cap_mode.append(mode)
             _cap_bg.append((int(bg_color.red()), int(bg_color.green()), int(bg_color.blue())))
-            if is_current:
+            if is_current and mode == "live":
                 border_color = QColor(255, 255, 255, 255)
                 pen_width = 2
             else:

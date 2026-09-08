@@ -26,6 +26,7 @@ _RUNTIME_BINDINGS = (
     "delta_debug",     # delta_engine.*              -> delta_debug.log
     "sector_eval",     # sector_colors._audit        -> sector_eval.log
     "sector_paint",    # sector_paint_recorder.record-> sector_paint.log
+    "hud_smoothing",   # hud_smoothing_logger.record_*-> hud_smoothing.log
 )
 
 
@@ -52,6 +53,12 @@ def set_single_logger_enabled(key: str, enabled: bool) -> None:
             set_sector_paint_enabled,
         )
         set_sector_paint_enabled(enabled)
+    elif key == "hud_smoothing":
+        # Pure module (no Qt import at module scope); safe to load early.
+        from simpulse.builtin_plugins.official_cockpit_hud.widgets.hud_smoothing_logger import (
+            set_hud_smoothing_enabled,
+        )
+        set_hud_smoothing_enabled(enabled)
     else:
         raise KeyError(f"no runtime logger registered for key '{key}'")
 

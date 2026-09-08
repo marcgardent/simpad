@@ -105,16 +105,35 @@ class TimeLapViewModel:
 
 
 @dataclass(frozen=True)
+class WallOfFameTimes:
+    """Les trois références connues à l'instant T. Un TimeLap par référence
+    — pas de statut/couleur dedans, ce sont des FAITS, pas une vue."""
+    my_best_all_time: TimeLap = field(default_factory=TimeLap)
+    my_best_session: TimeLap = field(default_factory=TimeLap)
+    paddock_session_best: TimeLap = field(default_factory=TimeLap)
+
+
+@dataclass(frozen=True)
 class TimeStatus:
     """LE modèle que DeltaEngine produit à chaque tick et que les plugins
     consomment. Remplace tous les champs plats expected_sectorN_*/
-    expected_lap_is_pr/sector1_status/etc. de LapDeltaPacket."""
+    expected_lap_is_pr/sector1_status/etc. de LapDeltaPacket.
+
+    ⚠️ AMENDEMENT (implémentation, tranché avec l'utilisateur) : `wall_of_fame`
+    ajouté ici. La 1ère version de ce doc renvoyait `my_session_best_lap_time_str`/
+    `session_best_lap_time_str` vers "time_status.lap (target == SESSION/PADDOCK)"
+    — faux : `lap`/`sectors` ne portent que la PROJECTION courante (target/
+    expected/delta), jamais la valeur brute d'une référence ("MY SESSION BEST:
+    1:32.450" doit s'afficher texto, indépendamment de si le tour en cours la
+    bat). `wall_of_fame` porte cette donnée brute (voir `TimeLap.total_str`)
+    à côté de la projection, sur le même modèle."""
     lap: TimeLapViewModel = field(default_factory=TimeLapViewModel)
     sectors: Tuple[TimeSectorViewModel, TimeSectorViewModel, TimeSectorViewModel] = (
         field(default_factory=TimeSectorViewModel),
         field(default_factory=TimeSectorViewModel),
         field(default_factory=TimeSectorViewModel),
     )
+    wall_of_fame: WallOfFameTimes = field(default_factory=WallOfFameTimes)
 
     @property
     def sector1(self) -> TimeSectorViewModel: return self.sectors[0]
@@ -122,15 +141,6 @@ class TimeStatus:
     def sector2(self) -> TimeSectorViewModel: return self.sectors[1]
     @property
     def sector3(self) -> TimeSectorViewModel: return self.sectors[2]
-
-
-@dataclass(frozen=True)
-class WallOfFameTimes:
-    """Les trois références connues à l'instant T. Un TimeLap par référence
-    — pas de statut/couleur dedans, ce sont des FAITS, pas une vue."""
-    my_best_all_time: TimeLap = field(default_factory=TimeLap)
-    my_best_session: TimeLap = field(default_factory=TimeLap)
-    paddock_session_best: TimeLap = field(default_factory=TimeLap)
 ```
 
 ## Résolution : deux fonctions indépendantes, jamais fusionnées

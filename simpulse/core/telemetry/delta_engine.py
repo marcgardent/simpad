@@ -27,6 +27,15 @@ from typing import Optional, List, Tuple, Dict, Union
 from isimotor_rawudp_client import TelemInfo, CompactScoring, FullScoringSession
 from simpulse_sdk.models.delta import DeltaReferenceMode, ExpectedStatus, LapColorStatus, SectorInfo, SplitStatus
 from simpulse_sdk.models.scoring import BaseTimingState, FullGridScoringState
+from simpulse_sdk.models.timing import (
+    TimeLap,
+    TimeLapViewModel,
+    TimeSectorViewModel,
+    TimeStatus,
+    TimeTarget,
+    resolve_is_personal_record_target,
+    resolve_target,
+)
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -38,6 +47,7 @@ from .reference_profile import (
     clean_name_identifier,
 )
 from .sector_engine import SectorEngine
+from .wall_of_fame_engine import WallOfFameEngine
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +146,10 @@ class DeltaEngine:
         self._current_profile: Optional[ReferenceLapProfile] = None
         self._freeze_duration: float = 3.5  # Delta freeze duration at finish line (seconds)
         self._ema_samples: int = 0  # 0 = direct/unfiltered, > 1 = EMA smoothing
+        # Equality tolerance for TimeStatus's resolve_target/resolve_is_personal_record_target
+        # (see TIME_STATUS_SPEC.md "eps") — a display decision, NOT a domain constant,
+        # settable via ReferenceLapManager.set_time_status_eps(), same pattern as freeze_duration.
+        self.time_status_eps: float = 0.1
         self.reset_session()
 
     def reset_session(self) -> None:
@@ -187,6 +201,12 @@ class DeltaEngine:
         self._last_laps_completed: int = -1
         self._last_dist: float = -1.0
         self._last_lap_flag: int = 2
+        # Fed by _apply_scoring_update, read by update_physics: unlike
+        # _last_lap_flag (record-keeping validity, e.g. a track-limits cut),
+        # these gate the LIVE delta only on genuinely delta-less situations
+        # — see is_delta_computable in _apply_scoring_update.
+        self._last_in_pits: bool = False
+        self._last_in_garage: bool = False
 
         # Last physical inputs
         self._last_speed_ms: float = 0.0
@@ -216,6 +236,12 @@ class DeltaEngine:
         # below stay available as thin delegating properties for existing callers.
         self._sectors = SectorEngine()
 
+        # WallOfFameTimes tracking (my all-time best, my session best, paddock
+        # session best) — feeds TimeStatus (see .time_status below). Computed
+        # in parallel to the legacy _all_time_best_*/_session_best_*/_paddock_*
+        # fields above during the TimeStatus migration (TIME_STATUS_SPEC.md).
+        self._wall_of_fame = WallOfFameEngine()
+
         # Delta & Lap Time freeze at finish line
         self._frozen_final_delta: float = 0.0
         self._freeze_delta_until: float = 0.0
@@ -223,6 +249,8 @@ class DeltaEngine:
         self._last_completed_lap_status: LapColorStatus = LapColorStatus.DEFAULT
         self._last_completed_lap_is_pr: bool = False
         self._freeze_lap_until: float = 0.0
+        # Frozen time_status.lap for the freeze window — see _handle_lap_transition.
+        self._frozen_lap_vm: TimeLapViewModel = TimeLapViewModel()
 
         # EMA smoothing
         self._ema_live_delta: float = 0.0
@@ -477,6 +505,7 @@ class DeltaEngine:
             self._all_time_best_lap_time = profile.lap_time
         else:
             self._all_time_best_lap_time = 999999.0
+        self._wall_of_fame.load_all_time_from_disk(profile)
         self._apply_active_profile()
 
     def _apply_active_profile(self) -> None:
@@ -517,6 +546,10 @@ class DeltaEngine:
         else:
             self._live_delta = 0.0
             self._sectors.clear_deltas()
+            log_delta_debug(
+                f"[APPLY_MODE_CLEAR_DELTAS] last_scoring_dist={self._last_scoring_dist:.1f}, "
+                f"last_scoring_time_into={self._last_scoring_time_into:.3f}s — sector deltas zeroed here"
+            )
 
     def _find_player_vehicle(self, vehicles: list) -> Optional[dict]:
         """SLAP Helper: Finds player vehicle in scoring vehicles list."""
@@ -607,6 +640,34 @@ class DeltaEngine:
             self._last_completed_lap_is_pr = (
                 lap_status != LapColorStatus.INVALID and last_lap_time > 0.0
                 and prev_all_time_best < 999900.0 and last_lap_time <= prev_all_time_best + 0.001
+            )
+
+            # Frozen TimeStatus.lap for the just-completed lap — resolved
+            # against WallOfFameTimes as it stood BEFORE this lap updates it
+            # below (self._wall_of_fame.snapshot() here IS the "before" state,
+            # update_from_lap_completed() only runs inside
+            # _finalize_completed_lap further down). Needed because
+            # time_status.lap is otherwise a CONTINUOUS live projection of the
+            # NEW lap — reading it during the freeze window would compare this
+            # very lap's own result against a WallOfFame that already includes
+            # it (e.g. a brand-new best always resolving as merely "equalled",
+            # never "beaten" — the same off-by-one-lap bug
+            # resolve_is_personal_record_target's strict "<" prevents at the
+            # instant level, re-introduced one level up if not frozen here).
+            is_lap_valid = (lap_status != LapColorStatus.INVALID and last_lap_time > 0.0)
+            wof_before = self._wall_of_fame.snapshot()
+            eps = self.time_status_eps
+            if is_lap_valid:
+                frozen_target = resolve_target(last_lap_time, wof_before, "total", eps)
+                frozen_is_pr = resolve_is_personal_record_target(last_lap_time, wof_before, "total", eps)
+            else:
+                frozen_target = TimeTarget.NONE
+                frozen_is_pr = False
+            self._frozen_lap_vm = TimeLapViewModel(
+                target=frozen_target,
+                expected_time=last_lap_time if last_lap_time > 0.0 else 0.0,
+                delta_time=self._live_delta,
+                is_personal_record_target=frozen_is_pr,
             )
 
             # Capture and freeze final delta and lap time before reset
@@ -936,6 +997,7 @@ class DeltaEngine:
         # scoring falls back to the most recently observed session splits so status
         # of a given frozen split does not flip green/purple frame-to-frame.
         self._sectors.update_session_bests(vehicles_src)
+        self._wall_of_fame.update_from_scoring(best_lap, vehicles_src)
 
         if vehicles_src:
             # ----- paddock scalar: best full-lap of the OTHER cars this session -----
@@ -1002,6 +1064,13 @@ class DeltaEngine:
             self._sectors.reset_lap_capture(clear_primed=True)
             self._last_scoring_timestamp = 0.0
             self._local_lap_start_et = current_et if current_et > 0.0 else 0.0
+            # BUGFIX: these two were never reset here, so _load_reference_profile()
+            # below -> _apply_active_profile() would compute (or clear_deltas()
+            # against) a delta/sector-split using distance+time_into from the
+            # PREVIOUS track/session — garbage at best, an unwanted blank/reset
+            # of the sector boxes at worst, right at every track change.
+            self._last_scoring_dist = 0.0
+            self._last_scoring_time_into = 0.0
 
             # Reset session and stint best
             self._session_best_profile = None
@@ -1011,6 +1080,7 @@ class DeltaEngine:
             self._stint_best_lap_time = 999999.0
             self._last_lap_time = 999999.0
             self._game_session_best_lap_time = 999999.0
+            self._wall_of_fame.reset_session()
 
             # Load reference profile for track/car from disk
             self._load_reference_profile()
@@ -1067,7 +1137,37 @@ class DeltaEngine:
         self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits, current_et=current_et)
         self._handle_sector_transition(curr_sec, time_into=time_into, player_dist=player_dist, lap_crossed=lap_crossed)
 
+        if in_garage:
+            # In the garage, the current-sector tracking must not carry over
+            # from before: the driver can re-emerge on any sector, so there's
+            # no valid "last known position" to keep — reporting S2/S3 while
+            # sitting in the garage is nonsense. Force back to a neutral S1
+            # state on every packet while parked (not just on entry: a stale
+            # raw sector value from the garage telemetry itself could
+            # otherwise re-lock in on the very next call) and re-arm "not yet
+            # primed" so the first real on-track sector report, once the
+            # driver drives out, is accepted unconditionally instead of being
+            # jitter-rejected against this reset (mirrors the track-change
+            # reset above).
+            if not self._last_in_garage:
+                log_delta_debug(f"[GARAGE_ENTER] sector tracking reset to S1 (was S{self._sectors.last_current_sector})")
+            self._sectors.reset_lap_capture(clear_primed=True)
+            self._sectors.last_current_sector = 1
+
         is_flying_lap = (lap_flag == 2 and time_into > 0.0)
+        # Live delta/expected keeps updating even when the CURRENT lap is
+        # invalidated for record-keeping (lap_flag != 2, e.g. a track-limits
+        # cut) — the driver already has separate visual/audio invalid-lap
+        # indicators elsewhere; freezing/blanking the live number too would
+        # just be a redundant, unwanted second indicator (requested
+        # explicitly, more than once). Only genuinely delta-less situations
+        # (pits, garage, no time context yet) stop the live projection.
+        # Recording into the reference-lap spatial profile stays gated on
+        # is_flying_lap below: an invalidated lap must never pollute a
+        # future "all-time best" recording, that's a separate concern.
+        is_delta_computable = (time_into > 0.0 and not in_garage and not in_pits)
+        self._last_in_pits = in_pits
+        self._last_in_garage = in_garage
 
         # Reset stint best if stopped in pits
         if in_pits and self._stint_best_lap_time != 999999.0 and self._last_speed_ms < 0.1:
@@ -1092,12 +1192,13 @@ class DeltaEngine:
         self._last_scoring_timestamp = now
         self._last_dist = player_dist
 
-        # If flying lap, update position and calculate delta
-        if is_flying_lap:
+        # Update position and calculate delta whenever it's meaningful to
+        # (see is_delta_computable above) — not gated on lap validity.
+        if is_delta_computable:
             # Delta calculation with exact game telemetry
             self._calculate_delta(player_dist, time_into)
-        elif lap_flag != 2 or in_garage or in_pits:
-            # Out-lap / Pits / Pre-start: no flying lap delta
+        else:
+            # Pits / Garage / Pre-start: no flying lap delta
             self._live_delta = 0.0
             self._last_checkpoint_idx = -1
             log_delta_debug(
@@ -1157,7 +1258,10 @@ class DeltaEngine:
         if current_sector > 0:
             self._handle_sector_transition(current_sector, time_into=phys_time_into, player_dist=self._last_scoring_dist)
 
-        if self._last_lap_flag == 2 and self._last_scoring_dist >= 0.0:
+        # Same gating as _apply_scoring_update's is_delta_computable: keep the
+        # live delta updating at 100Hz even during an invalidated lap, only
+        # stop it in pits/garage — see that docstring.
+        if not self._last_in_pits and not self._last_in_garage and self._last_scoring_dist >= 0.0:
             if phys_time_into > 0.0:
                 self._calculate_delta(self._last_scoring_dist, phys_time_into)
 
@@ -1466,6 +1570,14 @@ class DeltaEngine:
         if marks_path:
             profile.set_marks_filepath(marks_path)
 
+        # Feed WallOfFameTimes (my-session-best / all-time-best) in parallel —
+        # see WallOfFameEngine docstring. Same lap, decomposed the same way as
+        # the legacy fields below (_individual_sector_splits).
+        s1, s2, s3 = _individual_sector_splits(profile)
+        self._wall_of_fame.update_from_lap_completed(
+            TimeLap(sector1=s1, sector2=s2, sector3=s3, total=lap_time), is_valid=True,
+        )
+
         # Update Multi-Reference hierarchy
         self._last_lap_profile = profile
         self._last_lap_time = lap_time
@@ -1547,6 +1659,7 @@ class DeltaEngine:
             if loaded and loaded.t_grid and len(loaded.t_grid) > 1:
                 self._all_time_best_profile = loaded
                 self._all_time_best_lap_time = loaded.lap_time
+                self._wall_of_fame.load_all_time_from_disk(loaded)
                 self._apply_active_profile()
                 logger.info(f"[DeltaEngine] Loaded reference profile from {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)")
                 print(f"[DeltaEngine] Reference lap and marks loaded: {filepath.name} ({self._ref_lap_time:.3f}s, {len(loaded.annotations)} annotations)", flush=True)
@@ -1581,6 +1694,7 @@ class DeltaEngine:
             placeholder.load_marks_from_file(marks_filepath)
             self._all_time_best_profile = placeholder
             self._all_time_best_lap_time = 999999.0
+            self._wall_of_fame.load_all_time_from_disk(None)
             self._apply_active_profile()
             print(f"[DeltaEngine] Track marks loaded for '{self._track_name}': {marks_filepath.name} ({len(placeholder.annotations)} annotations). Waiting for 1st timed lap.", flush=True)
             log_delta_debug(f"[REF_LOAD_MARKS_ONLY] marks_file='{marks_filepath.name}', marks={len(placeholder.annotations)}")
@@ -1589,6 +1703,7 @@ class DeltaEngine:
         # 3. No file found for track: pristine state (0 annotations, no leak from other tracks)
         self._all_time_best_profile = None
         self._all_time_best_lap_time = 999999.0
+        self._wall_of_fame.load_all_time_from_disk(None)
         self._apply_active_profile()
         fname = filepath.name if filepath else "none"
         print(f"[DeltaEngine] No reference lap or marks for '{self._track_name}' ({fname}). Waiting for 1st flying lap.", flush=True)
@@ -1920,3 +2035,47 @@ class DeltaEngine:
     def get_live_car_distance(self) -> float:
         """Returns estimated current car distance."""
         return self._last_scoring_dist
+
+    # ------------------------------------------------------------ TimeStatus
+    @property
+    def time_status(self) -> TimeStatus:
+        """The single, unified timing/colour model — see TIME_STATUS_SPEC.md.
+        Computed on demand from WallOfFameTimes + the live projection, in
+        parallel to the (now legacy) expected_*/sector*_status/etc. properties
+        above during the migration; both read the same underlying state
+        through two different paths.
+        """
+        wof = self._wall_of_fame.snapshot()
+        eps = self.time_status_eps
+
+        if self.is_lap_freeze_active:
+            # See _handle_lap_transition: the just-completed lap's own result,
+            # resolved against WallOfFameTimes as it stood BEFORE that lap —
+            # never the continuous live projection during this window (it
+            # would self-compare, see that docstring).
+            lap_vm = self._frozen_lap_vm
+        else:
+            lap_expected = self.estimated_lap_time
+            lap_vm = TimeLapViewModel(
+                target=resolve_target(lap_expected, wof, "total", eps),
+                expected_time=lap_expected,
+                delta_time=self.display_delta,
+                is_personal_record_target=resolve_is_personal_record_target(lap_expected, wof, "total", eps),
+            )
+
+        splits = _individual_sector_splits(self._current_profile)
+        deltas = (self._sector1_delta, self._sector2_delta, self._sector3_delta)
+        keys = ("sector1", "sector2", "sector3")
+        sectors = []
+        for i in range(3):
+            ref = splits[i]
+            expected = max(0.0, ref + deltas[i]) if (ref > 0.0 and self.has_reference) else 0.0
+            sectors.append(TimeSectorViewModel(
+                target=resolve_target(expected, wof, keys[i], eps),
+                expected_time=expected,
+                delta_time=deltas[i],
+                is_current=(self._last_current_sector == i + 1),
+                is_personal_record_target=resolve_is_personal_record_target(expected, wof, keys[i], eps),
+            ))
+
+        return TimeStatus(lap=lap_vm, sectors=tuple(sectors), wall_of_fame=wof)

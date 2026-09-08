@@ -79,6 +79,7 @@ class ReferenceLapManager(QObject):
                 self.set_reference_mode(app_cfg.delta_reference_mode)
                 self.delta_engine.freeze_duration = app_cfg.delta_freeze_duration
                 self.delta_engine.ema_samples = app_cfg.delta_ema_samples
+                self.delta_engine.time_status_eps = max(0.0, float(app_cfg.delta_time_status_eps))
 
     @classmethod
     def get_instance(cls) -> ReferenceLapManager:
@@ -217,6 +218,15 @@ class ReferenceLapManager(QObject):
         self.delta_engine.freeze_duration = max(0.0, float(duration))
         if self.config_manager and self.config_manager.config and self.config_manager.config.app:
             self.config_manager.config.app.delta_freeze_duration = self.delta_engine.freeze_duration
+            self.config_manager.save()
+
+    def set_time_status_eps(self, eps: float) -> None:
+        """Equality tolerance for TimeStatus's resolve_target/
+        resolve_is_personal_record_target (TIME_STATUS_SPEC.md "eps") — a
+        display decision, same pattern as set_freeze_duration()."""
+        self.delta_engine.time_status_eps = max(0.0, float(eps))
+        if self.config_manager and self.config_manager.config and self.config_manager.config.app:
+            self.config_manager.config.app.delta_time_status_eps = self.delta_engine.time_status_eps
             self.config_manager.save()
 
     def set_ema_samples(self, samples: int) -> None:
@@ -451,33 +461,34 @@ class ReferenceLapManager(QObject):
             estimated_lap_time=de.estimated_lap_time,
             estimated_lap_time_str=de.estimated_lap_time_str,
             expected_status=de.expected_lap_status,
+            time_status=de.time_status,
             current_sector=de.current_sector,
-            sector1_delta=de.sector1_delta,
-            sector2_delta=de.sector2_delta,
-            sector3_delta=de.sector3_delta,
-            sector1_time=de.sector1_time_str,
-            sector1_status=de.sector1_status,
-            sector2_time=de.sector2_time_str,
-            sector2_status=de.sector2_status,
-            sector3_time=de.sector3_time_str,
-            sector3_status=de.sector3_status,
+            _sector1_delta=de.sector1_delta,
+            _sector2_delta=de.sector2_delta,
+            _sector3_delta=de.sector3_delta,
+            _sector1_time=de.sector1_time_str,
+            _sector1_status=de.sector1_status,
+            _sector2_time=de.sector2_time_str,
+            _sector2_status=de.sector2_status,
+            _sector3_time=de.sector3_time_str,
+            _sector3_status=de.sector3_status,
             sectors_list=sec_list,
-            expected_sector1_time=de.expected_sector1_time,
-            expected_sector1_status=de.expected_sector1_status,
-            expected_sector1_is_pr=de.expected_sector1_is_pr,
-            expected_sector2_time=de.expected_sector2_time,
-            expected_sector2_status=de.expected_sector2_status,
-            expected_sector2_is_pr=de.expected_sector2_is_pr,
-            expected_sector3_time=de.expected_sector3_time,
-            expected_sector3_status=de.expected_sector3_status,
-            expected_sector3_is_pr=de.expected_sector3_is_pr,
-            expected_lap_is_pr=de.expected_lap_is_pr,
-            my_session_best_lap_time_str=de.my_session_best_lap_time_str,
-            session_best_lap_time_str=de.session_best_lap_time_str,
+            _expected_sector1_time=de.expected_sector1_time,
+            _expected_sector1_status=de.expected_sector1_status,
+            _expected_sector1_is_pr=de.expected_sector1_is_pr,
+            _expected_sector2_time=de.expected_sector2_time,
+            _expected_sector2_status=de.expected_sector2_status,
+            _expected_sector2_is_pr=de.expected_sector2_is_pr,
+            _expected_sector3_time=de.expected_sector3_time,
+            _expected_sector3_status=de.expected_sector3_status,
+            _expected_sector3_is_pr=de.expected_sector3_is_pr,
+            _expected_lap_is_pr=de.expected_lap_is_pr,
+            _my_session_best_lap_time_str=de.my_session_best_lap_time_str,
+            _session_best_lap_time_str=de.session_best_lap_time_str,
             last_lap_time=de.last_completed_lap_time,
             last_lap_time_str=de.last_completed_lap_time_str,
-            last_lap_status=de.last_completed_lap_status,
-            last_lap_is_pr=de.last_completed_lap_is_pr,
+            _last_lap_status=de.last_completed_lap_status,
+            _last_lap_is_pr=de.last_completed_lap_is_pr,
             is_lap_freeze_active=de.is_lap_freeze_active,
             lap_flag=de._last_lap_flag,
             is_pit_lap=de.is_pit_lap,

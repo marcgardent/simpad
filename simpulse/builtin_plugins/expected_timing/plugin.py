@@ -9,13 +9,15 @@ handler):
 
   * EXPECTED   → sensors.estimated_lap_time_str / sensors.expected_status
   * Δ lap      → sensors.delta_time / delta display string
-  * S1/S2/S3   → sensors.expected_sectorN_time / sensors.expected_sectorN_status
-                 (projected sector time, NOT the raw completed-split time)
+  * S1/S2/S3   → sensors.time_status.sectorN.expected_time_str / .target
+                 (projected sector time, NOT the raw completed-split time —
+                 see simpulse_sdk.models.timing.TimeStatus)
   * REFERENCES → three unambiguously-labelled clocks, each a genuinely
-                 different baseline:
-                   "MY SESSION BEST"   sensors.my_session_best_lap_time_str
+                 different baseline, all read from sensors.time_status.wall_of_fame
+                 (the raw, un-projected reference facts — see WallOfFameTimes):
+                   "MY SESSION BEST"   wall_of_fame.my_best_session.total_str
                                        (my own best lap THIS session)
-                   "PADDOCK BEST"      sensors.session_best_lap_time_str
+                   "PADDOCK BEST"      wall_of_fame.paddock_session_best.total_str
                                        (best lap of any OTHER car, this session)
                    "MY ALL-TIME BEST"  sensors.reference_profile.lap_time
                                        (my best ever, any session — a static
@@ -27,9 +29,10 @@ handler):
 Colour convention — NO PINK: every colour token this overlay paints
 (`purple`/`green`/`yellow`/`white`/`invalid`) is scoped to the CURRENT SESSION
 only (best-of-session vs. my-session-best). Beating my all-time best ("ever")
-is never expressed as a colour; instead the engine flags it via the sibling
-`*_is_pr` booleans (`expected_lap_is_pr`, `expected_sectorN_is_pr`) and this
-overlay prints a literal "PR" tag next to the time/delta it belongs to.
+is never expressed as a colour; instead the engine flags it via
+``time_status.lap.is_personal_record_target`` / ``time_status.sectorN.
+is_personal_record_target`` and this overlay prints a literal "PR" tag next
+to the time/delta it belongs to.
 
 Nothing cached on the plugin instance is used for painting, so the overlay can
 never show stale or empty content. When the bus merged no fresh timing (no
@@ -54,6 +57,7 @@ from simpulse_sdk import (
     IHudWidgetProvider,
     HudSlot,
     VehicleSensors,
+    TimeTarget,
     format_lap_time,
 )
 
@@ -73,6 +77,17 @@ _TOKEN_RGB = {
 }
 
 _PR_COLOR = QColor(255, 255, 255)  # PR is a text tag, not a colour tier — plain white
+
+# TimeTarget -> render token (TIME_STATUS_SPEC.md "Table de rendu" — a VIEW
+# concern, not the domain's; the sector boxes below are the only place in
+# this plugin that reads time_status.sectorN.target instead of the legacy
+# expected_sectorN_status).
+_TARGET_TOKEN = {
+    TimeTarget.NONE: "white",
+    TimeTarget.BEHIND: "yellow",
+    TimeTarget.SESSION: "green",
+    TimeTarget.PADDOCK: "purple",
+}
 
 
 def _all_time_best_str(sensors: VehicleSensors) -> str:
@@ -191,7 +206,7 @@ class ExpectedTimingPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
         # (expected_status is already `invalid`/`white` when no active reference).
         est = sensors.estimated_lap_time_str
         tok = sensors.expected_status
-        is_pr = bool(sensors.expected_lap_is_pr)
+        is_pr = bool(sensors.time_status.lap.is_personal_record_target)
 
         painter.setFont(F(9, True))
         painter.setPen(QColor(0, 210, 255))
@@ -229,10 +244,11 @@ class ExpectedTimingPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
         # (reference split + live splitN delta), same "no pink, PR tag" rule
         # as EXPECTED above.
         if self.config.show_sectors:
+            ts = sensors.time_status
             cells = [
-                ("S1", sensors.expected_sector1_time, sensors.expected_sector1_status, sensors.expected_sector1_is_pr),
-                ("S2", sensors.expected_sector2_time, sensors.expected_sector2_status, sensors.expected_sector2_is_pr),
-                ("S3", sensors.expected_sector3_time, sensors.expected_sector3_status, sensors.expected_sector3_is_pr),
+                ("S1", ts.sector1.expected_time_str, _TARGET_TOKEN[ts.sector1.target], ts.sector1.is_personal_record_target),
+                ("S2", ts.sector2.expected_time_str, _TARGET_TOKEN[ts.sector2.target], ts.sector2.is_personal_record_target),
+                ("S3", ts.sector3.expected_time_str, _TARGET_TOKEN[ts.sector3.target], ts.sector3.is_personal_record_target),
             ]
             cw = (width - 2 * pad - 2 * gap) / 3.0
             for i, (label, t_v, st_tok, sec_pr) in enumerate(cells):
@@ -262,9 +278,10 @@ class ExpectedTimingPlugin(SimPulsePlugin, ITabProvider, ITelemetrySubscriber, I
             painter.setPen(QPen(QColor(0, 210, 255, 60), 1))
             painter.drawLine(int(pad), int(y), int(width - pad), int(y))
             y += gap
+            wof = sensors.time_status.wall_of_fame
             refs = [
-                ("MY SESSION BEST", sensors.my_session_best_lap_time_str),
-                ("PADDOCK BEST", sensors.session_best_lap_time_str),
+                ("MY SESSION BEST", wof.my_best_session.total_str),
+                ("PADDOCK BEST", wof.paddock_session_best.total_str),
                 ("MY ALL-TIME BEST", _all_time_best_str(sensors)),
             ]
             rw = (width - 2 * pad - (len(refs) - 1) * gap) / len(refs)

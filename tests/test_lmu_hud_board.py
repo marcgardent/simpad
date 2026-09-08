@@ -175,7 +175,7 @@ class TestQtHudOverlay(unittest.TestCase):
         sensors_frozen = VehicleSensors(
             last_lap_time=92.45,
             last_lap_time_str="01:32.450",
-            last_lap_status="purple",
+            _last_lap_status="purple",
             is_lap_freeze_active=True,
             lap_flag=2,
         )

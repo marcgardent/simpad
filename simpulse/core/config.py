@@ -33,6 +33,9 @@ class AppSettings:
     delta_reference_mode: str = "all_time_best"
     delta_freeze_duration: float = 3.5
     delta_ema_samples: int = 0
+    # Equality tolerance for TimeStatus's resolve_target/resolve_is_personal_record_target
+    # (TIME_STATUS_SPEC.md "eps") — a display decision, not a domain constant.
+    delta_time_status_eps: float = 0.1
     abs_threshold: float = 0.15
     tc_threshold: float = 0.2
     lateral_slide_threshold: float = 0.1
@@ -79,6 +82,7 @@ class LoggerSettings:
     delta_debug: bool = False
     sector_eval: bool = False
     sector_paint: bool = False
+    hud_smoothing: bool = False
 
 
 class ICoreConfigProvider(ABC):

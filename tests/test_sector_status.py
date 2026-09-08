@@ -80,9 +80,9 @@ class TestSectorStatusCalculations(unittest.TestCase):
     def test_sector_delta_str_zero_delta(self):
         """Verify sector_delta_str formats zero delta (+0.000) when active session reference exists."""
         sensors = VehicleSensors(
-            sector1_delta=0.0,
+            _sector1_delta=0.0,
             delta_time=-0.120,
-            sector1_time="30.500",
+            _sector1_time="30.500",
         )
         self.assertEqual(sensors.sector_delta_str(1), "+0.000")
 
