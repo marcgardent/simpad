@@ -4,10 +4,8 @@ Sector Times Widget — 3-sector time boxes (S1, S2, S3) positioned below Delta 
 
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush
-from simpulse_sdk import TimeTarget, format_sector_time
-from .base_widget import BaseQtHudWidget, CockpitWidgetContext, format_signed_delta
-from .display_cache import HudTimeWindowAverage
-from .hud_smoothing_logger import record_passthrough, record_smoothing
+from simpulse_sdk import TimeTarget
+from .base_widget import BaseQtHudWidget, CockpitWidgetContext
 
 
 # IHM-only presentation: the model may deliver the same frozen split under either
@@ -68,13 +66,14 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     Each box's live (in-progress) text shows either the live Delta or the
     projected Expected split time — same user-selectable
     CockpitWidgetContext.delta_display_mode as the Delta Timer above, applied
-    per-box here too — as a simple moving average over the last
-    ``hud_smoothing_window_s`` seconds of GAME time (HudTimeWindowAverage —
-    see display_cache.py and QtDeltaTimerWidget's docstring): it's a
-    projection either way, not raw telemetry, so smoothing it for
-    readability is fine. The frozen split text (once a sector is done) is
-    left unaveraged — it only changes once per lap crossing, nothing to
-    smooth, and averaging it in would just delay showing the fresh result.
+    per-box here too — read from ``sensors.time_status_smoothed`` (DeltaEngine's
+    own moving average over the "⚙️ Engines" tab's smoothing window) or
+    ``sensors.time_status`` (raw) depending on ``context.delta_smoothing_mode``
+    — see QtDeltaTimerWidget's docstring: it's a projection either way, not
+    raw telemetry, so smoothing it for readability is fine. The frozen split
+    text (once a sector is done) is always the raw captured value — it only
+    changes once per lap crossing, nothing to smooth, and smoothing it in
+    would just delay showing the fresh result.
 
     Per-box visibility follows TIME_STATUS_SPEC.md's rule to the letter (a
     sector's box is one of exactly three states, never a fourth "leftover
@@ -95,8 +94,6 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     def __init__(self, font_family: str = "Anta"):
         self.font_family = font_family
         self._last_rendered_sector: int = -1
-        self._delta_avgs = [HudTimeWindowAverage(), HudTimeWindowAverage(), HudTimeWindowAverage()]
-        self._was_current = [False, False, False]
 
     def paint(
         self,
@@ -152,6 +149,13 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         painter.setFont(font)
 
         time_status_sectors = sensors.time_status.sectors
+        # Which TimeStatus the LIVE numeric readout follows — colour/PR below
+        # always stay on the raw sensors.time_status (never smoothed).
+        display_ts_sectors = (
+            sensors.time_status_smoothed.sectors
+            if context.delta_smoothing_mode == "smoothed"
+            else sensors.time_status.sectors
+        )
         is_freeze = sensors.is_lap_freeze_active
 
         for i in range(min(3, len(sectors))):
@@ -161,7 +165,6 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             is_current = sec.is_current
             delta_str = sec.delta_str
             box_num = i + 1
-            label = f"sector{box_num}"
 
             # Colour is aligned with the Delta Timer above: SESSION-scoped
             # time_status.sectorN.target only (purple/green/yellow/grey), the
@@ -185,35 +188,17 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             if mode == "live":
                 # Same user-selectable Delta vs Expected choice as the Delta
                 # Timer above (CockpitWidgetContext.delta_display_mode) —
-                # applies here too, not just to the lap badge.
+                # applies here too, not just to the lap badge. Value comes
+                # from display_ts_sectors (raw or smoothed, per
+                # context.delta_smoothing_mode); these formatters already
+                # collapse "no data" (0.0) to "--", matching the old
+                # passthrough convention.
                 if context.delta_display_mode == "expected":
-                    raw_value = time_status_sectors[i].expected_time
-                    raw_text = time_status_sectors[i].expected_time_str
+                    disp_text = display_ts_sectors[i].expected_time_str
                 else:
-                    raw_value = sec.delta
-                    raw_text = delta_str
-                self._delta_avgs[i].window_s = context.hud_smoothing_window_s
-                averaged = self._delta_avgs[i].sample(raw_value, raw_text, context.game_time_s)
-                if averaged is None:
-                    disp_text = raw_text
-                    record_passthrough(label, raw_text, context.hud_smoothing_window_s, context.game_time_s)
-                else:
-                    if context.delta_display_mode == "expected":
-                        disp_text = format_sector_time(averaged)
-                    else:
-                        disp_text = format_signed_delta(averaged)
-                    record_smoothing(
-                        label, raw_value, raw_text, averaged, disp_text,
-                        context.hud_smoothing_window_s, context.game_time_s,
-                    )
+                    disp_text = display_ts_sectors[i].delta_str
             else:
-                if self._was_current[i]:
-                    # Just stopped being the current sector: start the next
-                    # lap's averaging window fresh, don't carry this box's
-                    # last live samples forward.
-                    self._delta_avgs[i].reset()
                 disp_text = "--" if mode == "empty" else _present_split_time(s_time)
-            self._was_current[i] = (mode == "live")
 
             if mode == "empty":
                 # Empty box: no time, no colour, no PR tag (TIME_STATUS_SPEC.md

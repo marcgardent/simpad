@@ -97,6 +97,12 @@ class LapDeltaPacket:
     # expected_sectorN_*/expected_lap_is_pr/sector1_status/etc. field below once
     # the migration reaches Step 4. Until then both are populated in parallel.
     time_status: TimeStatus = field(default_factory=TimeStatus)
+    # Second, additive TimeStatus — same shape as time_status, built from
+    # DeltaEngine's smoothed live delta (moving average over
+    # AppSettings.delta_smoothing_window_s) instead of the raw one. Never
+    # replaces time_status; both are populated every tick so a consumer can
+    # pick whichever it wants (e.g. OfficialCockpitHudConfig.delta_smoothing_mode).
+    time_status_smoothed: TimeStatus = field(default_factory=TimeStatus)
     current_sector: int = 1
     # DEPRECATED (renamed to `_xxx`, see the @deprecated properties below) —
     # use `time_status.sectorN`/`time_status.lap` instead (TIME_STATUS_SPEC.md

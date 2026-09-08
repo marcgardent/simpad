@@ -32,10 +32,16 @@ class AppSettings:
     hud_debug_boxes: bool = False
     delta_reference_mode: str = "all_time_best"
     delta_freeze_duration: float = 3.5
-    delta_ema_samples: int = 0
+    # Moving-average window, in seconds of GAME time, for DeltaEngine's
+    # smoothed_live_delta / time_status_smoothed — see the "⚙️ Engines" tab.
+    # Replaces both the old dead EMA field (delta_ema_samples) and the old
+    # plugin-side HudTimeWindowAverage slider — a single canonical smoothing
+    # knob, applied in DeltaEngine itself so value + colour + PR stay
+    # consistent for every consumer (not just the Cockpit HUD plugin).
+    delta_smoothing_window_s: float = 0.15
     # Equality tolerance for TimeStatus's resolve_target/resolve_is_personal_record_target
     # (TIME_STATUS_SPEC.md "eps") — a display decision, not a domain constant.
-    delta_time_status_eps: float = 0.1
+    delta_time_status_eps: float = 0.001
     abs_threshold: float = 0.15
     tc_threshold: float = 0.2
     lateral_slide_threshold: float = 0.1
@@ -82,7 +88,6 @@ class LoggerSettings:
     delta_debug: bool = False
     sector_eval: bool = False
     sector_paint: bool = False
-    hud_smoothing: bool = False
 
 
 class ICoreConfigProvider(ABC):

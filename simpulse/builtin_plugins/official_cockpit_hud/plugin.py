@@ -310,8 +310,7 @@ class OfficialCockpitHudPlugin(
             hit_count=store.hit_count_current_lap,
             is_clean_lap=store.is_clean_lap,
             delta_display_mode=self.config.delta_display_mode,
-            hud_smoothing_window_s=self.config.hud_smoothing_window_s,
-            game_time_s=store.timing.current_et,
+            delta_smoothing_mode=self.config.delta_smoothing_mode,
         )
 
         # 1. Electronic Assists (ABS / TC)

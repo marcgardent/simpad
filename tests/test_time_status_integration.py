@@ -113,5 +113,27 @@ class TestFrozenLapBadge(unittest.TestCase):
         self.assertFalse(eng.time_status.lap.is_personal_record_target)
 
 
+class TestTimeStatusSmoothedShape(unittest.TestCase):
+    """Structural regression guard for the smoothing consolidation: enriching
+    with a smoothed version must never change the TimeStatus model shape
+    itself — see the plan's instruction 1 ('tu touches pas au model actuel')."""
+
+    def test_time_status_smoothed_has_same_shape_as_time_status(self):
+        import dataclasses
+
+        eng = DeltaEngine()
+        status = eng.time_status
+        smoothed = eng.time_status_smoothed
+
+        self.assertIs(type(status), type(smoothed))
+        self.assertEqual(
+            {f.name for f in dataclasses.fields(status)},
+            {f.name for f in dataclasses.fields(smoothed)},
+        )
+        self.assertEqual(len(status.sectors), len(smoothed.sectors))
+        for raw_sec, smoothed_sec in zip(status.sectors, smoothed.sectors):
+            self.assertIs(type(raw_sec), type(smoothed_sec))
+
+
 if __name__ == "__main__":
     unittest.main()

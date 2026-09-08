@@ -8,7 +8,13 @@ import unittest
 from simpulse.builtin_plugins.official_cockpit_hud.widgets import QtSectorTimesWidget, CockpitWidgetContext
 from simpulse.core.telemetry.delta_engine import DeltaEngine
 from simpulse.core.telemetry.reference_profile import ReferenceLapProfile
-from simpulse_sdk import VehicleSensors
+from simpulse_sdk import (
+    TimeLapViewModel,
+    TimeSectorViewModel,
+    TimeStatus,
+    VehicleSensors,
+    WallOfFameTimes,
+)
 
 
 class TestSectorTimesWidget(unittest.TestCase):
@@ -46,7 +52,7 @@ class TestSectorTimesWidget(unittest.TestCase):
         sensors._sector3_time = "00:39.944"  # stale previous-lap value
         sensors._sector2_delta = -0.150
 
-        self._paint(sensors, hud_smoothing_window_s=0.0, game_time_s=10.0)
+        self._paint(sensors)
 
         self.assertEqual(self.captured["mode"], ("frozen", "live", "empty"))
         self.assertEqual(self.captured["boxes"][2], "--")
@@ -59,7 +65,7 @@ class TestSectorTimesWidget(unittest.TestCase):
         sensors._sector2_time = "00:42.100"
         sensors._sector3_time = "00:39.944"
 
-        self._paint(sensors, hud_smoothing_window_s=0.0, game_time_s=95.0)
+        self._paint(sensors)
 
         self.assertEqual(self.captured["mode"], ("frozen", "frozen", "frozen"))
         self.assertEqual(self.captured["boxes"], ("00:31.250", "00:42.100", "00:39.944"))
@@ -78,7 +84,10 @@ class TestSectorTimesWidget(unittest.TestCase):
         sensors._sector2_delta = -0.5
         sensors.time_status = eng.time_status
 
-        self._paint(sensors, delta_display_mode="expected", hud_smoothing_window_s=0.0, game_time_s=10.0)
+        # delta_smoothing_mode="direct": the widget now reads its live value
+        # from sensors.time_status/.time_status_smoothed depending on this
+        # mode (default "smoothed") — this test only populates the raw one.
+        self._paint(sensors, delta_display_mode="expected", delta_smoothing_mode="direct")
 
         self.assertEqual(self.captured["mode"][1], "live")
         self.assertEqual(self.captured["boxes"][1], "00:29.500")
@@ -87,8 +96,19 @@ class TestSectorTimesWidget(unittest.TestCase):
         """Default mode ('delta') keeps showing the live gap, unaffected."""
         sensors = VehicleSensors(current_sector=1)
         sensors._sector1_delta = -0.150
+        sensors.time_status = TimeStatus(
+            lap=TimeLapViewModel(),
+            sectors=(
+                TimeSectorViewModel(delta_time=-0.150, is_current=True),
+                TimeSectorViewModel(),
+                TimeSectorViewModel(),
+            ),
+            wall_of_fame=WallOfFameTimes(),
+        )
 
-        self._paint(sensors, delta_display_mode="delta", hud_smoothing_window_s=0.0, game_time_s=10.0)
+        # See note above: delta_smoothing_mode="direct" because this test
+        # only populates sensors.time_status (raw), not .time_status_smoothed.
+        self._paint(sensors, delta_display_mode="delta", delta_smoothing_mode="direct")
 
         self.assertEqual(self.captured["mode"][0], "live")
         self.assertEqual(self.captured["boxes"][0], "-0.150")

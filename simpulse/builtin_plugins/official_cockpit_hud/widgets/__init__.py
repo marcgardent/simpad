@@ -16,14 +16,12 @@ from .energy_laps import QtEnergyLapsWidget
 from .tires_gauge import QtTiresGaugeWidget
 from .lap_status import QtLapStatusWidget
 from .base_widget import BaseQtHudWidget, CockpitWidgetContext, lerp, format_signed_delta
-from .display_cache import HudTimeWindowAverage
 
 __all__ = [
     "BaseQtHudWidget",
     "CockpitWidgetContext",
     "lerp",
     "format_signed_delta",
-    "HudTimeWindowAverage",
     "QtGearSpeedWidget",
     "QtRevIndicatorWidget",
     "QtAbsGaugeWidget",

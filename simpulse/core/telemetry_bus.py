@@ -336,6 +336,7 @@ class TelemetryBus(QObject):
         sensors.my_session_best_lap_time_str = getattr(effective, 'my_session_best_lap_time_str', '--:--.---')
         sensors.session_best_lap_time_str = getattr(effective, 'session_best_lap_time_str', '--:--.---')
         sensors.time_status = effective.time_status
+        sensors.time_status_smoothed = effective.time_status_smoothed
         # sensors.reference_profile (the "all-time best" source) is stamped
         # once in VehicleSensors.from_view(), NOT here — it's static, pushed
         # only on real change, not re-derived from this per-packet LapDeltaPacket.

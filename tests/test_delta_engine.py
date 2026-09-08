@@ -406,23 +406,69 @@ class TestDeltaEngine(unittest.TestCase):
         self.assertEqual(self.engine.last_completed_lap_time_str, "00:48.000")
         self.assertEqual(self.engine.last_completed_lap_status, "green")
 
-    def test_ema_smoothing_filter(self):
-        """Verify exponential moving average smoothing filter on live delta."""
+    def _seed_reference(self):
+        """Shared setup for the smoothing tests below: a flat 50s reference
+        lap over 1000m, so ref_time == player_dist / 20."""
         self.engine._track_name = "TestTrack"
         self.engine._track_length = 1000.0
         self.engine._ref_lap_time = 50.0
         self.engine._ref_spatial_step = 1.0
         self.engine._ref_t_grid = [(d / 1000.0) * 50.0 for d in range(1001)]
         self.engine._ref_num_points = 1001
-        self.engine.ema_samples = 5  # Enable EMA with 5 samples
 
-        # Feed a sudden jump at dist 500m (ref_time = 25.0s) from time_into = 25.0s to 27.0s (raw delta = +2.0s)
-        self.engine._calculate_delta(500.0, 25.0)  # delta = 0.0
+    def test_smoothing_window_filter(self):
+        """Verify the moving-average smoothing window on smoothed_live_delta —
+        replaces the old EMA mechanism (now removed)."""
+        self._seed_reference()
+        self.engine.delta_smoothing_window_s = 2.0  # 2s moving-average window (game time)
+
+        # Raw delta = 0.0 at game time 25.0s.
+        self.engine._calculate_delta(500.0, 25.0)
         self.assertEqual(self.engine.live_delta, 0.0)
+        self.assertEqual(self.engine.smoothed_live_delta, 0.0)
 
-        self.engine._calculate_delta(500.0, 27.0)  # raw delta = +2.0s
-        # EMA factor = 2 / (5 + 1) = 0.333 -> EMA delta should be 0 + 0.333 * (2 - 0) = ~0.667
-        self.assertAlmostEqual(self.engine.live_delta, 2.0 * (2.0 / 6.0), delta=0.01)
+        # 2s later (still inside the 2s window): raw delta jumps to +2.0s.
+        self.engine._calculate_delta(500.0, 27.0)
+        self.assertAlmostEqual(self.engine.live_delta, 2.0, delta=0.001)
+        # Moving average of [0.0, 2.0] = 1.0 — the raw value is untouched,
+        # only smoothed_live_delta lags behind it.
+        self.assertAlmostEqual(self.engine.smoothed_live_delta, 1.0, delta=0.001)
+
+    def test_time_status_smoothed_differs_from_time_status_under_changing_delta(self):
+        """time_status (raw) and time_status_smoothed (moving average) must
+        diverge mid-transient, while time_status.lap.delta_time always tracks
+        live_delta exactly (never smoothed)."""
+        self._seed_reference()
+        self.engine.delta_smoothing_window_s = 2.0
+
+        self.engine._calculate_delta(500.0, 25.0)
+        self.engine._calculate_delta(500.0, 27.0)
+
+        self.assertAlmostEqual(self.engine.time_status.lap.delta_time, self.engine.live_delta, delta=0.001)
+        self.assertAlmostEqual(self.engine.time_status_smoothed.lap.delta_time, self.engine.smoothed_live_delta, delta=0.001)
+        self.assertNotAlmostEqual(
+            self.engine.time_status.lap.delta_time,
+            self.engine.time_status_smoothed.lap.delta_time,
+            delta=0.001,
+        )
+
+    def test_sector_decomposition_matches_for_raw_and_smoothed(self):
+        """Sector split decomposition must hold the same relationship for
+        both the raw and smoothed TimeStatus — see
+        SectorEngine.compute_split_deltas_pure."""
+        self._seed_reference()
+        self.engine.delta_smoothing_window_s = 2.0
+        # Force "current sector" to 2 so the decomposition exercises the
+        # delta_s1_end-relative branch, not just the trivial S1 passthrough.
+        self.engine._sectors.last_current_sector = 2
+
+        self.engine._calculate_delta(500.0, 25.0)
+        self.engine._calculate_delta(500.0, 27.0)
+
+        raw_s2 = self.engine.time_status.sectors[1].delta_time
+        smoothed_s2 = self.engine.time_status_smoothed.sectors[1].delta_time
+        self.assertAlmostEqual(raw_s2, self.engine.live_delta, delta=0.001)
+        self.assertAlmostEqual(smoothed_s2, self.engine.smoothed_live_delta, delta=0.001)
 
     def test_standstill_delta_freeze(self):
         """Verify delta is calculated correctly when stationary."""

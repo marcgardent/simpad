@@ -36,6 +36,7 @@ from simpulse_sdk.models.timing import (
     resolve_is_personal_record_target,
     resolve_target,
 )
+from .smoothing import TimeWindowAverage
 from .reference_profile import (
     ReferenceLapProfile,
     TrackAnnotation,
@@ -145,11 +146,18 @@ class DeltaEngine:
     def __init__(self):
         self._current_profile: Optional[ReferenceLapProfile] = None
         self._freeze_duration: float = 3.5  # Delta freeze duration at finish line (seconds)
-        self._ema_samples: int = 0  # 0 = direct/unfiltered, > 1 = EMA smoothing
+        # Moving-average window, in seconds of GAME time, for smoothed_live_delta
+        # (and everything derived from it — see time_status_smoothed). Replaces
+        # the old plugin-side HudTimeWindowAverage AND the old dead EMA
+        # (ema_samples) — a single canonical smoothing knob, settable via
+        # ReferenceLapManager.set_delta_smoothing_window_s(), same pattern as
+        # freeze_duration/time_status_eps.
+        self._delta_smoothing_window_s: float = 0.15
+        self._live_delta_smoother: TimeWindowAverage = TimeWindowAverage(window_s=self._delta_smoothing_window_s)
         # Equality tolerance for TimeStatus's resolve_target/resolve_is_personal_record_target
         # (see TIME_STATUS_SPEC.md "eps") — a display decision, NOT a domain constant,
         # settable via ReferenceLapManager.set_time_status_eps(), same pattern as freeze_duration.
-        self.time_status_eps: float = 0.1
+        self.time_status_eps: float = 0.001
         self.reset_session()
 
     def reset_session(self) -> None:
@@ -252,11 +260,21 @@ class DeltaEngine:
         # Frozen time_status.lap for the freeze window — see _handle_lap_transition.
         self._frozen_lap_vm: TimeLapViewModel = TimeLapViewModel()
 
-        # EMA smoothing
-        self._ema_live_delta: float = 0.0
-
         # Last calculated values
         self._live_delta: float = 0.0
+
+        # Smoothed live delta (moving average over _delta_smoothing_window_s of
+        # game time — see _live_delta_smoother) and its sector decomposition.
+        # Additive to the raw values above; feeds time_status_smoothed only,
+        # never time_status. The smoother instance itself (and its configured
+        # window_s) is NOT reset here — only its sample buffer is, via
+        # _live_delta_smoother.reset() — see _calculate_delta's reset points.
+        self._smoothed_live_delta: float = 0.0
+        self._smoothed_sector1_delta: float = 0.0
+        self._smoothed_sector2_delta: float = 0.0
+        self._smoothed_sector3_delta: float = 0.0
+        self._smoother_was_freeze: bool = False
+        self._live_delta_smoother.reset()
 
     # ---- Back-compat delegators to SectorEngine ---------------------------------
     # All current-sector tracking, S1/S2 capture, HUD split display and per-sector
@@ -460,13 +478,15 @@ class DeltaEngine:
         self._freeze_duration = max(0.0, float(val))
 
     @property
-    def ema_samples(self) -> int:
-        """Sample count for EMA filter (0 = disabled)."""
-        return self._ema_samples
+    def delta_smoothing_window_s(self) -> float:
+        """Moving-average window, in seconds of GAME time, for
+        smoothed_live_delta (0.0 = disabled, reports the raw value as-is)."""
+        return self._delta_smoothing_window_s
 
-    @ema_samples.setter
-    def ema_samples(self, samples: int) -> None:
-        self._ema_samples = max(0, int(samples))
+    @delta_smoothing_window_s.setter
+    def delta_smoothing_window_s(self, val: float) -> None:
+        self._delta_smoothing_window_s = max(0.0, float(val))
+        self._live_delta_smoother.window_s = self._delta_smoothing_window_s
 
     @property
     def current_profile(self) -> Optional[ReferenceLapProfile]:
@@ -545,6 +565,7 @@ class DeltaEngine:
             self._calculate_delta(self._last_scoring_dist, self._last_scoring_time_into)
         else:
             self._live_delta = 0.0
+            self._reset_delta_smoother()
             self._sectors.clear_deltas()
             log_delta_debug(
                 f"[APPLY_MODE_CLEAR_DELTAS] last_scoring_dist={self._last_scoring_dist:.1f}, "
@@ -591,6 +612,7 @@ class DeltaEngine:
             log_delta_debug(f"[SESSION_RESET] laps_completed went from {self._last_laps_completed} to {laps_comp}")
             self._current_lap_samples = []
             self._sectors.reset_lap_capture(clear_primed=True)
+            self._reset_delta_smoother()
             self._last_laps_completed = laps_comp
             if current_et > 0.0:
                 self._local_lap_start_et = current_et
@@ -1062,6 +1084,7 @@ class DeltaEngine:
             self._last_laps_completed = laps_comp
             self._last_checkpoint_idx = -1
             self._sectors.reset_lap_capture(clear_primed=True)
+            self._reset_delta_smoother()
             self._last_scoring_timestamp = 0.0
             self._local_lap_start_et = current_et if current_et > 0.0 else 0.0
             # BUGFIX: these two were never reset here, so _load_reference_profile()
@@ -1198,8 +1221,11 @@ class DeltaEngine:
             # Delta calculation with exact game telemetry
             self._calculate_delta(player_dist, time_into)
         else:
-            # Pits / Garage / Pre-start: no flying lap delta
+            # Pits / Garage / Pre-start: no flying lap delta. Reset the
+            # smoother too — otherwise re-emerging on track would blend the
+            # window with stale pre-stop samples.
             self._live_delta = 0.0
+            self._reset_delta_smoother()
             self._last_checkpoint_idx = -1
             log_delta_debug(
                 f"[SCORING_NOT_FLYING] dist={player_dist:.1f}m, t_into={time_into:.3f}s, flag={lap_flag}, "
@@ -1282,10 +1308,33 @@ class DeltaEngine:
             t2 = self._ref_t_grid[idx_floor + 1]
             return t1 + frac * (t2 - t1)
 
+    def _reset_delta_smoother(self) -> None:
+        """Clears the smoothed-delta moving-average window and its derived
+        sector decomposition. Called at every point that discontinuities the
+        live delta (no reference, ref-lookup failure, extreme clamp,
+        finish-line freeze just ending, active-profile loss, track/vehicle
+        change, lap/session reset, pits/garage) — otherwise the window would
+        blend samples across the discontinuity."""
+        self._live_delta_smoother.reset()
+        self._smoothed_live_delta = 0.0
+        self._smoothed_sector1_delta = 0.0
+        self._smoothed_sector2_delta = 0.0
+        self._smoothed_sector3_delta = 0.0
+
     def _calculate_delta(self, player_dist: float, time_into: float) -> None:
         """Calculates live delta and per-sector deltas from distance and time."""
+        # Finish-line freeze just ended -> the window would otherwise blend
+        # the previous lap's tail samples into the new lap's first live
+        # readings. Centralizes what used to be 4 separate per-widget/
+        # per-sector-box resets in the Cockpit HUD plugin.
+        is_freeze_now = self.is_lap_freeze_active
+        if not is_freeze_now and self._smoother_was_freeze:
+            self._live_delta_smoother.reset()
+        self._smoother_was_freeze = is_freeze_now
+
         if not self.has_reference or time_into <= 0.0 or player_dist < 0.0:
             self._live_delta = 0.0
+            self._reset_delta_smoother()
             self._sectors.clear_deltas()
             log_delta_debug(
                 f"[DELTA_NO_REF] dist={player_dist:.1f}m, t_into={time_into:.3f}s, has_ref={self.has_reference}, "
@@ -1296,6 +1345,7 @@ class DeltaEngine:
         ref_time = self._get_ref_time_at_dist(player_dist)
         if ref_time is None:
             self._live_delta = 0.0
+            self._reset_delta_smoother()
             self._sectors.clear_deltas()
             log_delta_debug(
                 f"[DELTA_REF_LOOKUP_FAIL] dist={player_dist:.1f}m, t_into={time_into:.3f}s, "
@@ -1307,26 +1357,31 @@ class DeltaEngine:
 
         # Clamp extreme deltas to +/- 999.0s
         if abs(raw_delta) < 999.0:
-            # Optional EMA smoothing
-            if self._ema_samples > 1:
-                factor = 2.0 / (self._ema_samples + 1.0)
-                self._ema_live_delta += factor * (raw_delta - self._ema_live_delta)
-                self._live_delta = self._ema_live_delta
-            else:
-                self._live_delta = raw_delta
-                self._ema_live_delta = raw_delta
+            self._live_delta = raw_delta
+            self._smoothed_live_delta = self._live_delta_smoother.sample(raw_delta, time_into)
         else:
             self._live_delta = 0.0
+            self._reset_delta_smoother()
 
         # Save delta for freeze maintenance
         self._frozen_checkpoint_delta = self._live_delta
 
-        # Dynamic calculation of sector deltas against ACTIVE profile
+        # Dynamic calculation of sector deltas against ACTIVE profile — raw
+        # (mutating, existing behaviour) and smoothed (pure, additive; feeds
+        # time_status_smoothed only). See SectorEngine.compute_split_deltas_pure
+        # for why decomposing the already-smoothed live_delta is equivalent to
+        # smoothing each sector's delta independently.
         self._sectors.compute_split_deltas(self._live_delta, self._get_ref_time_at_dist)
+        (
+            self._smoothed_sector1_delta,
+            self._smoothed_sector2_delta,
+            self._smoothed_sector3_delta,
+        ) = self._sectors.compute_split_deltas_pure(self._smoothed_live_delta, self._get_ref_time_at_dist)
 
         log_delta_debug(
             f"[DELTA_CALC] dist={player_dist:.1f}m, t_into={time_into:.3f}s, ref_t={ref_time:.3f}s, "
             f"raw_delta={raw_delta:+.3f}s, live_delta={self._live_delta:+.3f}s, "
+            f"smoothed_delta={self._smoothed_live_delta:+.3f}s, "
             f"S1={self._sector1_delta:+.3f}s, S2={self._sector2_delta:+.3f}s, S3={self._sector3_delta:+.3f}s, "
             f"mode={self._ref_mode.value}, ref_lap_time={self._ref_lap_time:.3f}s"
         )
@@ -1722,6 +1777,22 @@ class DeltaEngine:
         return self._live_delta
 
     @property
+    def smoothed_live_delta(self) -> float:
+        """Live delta smoothed over delta_smoothing_window_s seconds of game
+        time — see time_status_smoothed for the full consistent (value +
+        colour + PR) projection built from this."""
+        return self._smoothed_live_delta
+
+    @property
+    def smoothed_display_delta(self) -> float:
+        """Smoothed delta for HUD display — mirrors display_delta's freeze
+        window, reusing the same frozen constant (a completed lap's delta is
+        already a captured fact; smoothing it further has no meaning)."""
+        if time.time() < self._freeze_delta_until:
+            return self._frozen_final_delta
+        return self._smoothed_live_delta
+
+    @property
     def is_lap_freeze_active(self) -> bool:
         """Returns True if lap time display is frozen after crossing line."""
         return time.time() < self._freeze_lap_until and self._last_completed_lap_time > 0.0
@@ -1762,6 +1833,13 @@ class DeltaEngine:
         if projected_time > 0.0:
             return format_lap_time(projected_time)
         return "--:--.---"
+
+    @property
+    def smoothed_estimated_lap_time(self) -> float:
+        """Estimated final lap time projection built from smoothed_live_delta."""
+        if self.has_reference and self._ref_lap_time < 999999.0:
+            return max(0.0, self._ref_lap_time + self._smoothed_live_delta)
+        return 0.0
 
     @property
     def _ever_lap_bound(self) -> Optional[float]:
@@ -2037,13 +2115,15 @@ class DeltaEngine:
         return self._last_scoring_dist
 
     # ------------------------------------------------------------ TimeStatus
-    @property
-    def time_status(self) -> TimeStatus:
-        """The single, unified timing/colour model — see TIME_STATUS_SPEC.md.
-        Computed on demand from WallOfFameTimes + the live projection, in
-        parallel to the (now legacy) expected_*/sector*_status/etc. properties
-        above during the migration; both read the same underlying state
-        through two different paths.
+    def _build_time_status(
+        self,
+        lap_delta_display: float,
+        lap_expected: float,
+        sector_deltas: Tuple[float, float, float],
+    ) -> TimeStatus:
+        """Shared construction for time_status/time_status_smoothed — same
+        WallOfFameTimes/eps/frozen-lap handling either way, only the live
+        projection inputs differ (raw vs. smoothed). See TIME_STATUS_SPEC.md.
         """
         wof = self._wall_of_fame.snapshot()
         eps = self.time_status_eps
@@ -2052,30 +2132,60 @@ class DeltaEngine:
             # See _handle_lap_transition: the just-completed lap's own result,
             # resolved against WallOfFameTimes as it stood BEFORE that lap —
             # never the continuous live projection during this window (it
-            # would self-compare, see that docstring).
+            # would self-compare, see that docstring). A frozen lap's result
+            # is already a captured constant, so BOTH the raw and smoothed
+            # TimeStatus reuse this exact same frozen viewmodel — smoothing a
+            # constant has no meaning.
             lap_vm = self._frozen_lap_vm
         else:
-            lap_expected = self.estimated_lap_time
             lap_vm = TimeLapViewModel(
                 target=resolve_target(lap_expected, wof, "total", eps),
                 expected_time=lap_expected,
-                delta_time=self.display_delta,
+                delta_time=lap_delta_display,
                 is_personal_record_target=resolve_is_personal_record_target(lap_expected, wof, "total", eps),
             )
 
         splits = _individual_sector_splits(self._current_profile)
-        deltas = (self._sector1_delta, self._sector2_delta, self._sector3_delta)
         keys = ("sector1", "sector2", "sector3")
         sectors = []
         for i in range(3):
             ref = splits[i]
-            expected = max(0.0, ref + deltas[i]) if (ref > 0.0 and self.has_reference) else 0.0
+            expected = max(0.0, ref + sector_deltas[i]) if (ref > 0.0 and self.has_reference) else 0.0
             sectors.append(TimeSectorViewModel(
                 target=resolve_target(expected, wof, keys[i], eps),
                 expected_time=expected,
-                delta_time=deltas[i],
+                delta_time=sector_deltas[i],
                 is_current=(self._last_current_sector == i + 1),
                 is_personal_record_target=resolve_is_personal_record_target(expected, wof, keys[i], eps),
             ))
 
         return TimeStatus(lap=lap_vm, sectors=tuple(sectors), wall_of_fame=wof)
+
+    @property
+    def time_status(self) -> TimeStatus:
+        """The single, unified timing/colour model — see TIME_STATUS_SPEC.md.
+        Computed on demand from WallOfFameTimes + the RAW live projection, in
+        parallel to the (now legacy) expected_*/sector*_status/etc. properties
+        above during the migration; both read the same underlying state
+        through two different paths.
+        """
+        return self._build_time_status(
+            self.display_delta,
+            self.estimated_lap_time,
+            (self._sector1_delta, self._sector2_delta, self._sector3_delta),
+        )
+
+    @property
+    def time_status_smoothed(self) -> TimeStatus:
+        """Second, additive TimeStatus — same shape as time_status, built
+        from the SMOOTHED live delta (see smoothed_live_delta /
+        delta_smoothing_window_s) instead of the raw one. Never replaces
+        time_status; both are populated every tick so a consumer (e.g. the
+        Cockpit HUD plugin) can pick whichever it wants — see
+        OfficialCockpitHudConfig.delta_smoothing_mode.
+        """
+        return self._build_time_status(
+            self.smoothed_display_delta,
+            self.smoothed_estimated_lap_time,
+            (self._smoothed_sector1_delta, self._smoothed_sector2_delta, self._smoothed_sector3_delta),
+        )

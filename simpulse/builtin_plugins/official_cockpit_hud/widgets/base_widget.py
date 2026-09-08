@@ -17,8 +17,8 @@ def lerp(start: float, end: float, amt: float) -> float:
 def format_signed_delta(value: float) -> str:
     """Formats a lap/sector delta the same way VehicleSensors.delta_time_str
     does (e.g. '-0.150', '+0.240', '+0.000') — shared so QtDeltaTimerWidget
-    and QtSectorTimesWidget render an averaged HudRollingAverage value with
-    the exact same convention as the raw (unaveraged) field."""
+    and QtSectorTimesWidget render a smoothed value with the exact same
+    convention as the raw (unsmoothed) field."""
     if value < -0.0001:
         return f"-{abs(value):.3f}"
     elif value > 0.0001:
@@ -40,15 +40,13 @@ class CockpitWidgetContext:
     # time) — which value QtDeltaTimerWidget shows on-track. See
     # OfficialCockpitHudConfig.delta_display_mode.
     delta_display_mode: str = "delta"
-    # Moving-average window, in seconds of GAME time (0.0-2.0), smoothing
-    # QtDeltaTimerWidget's and QtSectorTimesWidget's live numeric readouts —
-    # see widgets/display_cache.py (HudTimeWindowAverage) and
-    # OfficialCockpitHudConfig.hud_smoothing_window_s.
-    hud_smoothing_window_s: float = 0.15
-    # Current in-game elapsed time (BaseTimingState.current_et) — the time
-    # base HudTimeWindowAverage windows against, deliberately NOT wall-clock/
-    # PC time (see display_cache.py).
-    game_time_s: float = 0.0
+    # Which of the two engine-provided TimeStatus instances (VehicleSensors.
+    # time_status / .time_status_smoothed) QtDeltaTimerWidget and
+    # QtSectorTimesWidget read their live numeric value from — "direct" or
+    # "smoothed". The actual smoothing (moving average over game time) now
+    # lives in DeltaEngine — see OfficialCockpitHudConfig.delta_smoothing_mode
+    # and the "⚙️ Engines" tab.
+    delta_smoothing_mode: str = "smoothed"
 
 
 class BaseQtHudWidget(ABC):

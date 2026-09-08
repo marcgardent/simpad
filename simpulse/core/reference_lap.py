@@ -78,7 +78,7 @@ class ReferenceLapManager(QObject):
             if app_cfg:
                 self.set_reference_mode(app_cfg.delta_reference_mode)
                 self.delta_engine.freeze_duration = app_cfg.delta_freeze_duration
-                self.delta_engine.ema_samples = app_cfg.delta_ema_samples
+                self.delta_engine.delta_smoothing_window_s = app_cfg.delta_smoothing_window_s
                 self.delta_engine.time_status_eps = max(0.0, float(app_cfg.delta_time_status_eps))
 
     @classmethod
@@ -229,10 +229,13 @@ class ReferenceLapManager(QObject):
             self.config_manager.config.app.delta_time_status_eps = self.delta_engine.time_status_eps
             self.config_manager.save()
 
-    def set_ema_samples(self, samples: int) -> None:
-        self.delta_engine.ema_samples = max(0, int(samples))
+    def set_delta_smoothing_window_s(self, window_s: float) -> None:
+        """Moving-average window (seconds of GAME time) for
+        DeltaEngine.smoothed_live_delta / time_status_smoothed — same
+        display-decision pattern as set_freeze_duration()/set_time_status_eps()."""
+        self.delta_engine.delta_smoothing_window_s = max(0.0, float(window_s))
         if self.config_manager and self.config_manager.config and self.config_manager.config.app:
-            self.config_manager.config.app.delta_ema_samples = self.delta_engine.ema_samples
+            self.config_manager.config.app.delta_smoothing_window_s = self.delta_engine.delta_smoothing_window_s
             self.config_manager.save()
 
     def add_annotation(
@@ -462,6 +465,7 @@ class ReferenceLapManager(QObject):
             estimated_lap_time_str=de.estimated_lap_time_str,
             expected_status=de.expected_lap_status,
             time_status=de.time_status,
+            time_status_smoothed=de.time_status_smoothed,
             current_sector=de.current_sector,
             _sector1_delta=de.sector1_delta,
             _sector2_delta=de.sector2_delta,

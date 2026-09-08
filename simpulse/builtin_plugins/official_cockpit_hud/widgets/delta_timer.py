@@ -6,8 +6,6 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen
 from simpulse_sdk import TimeTarget, VehicleSensors, format_lap_time
 from .base_widget import BaseQtHudWidget, CockpitWidgetContext, format_signed_delta
-from .display_cache import HudTimeWindowAverage
-from .hud_smoothing_logger import record_passthrough, record_smoothing
 
 
 def _live_delta_text(sensors: VehicleSensors) -> str:
@@ -33,13 +31,14 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
       delta_display_mode).
     - Line crossing: Displays Completed Lap Time (format MM:ss.mmm)
 
-    The on-track value is a simple moving average over the last
-    ``hud_smoothing_window_s`` seconds of GAME time (HudTimeWindowAverage —
-    see display_cache.py), not the raw reading repainted every 100Hz frame:
-    both Delta and Expected are projections, not a physical telemetry
-    channel, so smoothing them for readability introduces no new error worth
-    caring about (unrelated to why gauge `lerp` animation is a different,
-    telemetry-only concern).
+    The on-track value follows ``context.delta_smoothing_mode``: "smoothed"
+    (default) reads ``sensors.time_status_smoothed`` — DeltaEngine's own
+    moving average over the "⚙️ Engines" tab's smoothing window — instead of
+    the raw reading repainted every 100Hz frame. Both Delta and Expected are
+    projections, not a physical telemetry channel, so smoothing them for
+    readability introduces no new error worth caring about (unrelated to why
+    gauge `lerp` animation is a different, telemetry-only concern). "direct"
+    reads the raw, unsmoothed value.
 
     Colour is SESSION-scoped only — no pink:
         * Purple (Session / paddock best)
@@ -56,8 +55,6 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
 
     def __init__(self, font_family: str = "Anta"):
         self.font_family = font_family
-        self._value_avg = HudTimeWindowAverage()
-        self._was_freeze = False
 
     def paint(
         self,
@@ -70,13 +67,6 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         is_freeze = sensors.is_lap_freeze_active
         lap_flag = sensors.lap_flag
         lap_time_str = sensors.last_lap_time_str
-
-        if not is_freeze and self._was_freeze:
-            # Freeze window just ended (new lap started): drop the averaging
-            # window so the new lap's first live samples aren't averaged
-            # together with the previous lap's final readings.
-            self._value_avg.reset()
-        self._was_freeze = is_freeze
 
         is_pr = False
 
@@ -113,24 +103,20 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             # framing. Session-scoped only: beating my all-time-best ("ever")
             # is never a colour here, it's the
             # time_status.lap.is_personal_record_target flag below (-> "PR" tag).
+            use_smoothed = context.delta_smoothing_mode == "smoothed"
             if context.delta_display_mode == "expected":
-                raw_value, raw_text = sensors.estimated_lap_time, sensors.estimated_lap_time_str
+                raw_text = sensors.estimated_lap_time_str
+                value = sensors.time_status_smoothed.lap.expected_time if use_smoothed else sensors.estimated_lap_time
             else:
-                raw_value, raw_text = sensors.delta_time, _live_delta_text(sensors)
-            self._value_avg.window_s = context.hud_smoothing_window_s
-            averaged = self._value_avg.sample(raw_value, raw_text, context.game_time_s)
-            if averaged is None:
+                raw_text = _live_delta_text(sensors)
+                value = sensors.time_status_smoothed.lap.delta_time if use_smoothed else sensors.delta_time
+
+            if raw_text in ("", "--", "--:--.---"):
                 disp_str = raw_text
-                record_passthrough("delta_timer", raw_text, context.hud_smoothing_window_s, context.game_time_s)
+            elif context.delta_display_mode == "expected":
+                disp_str = format_lap_time(value)
             else:
-                if context.delta_display_mode == "expected":
-                    disp_str = format_lap_time(averaged)
-                else:
-                    disp_str = format_signed_delta(averaged)
-                record_smoothing(
-                    "delta_timer", raw_value, raw_text, averaged, disp_str,
-                    context.hud_smoothing_window_s, context.game_time_s,
-                )
+                disp_str = format_signed_delta(value)
             expected_tok = sensors.expected_status.strip()
             is_pr = sensors.time_status.lap.is_personal_record_target
 

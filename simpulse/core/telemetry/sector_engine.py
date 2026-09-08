@@ -16,7 +16,7 @@ prefer the nicer aggregate view: ``SectorEngine.snapshot()`` /
 flat ``sector1_*``/``sector2_*``/``sector3_*`` trio.
 """
 
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from simpulse_sdk.models.delta import SectorInfo, SplitStatus
 
@@ -288,12 +288,25 @@ class SectorEngine:
             self.last_sector3_time = _sector_time_str(indiv_s3)
             self.last_sector3_status = _sector_status(indiv_s3, best_indiv_s3, session_best_s3)
 
-    def compute_split_deltas(
+    def compute_split_deltas_pure(
         self,
         live_delta: float,
         get_ref_time_at_dist: Callable[[float], Optional[float]],
-    ) -> None:
-        """Dynamic per-sector delta split against the active reference profile.
+    ) -> Tuple[float, float, float]:
+        """Pure per-sector delta split against the active reference profile —
+        same formula as ``compute_split_deltas`` but returns the (s1, s2, s3)
+        tuple instead of mutating ``self.sectorN_delta``.
+
+        Factored out so a caller can decompose BOTH the raw and a smoothed
+        ``live_delta`` through the identical checkpoint math without
+        duplicating it or clobbering shared state (see
+        ``DeltaEngine.time_status_smoothed``). Because this decomposition is
+        a pure function of ``live_delta`` plus the ``delta_s1_end``/
+        ``delta_s2_end`` checkpoint constants (stable while a later sector is
+        current), smoothing ``live_delta`` once upstream and decomposing
+        twice via this same formula gives the "current" sector exactly the
+        same effective moving average as smoothing that sector's delta
+        independently would — no separate per-sector smoothers needed.
 
         ``live_delta`` is the delta at the player's current distance (already
         computed by the caller); this only breaks it down into the S1/S2/S3
@@ -306,17 +319,27 @@ class SectorEngine:
         delta_s2_end = (self.player_s2_time - ref_s2) if (self.s2_captured and ref_s2 is not None) else 0.0
 
         if self.last_current_sector == 1:
-            self.sector1_delta = live_delta
-            self.sector2_delta = 0.0
-            self.sector3_delta = 0.0
+            return live_delta, 0.0, 0.0
         elif self.last_current_sector == 2:
-            self.sector1_delta = delta_s1_end
-            self.sector2_delta = live_delta - delta_s1_end
-            self.sector3_delta = 0.0
+            return delta_s1_end, live_delta - delta_s1_end, 0.0
         elif self.last_current_sector == 3:
-            self.sector1_delta = delta_s1_end
-            self.sector2_delta = delta_s2_end - delta_s1_end
-            self.sector3_delta = live_delta - delta_s2_end
+            return delta_s1_end, delta_s2_end - delta_s1_end, live_delta - delta_s2_end
+        return 0.0, 0.0, 0.0
+
+    def compute_split_deltas(
+        self,
+        live_delta: float,
+        get_ref_time_at_dist: Callable[[float], Optional[float]],
+    ) -> None:
+        """Dynamic per-sector delta split against the active reference profile.
+
+        Mutating wrapper around ``compute_split_deltas_pure`` — kept for the
+        existing raw-``live_delta`` call site and every caller/test reaching
+        into ``sector1_delta``/``sector2_delta``/``sector3_delta`` directly.
+        """
+        self.sector1_delta, self.sector2_delta, self.sector3_delta = self.compute_split_deltas_pure(
+            live_delta, get_ref_time_at_dist
+        )
 
     def snapshot(self) -> List[SectorInfo]:
         """Nicer aggregate view of the 3 sector boxes, in S1/S2/S3 order.

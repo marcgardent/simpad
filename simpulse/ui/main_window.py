@@ -21,6 +21,7 @@ from simpulse.core.config import ConfigManager
 from simpulse.ui.overlay_window import SimPulseHudOverlayWindow
 from simpulse.ui.plugin_manager_widget import PluginManagerWidget
 from simpulse.ui.game_plugin_config_widget import GamePluginConfigWidget
+from simpulse.ui.engine_config_widget import EngineConfigWidget
 from simpulse.ui.status_bar import SimPulseCoreStatusBar
 from simpulse.ui.theme import DARK_STYLESHEET
 from simpulse.core.telemetry import VehicleSensors
@@ -167,6 +168,10 @@ class SimPulseMainWindow(QMainWindow):
         # Core Tab 1: Game Plugin & Channels Config
         self.game_cfg_tab = GamePluginConfigWidget(self.game_plugin_mgr, self.plugin_manager, self)
         self.tab_widget.addTab(self.game_cfg_tab, "🎮 Game Plugin & Channels")
+
+        # Core Tab 2: Engines Config (DeltaEngine smoothing/freeze/eps — see EngineConfigWidget)
+        self.engine_cfg_tab = EngineConfigWidget(self.config_mgr, self.telemetry_bus.reference_lap_mgr, self)
+        self.tab_widget.addTab(self.engine_cfg_tab, "⚙️ Engines")
 
         # Core Footer Status Bar
         self.status_bar = SimPulseCoreStatusBar(

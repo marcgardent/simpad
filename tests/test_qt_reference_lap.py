@@ -109,13 +109,13 @@ def test_reference_lap_manager_lifecycle_and_config(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=cfg_file)
     cfg_mgr.config.app.delta_reference_mode = "session_best"
     cfg_mgr.config.app.delta_freeze_duration = 4.5
-    cfg_mgr.config.app.delta_ema_samples = 3
+    cfg_mgr.config.app.delta_smoothing_window_s = 0.3
     cfg_mgr.save()
 
     mgr = ReferenceLapManager(config_manager=cfg_mgr)
     assert mgr.reference_mode == DeltaReferenceMode.SESSION_BEST
     assert mgr.delta_engine.freeze_duration == 4.5
-    assert mgr.delta_engine.ema_samples == 3
+    assert mgr.delta_engine.delta_smoothing_window_s == 0.3
 
     # Switch reference mode
     mgr.set_reference_mode("all_time_best")

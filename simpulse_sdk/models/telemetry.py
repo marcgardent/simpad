@@ -363,6 +363,9 @@ class _VehicleSensorsFields:
     # THE unified timing/colour model (see TIME_STATUS_SPEC.md) — replaces all
     # the deprecated fields above once the migration reaches Step 4.
     time_status: TimeStatus = field(default_factory=TimeStatus)
+    # Second, additive TimeStatus built from DeltaEngine's smoothed live delta
+    # — same shape as time_status, never replaces it. See LapDeltaPacket.time_status_smoothed.
+    time_status_smoothed: TimeStatus = field(default_factory=TimeStatus)
 
     # On-track state and engaged gear
     in_realtime: bool = True

@@ -21,10 +21,11 @@ class OfficialCockpitHudConfig:
     show_tires: bool = True
     show_delta: bool = True
     delta_display_mode: str = "delta"  # "delta" (live +/-) or "expected" (projected finish time)
-    # Moving-average window, in seconds of GAME time (0.0-2.0), for the Delta
-    # Timer's and Sector Times' live numeric readouts (HudTimeWindowAverage)
-    # — 0.0 disables smoothing (reports the latest raw sample as-is).
-    hud_smoothing_window_s: float = 0.15
+    # Which engine-provided TimeStatus the Delta Timer / Sector Times
+    # readouts follow — "direct" (raw, VehicleSensors.time_status) or
+    # "smoothed" (VehicleSensors.time_status_smoothed, DeltaEngine's moving
+    # average — see the "⚙️ Engines" tab for the actual smoothing window).
+    delta_smoothing_mode: str = "smoothed"  # "direct" or "smoothed"
     show_sectors: bool = True
     show_aero: bool = True
     show_lap_status: bool = True
