@@ -46,9 +46,12 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         * Green  (Personal / my-session best)
         * Yellow (No improvement / slower)
         * Grey   (Invalid lap)
-    Beating my all-time best ("ever") is never a colour: a "PR" tag is drawn
-    next to the value instead — same convention as the sector boxes below and
-    simpulse.builtin_plugins.expected_timing.
+    Beating my all-time best ("ever") is never a colour: a " PR" marker is
+    appended directly into the value text instead — same convention as the
+    sector boxes below and simpulse.builtin_plugins.expected_timing. It is
+    baked into the string (not a separately-positioned overlay) because a
+    floating tag above the value collided with the Gear digits widget drawn
+    in that same screen region.
     """
 
     def __init__(self, font_family: str = "Anta"):
@@ -149,6 +152,12 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
                 # every delta display (lap or sector) — no other tier exists.
                 text_color = QColor(255, 255, 255, 255)
 
+        if is_pr:
+            # All-time-best beaten: baked into the value text (see class
+            # docstring) rather than a separate tag floating above it — that
+            # used to overlap the Gear digits widget drawn in this region.
+            disp_str = f"{disp_str} PR"
+
         scale_x = canvas_w / 800.0
         scale_y = canvas_h / 600.0
 
@@ -165,16 +174,3 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
             disp_str,
         )
-
-        if is_pr:
-            # All-time-best beaten: text tag, not a colour (see class docstring).
-            pr_font = QFont(self.font_family)
-            pr_font.setPixelSize(max(10, int(round(13.0 * scale_y))))
-            pr_font.setBold(True)
-            painter.setFont(pr_font)
-            painter.setPen(QPen(QColor(255, 255, 255, 255)))
-            painter.drawText(
-                QRectF(0, y_pos - (15.0 * scale_y), canvas_w, 14.0 * scale_y),
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                "PR",
-            )

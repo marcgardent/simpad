@@ -58,8 +58,12 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         * Yellow (TimeTarget.BEHIND — valid, slower than my session)
         * Grey   (TimeTarget.NONE — no reference; invalid has its own
                   indicator elsewhere, never hidden behind `target`)
-    Beating my all-time-best split ("ever") is a "PR" tag drawn on the box,
-    not a colour — see sensors.time_status.sectorN.is_personal_record_target.
+    Beating my all-time-best split ("ever") is a " PR" marker appended into
+    the box's own time text, not a colour — see
+    sensors.time_status.sectorN.is_personal_record_target. It is baked into
+    the string rather than drawn as a separate tag above the box because
+    that floating tag collided with the Gear digits widget drawn in the same
+    screen region.
 
     Each box's live (in-progress) text shows either the live Delta or the
     projected Expected split time — same user-selectable
@@ -218,6 +222,11 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                 target = TimeTarget.NONE
                 is_pr = False
 
+            if is_pr:
+                # All-time-best beaten for this sector: baked into the box's
+                # own text (see class docstring), not a separate floating tag.
+                disp_text = f"{disp_text} PR"
+
             if target == TimeTarget.PADDOCK:
                 bg_color = QColor(147, 51, 234, 255)
                 border_color = QColor(168, 85, 247, 255)
@@ -225,7 +234,9 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                 bg_color = QColor(22, 163, 74, 255)
                 border_color = QColor(34, 197, 94, 255)
             elif target == TimeTarget.BEHIND:
-                bg_color = QColor(161, 98, 7, 255)
+                # Egg-yolk yellow fill — same colour as the "no improvement /
+                # slower" text on the Delta Timer above, not a muddy brown.
+                bg_color = QColor(234, 179, 8, 255)
                 border_color = QColor(234, 179, 8, 255)
             else:  # TimeTarget.NONE — no reference (invalid has its own indicator elsewhere)
                 bg_color = QColor(15, 23, 42, 255)
@@ -247,23 +258,22 @@ class QtSectorTimesWidget(BaseQtHudWidget):
             painter.setPen(QPen(border_color, pen_width))
             painter.drawRect(rect)
 
-            # Time text
-            painter.setPen(QPen(QColor(255, 255, 255, 255)))
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, disp_text)
-
-            # All-time-best beaten for this sector: "PR" tag, not a colour.
+            # Time text — dark ink on the bright egg-yolk BEHIND fill (kept
+            # white on every other, darker background) for readable contrast.
+            text_color = QColor(41, 27, 2, 255) if target == TimeTarget.BEHIND else QColor(255, 255, 255, 255)
+            painter.setPen(QPen(text_color))
             if is_pr:
+                # The appended " PR" makes the string longer than the
+                # normal split/delta text — shrink the font a touch so it
+                # still fits the box instead of overflowing it.
                 pr_font = QFont(self.font_family)
-                pr_font.setPixelSize(max(8, int(round(9.0 * scale_y))))
+                pr_font.setPixelSize(max(8, font_size - 2))
                 pr_font.setBold(True)
                 painter.setFont(pr_font)
-                painter.setPen(QPen(QColor(255, 255, 255, 255)))
-                painter.drawText(
-                    QRectF(s_x, sector_y - (11.0 * scale_y), sector_w, 10.0 * scale_y),
-                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                    "PR",
-                )
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, disp_text)
                 painter.setFont(font)
+            else:
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, disp_text)
 
         # --- diagnostic paint logger (opt-in, no behaviour change) ---
         try:
