@@ -55,7 +55,7 @@
             "notify_15m": false,
             "notify_10m": false,
             "notify_5m": true,
-            "notify_1m": false,
+            "notify_1m": true,
             "notify_reg_open": true,
             "notify_start": false,
             "sound_key": "lmgte_fixed"
@@ -285,7 +285,7 @@
             "notify_15m": false,
             "notify_10m": false,
             "notify_5m": true,
-            "notify_1m": false,
+            "notify_1m": true,
             "notify_reg_open": true,
             "notify_start": false,
             "sound_key": "lmgte_fixed"
