@@ -665,7 +665,7 @@ def test_official_cockpit_hud_rendering_and_telemetry_flow(qapp, tmp_path):
         ),
         explicit_aero_load=0.75,
         lap_flag=2,
-        fuel_level=42.5,
+        _fuel_level=42.5,
         remaining_laps=18,
         _sector1_time="32.105",
         _sector1_status="purple",

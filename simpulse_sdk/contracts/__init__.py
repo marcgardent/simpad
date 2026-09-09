@@ -5,6 +5,7 @@ from .plugin import SimPulsePlugin, PluginContext
 from .protocols import (
     ITelemetrySubscriber,
     IDeltaSubscriber,
+    IEnergySubscriber,
     ITelemetryStateSubscriber,
     IChannelSampleSubscriber,
     ITabProvider,
@@ -26,6 +27,7 @@ __all__ = [
     "PluginContext",
     "ITelemetrySubscriber",
     "IDeltaSubscriber",
+    "IEnergySubscriber",
     "ITelemetryStateSubscriber",
     "IChannelSampleSubscriber",
     "ITabProvider",

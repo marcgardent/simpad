@@ -121,6 +121,206 @@ class TestDeltaEngine(unittest.TestCase):
 
         self.assertAlmostEqual(self.engine.live_delta, -2.5, delta=0.2)
 
+    def test_scoring_and_flying_tick_counters_reset_per_lap(self):
+        """Diagnostic-only counters (_scoring_ticks_this_lap/_flying_ticks_this_lap,
+        surfaced in _finalize_completed_lap's always-on log line — see its
+        docstring) must count every update_scoring() call this lap, count the
+        subset that passed the is_flying_lap gate, and reset for the new lap
+        on a real lap transition."""
+        scoring_js = {
+            "mTrackName": "TestTrack",
+            "mLapDist": 1000.0,
+            "mVehicles": [
+                {
+                    "mIsPlayer": True,
+                    "mVehicleName": "TestCar",
+                    "mTotalLaps": 1,
+                    "mTimeIntoLap": 0.1,
+                    "mLapDist": 2.0,
+                    "mSector": 1,
+                    "mCountLapFlag": 2,
+                    "mLastLapTime": -1.0,
+                }
+            ],
+        }
+        self.engine.update_scoring(scoring_js)
+
+        # 9 more flying ticks (mCountLapFlag=2, mTimeIntoLap>0) this lap.
+        for i in range(1, 10):
+            scoring_js["mVehicles"][0]["mLapDist"] = 2.0 + i * 10.0
+            scoring_js["mVehicles"][0]["mTimeIntoLap"] = 0.1 + i
+            self.engine.update_scoring(scoring_js)
+        self.assertEqual(self.engine._scoring_ticks_this_lap, 10)
+        self.assertEqual(self.engine._flying_ticks_this_lap, 10)
+
+        # One non-flying tick (invalid flag) still counts as a scoring tick
+        # received, but not as a flying one.
+        scoring_js["mVehicles"][0]["mCountLapFlag"] = 1
+        self.engine.update_scoring(scoring_js)
+        self.assertEqual(self.engine._scoring_ticks_this_lap, 11)
+        self.assertEqual(self.engine._flying_ticks_this_lap, 10)
+
+        # Lap transition -> counters reset for the new lap.
+        scoring_js["mVehicles"][0]["mCountLapFlag"] = 2
+        scoring_js["mVehicles"][0]["mTotalLaps"] = 2
+        scoring_js["mVehicles"][0]["mLastLapTime"] = 55.0
+        scoring_js["mVehicles"][0]["mLapDist"] = 5.0
+        scoring_js["mVehicles"][0]["mTimeIntoLap"] = 0.25
+        self.engine.update_scoring(scoring_js)
+        self.assertEqual(self.engine._scoring_ticks_this_lap, 1)
+        self.assertEqual(self.engine._flying_ticks_this_lap, 1)
+
+    def test_collect_lap_sample_accepts_strictly_increasing_distance(self):
+        self.engine._collect_lap_sample(time_into=1.0, player_dist=10.0)
+        self.engine._collect_lap_sample(time_into=1.1, player_dist=10.5)
+        self.assertEqual(len(self.engine._current_lap_samples), 2)
+
+    def test_collect_lap_sample_rejects_non_monotonic_distance(self):
+        """A tick reporting a distance <= the last saved sample's (jitter,
+        duplicate packet, dead-reckoning noise) must be silently dropped, not
+        appended — this is the ONLY point that decides whether a flying-lap
+        tick becomes a saved checkpoint (see its docstring)."""
+        self.engine._collect_lap_sample(time_into=1.0, player_dist=10.0)
+        self.engine._collect_lap_sample(time_into=1.1, player_dist=10.0)  # equal -> rejected
+        self.engine._collect_lap_sample(time_into=1.2, player_dist=9.9)   # decreased -> rejected
+        self.assertEqual(len(self.engine._current_lap_samples), 1)
+        self.assertEqual(self.engine._sample_monotonic_rejects_this_lap, 2)
+
+    def test_collect_lap_sample_tracks_dist_span_always_even_when_rejected(self):
+        """dist_min/dist_max (surfaced as dist_span on the "Lap completed" log
+        line) must reflect every player_dist OFFERED to this function, not
+        just the ones that got accepted — that's the whole point: a tiny span
+        despite many calls is what reveals dead-reckoning stalled, and a
+        rejected/backwards value must still widen the observed range."""
+        self.engine._collect_lap_sample(time_into=1.0, player_dist=10.0)
+        self.engine._collect_lap_sample(time_into=1.1, player_dist=10.0)   # rejected, still tracked
+        self.engine._collect_lap_sample(time_into=1.2, player_dist=9.5)    # rejected, widens the min
+        self.engine._collect_lap_sample(time_into=1.3, player_dist=10.5)   # accepted, widens the max
+        self.assertAlmostEqual(self.engine._sample_dist_min_this_lap, 9.5)
+        self.assertAlmostEqual(self.engine._sample_dist_max_this_lap, 10.5)
+
+    def test_collect_lap_sample_rejects_invalid_inputs(self):
+        self.engine._collect_lap_sample(time_into=0.0, player_dist=10.0)
+        self.engine._collect_lap_sample(time_into=1.0, player_dist=-1.0)
+        self.assertEqual(len(self.engine._current_lap_samples), 0)
+
+    def test_collect_lap_sample_rejects_beyond_track_length_plus_margin(self):
+        self.engine._track_length = 1000.0
+        self.engine._collect_lap_sample(time_into=1.0, player_dist=1000.0)
+        self.engine._collect_lap_sample(time_into=2.0, player_dist=1201.0)  # > 1000+200
+        self.assertEqual(len(self.engine._current_lap_samples), 1)
+
+    def test_physics_tick_counters_track_calls_and_dead_reckon_gate(self):
+        """Diagnostic-only counters (surfaced on the "Lap completed" log line
+        — see their field docstring): every update_physics() call increments
+        physics_ticks_this_lap; only the ones that actually run the dead-
+        reckoning integration (dt>0, speed>0) increment dead_reckon_ticks —
+        this is what tells apart "TelemInfo isn't reaching DeltaEngine" from
+        "it is, but dt/speed are zero"."""
+        self.engine.update_physics(veh_speed_ms=20.0, dt=0.01)  # both > 0 -> dead-reckons
+        self.engine.update_physics(veh_speed_ms=0.0, dt=0.01)   # speed == 0 -> gate fails
+        self.engine.update_physics(veh_speed_ms=20.0, dt=0.0)   # dt == 0 -> gate fails
+        self.assertEqual(self.engine._physics_ticks_this_lap, 3)
+        self.assertEqual(self.engine._physics_dead_reckon_ticks_this_lap, 1)
+
+    def test_lap_sample_reset_survives_finalize_completed_lap_raising(self):
+        """Real-session bug: _current_lap_samples was found still holding
+        the JUST-FINISHED lap's last sample deep into the NEXT one — poisoning
+        its every reading exactly like the crossing-tick bug (see the test
+        below), except this time _finalize_completed_lap() itself (profile
+        resampling, disk I/O, WallOfFame update — all real ways to fail) had
+        visibly completed (its own success log lines printed) yet the reset
+        right after it apparently never ran, with no traceback surfacing
+        anywhere. _handle_lap_transition now wraps the finalize call in
+        try/finally specifically so the reset is unconditional."""
+        from isimotor_rawudp_client import CompactScoring
+
+        def compact(current_et, total_laps, last_lap_time=-1.0):
+            return CompactScoring(
+                track_name="TestTrack", lap_dist=1000.0, current_et=current_et,
+                sector=1, count_lap_flag=2, last_lap_time=last_lap_time, total_laps=total_laps,
+            )
+
+        self.engine.update_scoring(compact(current_et=1.0, total_laps=1))
+        self.engine._last_scoring_dist = 500.0
+        self.engine.update_scoring(compact(current_et=10.0, total_laps=1))
+        self.assertEqual(len(self.engine._current_lap_samples), 1)
+
+        # Force _finalize_completed_lap to blow up, exactly like a real but
+        # unidentified failure there would.
+        self.engine._finalize_completed_lap = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+        self.engine.update_scoring(compact(current_et=70.0, total_laps=2, last_lap_time=60.0))
+
+        # Despite the crash, the new lap's sample bookkeeping must still be
+        # clean — not left holding the old lap's last sample forever. (The
+        # counters read 1, not 0: this same crossing tick counts toward the
+        # new lap's scoring_ticks/flying_ticks — see is_real_lap_crossing's
+        # docstring — the reset in `finally` runs BEFORE that increment.)
+        self.assertEqual(len(self.engine._current_lap_samples), 0)
+        self.assertEqual(self.engine._scoring_ticks_this_lap, 1)
+        self.assertEqual(self.engine._flying_ticks_this_lap, 1)
+
+    def test_lap_crossing_tick_does_not_poison_next_lap_with_stale_distance(self):
+        """Real-session bug: for a CompactScoring tick (no player_vehicle —
+        player_dist falls back to self._last_scoring_dist, see
+        update_scoring()'s CompactScoring branch), the tick that DETECTS a
+        lap crossing reads player_dist BEFORE _handle_lap_transition runs —
+        if _last_scoring_dist hadn't been wrapped back near 0 yet (no
+        physics tick had a chance to, see update_physics's dead-reckoning),
+        that tick's own player_dist is still near the OLD lap's tail (~track_
+        length). Two compounding bugs made this poison the WHOLE lap, not
+        just its first sample: (1) _current_lap_samples was just emptied, so
+        that stale value used to get accepted unconditionally as the first
+        sample, and (2) it was then written back into self._last_scoring_dist
+        completely unconditionally at the tail of _apply_scoring_update —
+        UNDOING _handle_lap_transition's own wrap-on-crossing correction the
+        very same tick it ran, leaving every SUBSEQUENT CompactScoring tick
+        for the rest of that lap reading the same stale near-track-length
+        baseline. This is what a real session's 823/825 or 867/869 flying-
+        tick monotonic-rejection rate — for an ENTIRE lap, not just its
+        first tick — was actually coming from."""
+        from isimotor_rawudp_client import CompactScoring
+
+        def compact(current_et, total_laps, last_lap_time=-1.0):
+            return CompactScoring(
+                track_name="TestTrack", lap_dist=1000.0, current_et=current_et,
+                sector=1, count_lap_flag=2, last_lap_time=last_lap_time, total_laps=total_laps,
+            )
+
+        # Tick 0: first-ever packet for this track — establishes track_name
+        # (time_into is inherently 0 on this exact tick, see
+        # _apply_scoring_update's track-change block resetting
+        # _local_lap_start_et to current_et itself; not what's under test).
+        self.engine.update_scoring(compact(current_et=1.0, total_laps=1))
+        self.assertEqual(self.engine._flying_ticks_this_lap, 0)
+
+        # Tick 1: now flying — establishes lap 1's first (and only, for this
+        # test) sample at 500m.
+        self.engine._last_scoring_dist = 500.0
+        self.engine.update_scoring(compact(current_et=10.0, total_laps=1))
+        self.assertEqual(len(self.engine._current_lap_samples), 1)
+        self.assertAlmostEqual(self.engine._current_lap_samples[0][0], 500.0)
+
+        # Tick 2: the crossing tick itself — stale dead-reckoned distance,
+        # NOT yet wrapped back near 0 (the exact race this fix closes).
+        self.engine._last_scoring_dist = 995.0
+        self.engine.update_scoring(compact(current_et=70.0, total_laps=2, last_lap_time=60.0))
+        # The crossing tick's own (stale, 995.0) sample must NOT have been
+        # recorded as the new lap's first sample...
+        self.assertEqual(len(self.engine._current_lap_samples), 0)
+        # ...AND self._last_scoring_dist itself must have been corrected,
+        # not left at 995.0 to poison every tick after this one too (bug 2
+        # above — the actual gap in the first version of this fix).
+        self.assertAlmostEqual(self.engine._last_scoring_dist, 0.0)
+
+        # Tick 3: NO manual override this time — a real physics tick dead-
+        # reckons forward from whatever self._last_scoring_dist now holds,
+        # exactly like a live session would, then a scoring tick reads it.
+        self.engine.update_physics(veh_speed_ms=30.0, dt=0.1)  # +3.0m
+        self.engine.update_scoring(compact(current_et=70.2, total_laps=2))
+        self.assertEqual(len(self.engine._current_lap_samples), 1)
+        self.assertAlmostEqual(self.engine._current_lap_samples[0][0], 3.0)
+
     def test_50hz_extrapolation(self):
         """Verify delta calculation on scoring updates."""
         # Manually set reference grid: 1000m, 50s lap time (20 m/s constant speed)

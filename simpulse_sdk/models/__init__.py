@@ -20,6 +20,7 @@ from simpulse_sdk.models.delta import (
     LapColorStatus,
     ExpectedStatus,
 )
+from simpulse_sdk.models.energy import EnergyPacket
 from simpulse_sdk.models.scoring import (
     BaseTimingState,
     FullGridScoringState,
@@ -96,6 +97,7 @@ __all__ = [
     "TelemetryPayload",
     "LmuTelemetryData",
     "LapDeltaPacket",
+    "EnergyPacket",
     "SectorInfo",
     "DeltaReferenceMode",
     "SplitStatus",

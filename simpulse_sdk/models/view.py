@@ -36,6 +36,7 @@ from isimotor_rawudp_client import TelemInfo
 
 from .scoring import BaseTimingState, FullGridScoringState
 from .delta import LapDeltaPacket
+from .energy import EnergyPacket
 from .reference_profile import ReferenceLapProfileView
 
 
@@ -68,6 +69,11 @@ class TelemetryView:
     # Authoritative Engine output (DeltaEngine, via ReferenceLapManager), None until
     # the first tick has run.
     delta: Optional[LapDeltaPacket] = None
+
+    # Authoritative Engine output (FuelEnergyEngine + session_energy_gauge,
+    # via TelemetryBus._apply_fuel_fields) — same single-source-of-truth
+    # pattern as `delta` above. None until the first physics tick has run.
+    energy: Optional[EnergyPacket] = None
 
     # Active reference lap profile (immutable), pushed by ReferenceLapManager
     # whenever it changes (new best lap, track/car switch, reference-mode
@@ -125,6 +131,7 @@ class TelemetryView:
             timing=store.timing,
             grid=store.grid,
             delta=store.delta.data,
+            energy=store.energy.data,
             reference_profile=store.reference_profile.data,
             wheels_on_track=store.wheels_on_track,
             is_on_track=store.is_on_track,

@@ -22,7 +22,9 @@ from isimotor_rawudp_client import (
     SystemEvent,
 )
 from .scoring import BaseTimingState, FullGridScoringState
+from .scoring_freshness import ScoringFreshnessGuard
 from .delta import LapDeltaPacket
+from .energy import EnergyPacket
 from .presence import PresenceTracker
 from .reference_profile import ReferenceLapProfileView
 from .view import TelemetryView, TrackCutState
@@ -108,6 +110,7 @@ class TelemetryStateStore:
         self.track_rules = PacketSlot()        # TrackRules
         self.pit_menu = PacketSlot()           # PitMenu
         self.delta = PacketSlot()              # LapDeltaPacket derived state (120Hz continuous)
+        self.energy = PacketSlot()             # EnergyPacket derived state (FuelEnergyEngine)
         self.reference_profile = PacketSlot()  # ReferenceLapProfileView, pushed on profile change
 
         # Unified typed scoring models
@@ -119,6 +122,14 @@ class TelemetryStateStore:
         # in_realtime/in_garage properties below, which delegate to it). Replaces
         # LMUParser's former 5 independent, mutually-divergent heuristics.
         self._presence: PresenceTracker = PresenceTracker()
+
+        # Rejects an out-of-order CompactScoring/FullScoringSession packet
+        # BEFORE it can overwrite self.timing/.grid with stale data (UDP
+        # delivery is not FIFO) — see ScoringFreshnessGuard's docstring for
+        # why this used to let a stale packet's older total_laps briefly win
+        # and fool DeltaEngine's session-reset detection mid-lap. ONE shared
+        # instance for both channels (they both write the same self.timing).
+        self._scoring_freshness: ScoringFreshnessGuard = ScoringFreshnessGuard()
 
         # Persistent state memory across packet boundaries
         self._last_wheels_on_track: int = 4
@@ -230,6 +241,7 @@ class TelemetryStateStore:
             self.timing = BaseTimingState()
             self.grid = None
             self._presence = PresenceTracker()
+            self._scoring_freshness = ScoringFreshnessGuard()
 
             self._last_wheels_on_track = 4
             self._last_is_on_track = True
@@ -392,6 +404,12 @@ class TelemetryStateStore:
 
             self._presence.on_compact_scoring(data.in_garage_stall, data.in_realtime)
 
+            # Reject an out-of-order packet (UDP delivery is not FIFO) before it
+            # can regress self.timing/.grid — see ScoringFreshnessGuard's
+            # docstring. Judged on the game's own current_et, not receipt order.
+            if not self._scoring_freshness.should_accept(data.current_et):
+                return
+
             self._process_lap_validity(data.count_lap_flag, timestamp)
 
             new_laps = data.total_laps
@@ -459,13 +477,23 @@ class TelemetryStateStore:
                 player_veh.in_garage_stall if player_veh is not None else False,
             )
             # Trap: if player_veh stays None this tick (single-car session not
-            # yet flagged, mid-transition packet, …), self.timing/self.grid are
-            # NOT touched at all below — the store silently keeps last tick's
-            # values rather than rebuilding from a half-resolved packet. That's
+            # yet flagged, mid-transition packet, an out-of-order packet
+            # rejected below, …), self.timing/self.grid are NOT touched at all
+            # below — the store silently keeps last tick's values rather than
+            # rebuilding from a half-resolved or stale packet. That's
             # deliberate (better a stale-but-consistent grid than one merged
-            # from no player data), but it means a FullScoringSession frame can
-            # be fully ingested (self.full_scoring.update() above always runs)
-            # while self.timing/self.grid quietly don't advance.
+            # from no/stale player data), but it means a FullScoringSession
+            # frame can be fully ingested (self.full_scoring.update() above
+            # always runs) while self.timing/self.grid quietly don't advance.
+            #
+            # Reject an out-of-order packet (UDP delivery is not FIFO) before it
+            # can regress self.timing/.grid — see ScoringFreshnessGuard's
+            # docstring. Judged on the game's own current_et, not receipt
+            # order; piggybacks on the trap above by forcing player_veh back to
+            # None rather than a separate early-return.
+            if player_veh is not None and not self._scoring_freshness.should_accept(data.current_et):
+                player_veh = None
+
             if player_veh is not None:
                 self._last_penalties = player_veh.num_penalties
                 self._last_total_laps = player_veh.total_laps
@@ -609,6 +637,18 @@ class TelemetryStateStore:
             self.delta.update(data, ts, raw_bytes_len)
             if data.player_dist > 0.0 or self._last_lap_dist == 0.0:
                 self._last_lap_dist = data.player_dist
+
+    def update_energy(
+        self,
+        data: EnergyPacket,
+        timestamp: Optional[float] = None,
+        raw_bytes_len: int = 0,
+    ) -> None:
+        """Ingests authoritative EnergyPacket — same single-source-of-truth
+        pattern as update_delta() above (see EnergyPacket's docstring)."""
+        with self._mutex:
+            ts = timestamp if timestamp is not None else time.time()
+            self.energy.update(data, ts, raw_bytes_len)
 
     def update_reference_profile(
         self,

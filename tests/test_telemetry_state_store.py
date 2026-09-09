@@ -232,7 +232,7 @@ class TestTelemetryStateStore(unittest.TestCase):
             unfiltered_brake=0.2,
             gear=4,
             engine_rpm=6200.0,
-            fuel_level=45.0,
+            _fuel_level=45.0,
             surface_types=(0, 0, 0, 0),
             terrain_names=("ROAD", "ROAD", "ROAD", "ROAD"),
             wheels_on_track=4,
@@ -270,6 +270,83 @@ class TestTelemetryStateStore(unittest.TestCase):
         pm.connect_telemetry_bus(bus)
         for _ in range(30):
             bus.mock_generator._step()
+
+    def test_compact_scoring_rejects_out_of_order_packet(self):
+        """UDP delivery is not FIFO: a stale CompactScoring packet (lower
+        current_et) arriving after a fresher one must not regress
+        self.timing.total_laps — see ScoringFreshnessGuard's docstring for
+        why this used to fool DeltaEngine's session-reset detection."""
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=100.0, total_laps=5, count_lap_flag=2), timestamp=1.0
+        )
+        self.assertEqual(self.store.timing.total_laps, 5)
+        self.assertEqual(self.store.timing.current_et, 100.0)
+
+        # Stale/out-of-order packet: current_et regressed by a small amount
+        # (network jitter, not a real session restart) -> rejected wholesale,
+        # including its (wrong) total_laps=4.
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=99.5, total_laps=4, count_lap_flag=2), timestamp=1.02
+        )
+        self.assertEqual(self.store.timing.total_laps, 5)
+        self.assertEqual(self.store.timing.current_et, 100.0)
+
+        # A genuinely fresher packet is still accepted afterwards.
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=100.2, total_laps=5, count_lap_flag=2), timestamp=1.05
+        )
+        self.assertEqual(self.store.timing.current_et, 100.2)
+
+    def test_full_scoring_rejects_out_of_order_packet(self):
+        """Same guard, FullScoringSession side — a stale packet must not
+        regress self.timing/.grid.total_laps."""
+        self.store.update_full_scoring(
+            FullScoringSession(
+                current_et=100.0,
+                vehicles=[VehicleScoring(is_player=True, total_laps=5, count_lap_flag=2)],
+            ),
+            timestamp=1.0,
+        )
+        self.assertEqual(self.store.timing.total_laps, 5)
+        self.assertEqual(self.store.grid.total_laps, 5)
+
+        self.store.update_full_scoring(
+            FullScoringSession(
+                current_et=99.5,
+                vehicles=[VehicleScoring(is_player=True, total_laps=4, count_lap_flag=2)],
+            ),
+            timestamp=1.02,
+        )
+        self.assertEqual(self.store.timing.total_laps, 5)
+        self.assertEqual(self.store.grid.total_laps, 5)
+
+    def test_scoring_freshness_guard_shared_across_compact_and_full(self):
+        """ONE shared guard for both channels: a stale CompactScoring packet
+        arriving right after a fresher FullScoringSession must also be
+        rejected (not just stale-vs-same-channel)."""
+        self.store.update_full_scoring(
+            FullScoringSession(
+                current_et=100.0,
+                vehicles=[VehicleScoring(is_player=True, total_laps=5, count_lap_flag=2)],
+            ),
+            timestamp=1.0,
+        )
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=99.0, total_laps=4, count_lap_flag=2), timestamp=1.02
+        )
+        self.assertEqual(self.store.timing.total_laps, 5)
+
+    def test_large_backwards_current_et_jump_is_a_real_session_restart(self):
+        """A big drop (genuine session restart/garage re-entry) must still be
+        accepted, not permanently rejected by the guard."""
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=500.0, total_laps=5, count_lap_flag=2), timestamp=1.0
+        )
+        self.store.update_compact_scoring(
+            CompactScoring(current_et=0.2, total_laps=0, count_lap_flag=1), timestamp=2.0
+        )
+        self.assertEqual(self.store.timing.total_laps, 0)
+        self.assertEqual(self.store.timing.current_et, 0.2)
 
     def test_delta_slot_and_properties(self):
         """Verify TelemetryStateStore ingests LapDeltaPacket and exposes delta properties."""

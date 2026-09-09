@@ -124,6 +124,24 @@ class ReferenceLapManager(QObject):
     def latest_packet(self) -> LapDeltaPacket:
         return self._last_emitted_packet
 
+    @property
+    def track_name(self) -> str:
+        return self.delta_engine.track_name
+
+    @property
+    def vehicle_class(self) -> str:
+        return self.delta_engine.vehicle_class
+
+    @property
+    def vehicle_name(self) -> str:
+        return self.delta_engine.vehicle_name
+
+    def get_energy_history_filepath(self) -> Optional[Path]:
+        """Filepath of the active combo's persisted fuel/energy consumption
+        history — see DeltaEngine.get_energy_history_filepath(). Consumed by
+        TelemetryBus's FuelEnergyEngine, never by DeltaEngine itself."""
+        return self.delta_engine.get_energy_history_filepath()
+
     def get_active_profile(self) -> Optional[ReferenceLapProfile]:
         """Return active profile or All-Time best profile."""
         return self.delta_engine.current_profile or self.delta_engine.all_time_best_profile

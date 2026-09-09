@@ -49,8 +49,8 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     Lap Sectors S1, S2, S3 (Positioned below Delta and Gear).
 
     Colour is aligned with the Delta Timer widget above it — SESSION-scoped
-    only, sourced from sensors.time_status.sectorN.target (never the sign of
-    the live delta, never pink):
+    only, sourced from context.delta.time_status.sectorN.target (never the
+    sign of the live delta, never pink):
         * Purple (TimeTarget.PADDOCK — beats paddock / other cars this session)
         * Green  (TimeTarget.SESSION — beats my session best for this sector)
         * Yellow (TimeTarget.BEHIND — valid, slower than my session)
@@ -58,7 +58,7 @@ class QtSectorTimesWidget(BaseQtHudWidget):
                   indicator elsewhere, never hidden behind `target`)
     Beating my all-time-best split ("ever") is a " PR" marker appended into
     the box's own time text, not a colour — see
-    sensors.time_status.sectorN.is_personal_record_target. It is baked into
+    pkt.time_status.sectorN.is_personal_record_target. It is baked into
     the string rather than drawn as a separate tag above the box because
     that floating tag collided with the Gear digits widget drawn in the same
     screen region.
@@ -66,14 +66,21 @@ class QtSectorTimesWidget(BaseQtHudWidget):
     Each box's live (in-progress) text shows either the live Delta or the
     projected Expected split time — same user-selectable
     CockpitWidgetContext.delta_display_mode as the Delta Timer above, applied
-    per-box here too — read from ``sensors.time_status_smoothed`` (DeltaEngine's
+    per-box here too — read from ``pkt.time_status_smoothed`` (DeltaEngine's
     own moving average over the "⚙️ Engines" tab's smoothing window) or
-    ``sensors.time_status`` (raw) depending on ``context.delta_smoothing_mode``
+    ``pkt.time_status`` (raw) depending on ``context.delta_smoothing_mode``
     — see QtDeltaTimerWidget's docstring: it's a projection either way, not
     raw telemetry, so smoothing it for readability is fine. The frozen split
     text (once a sector is done) is always the raw captured value — it only
     changes once per lap crossing, nothing to smooth, and smoothing it in
     would just delay showing the fresh result.
+
+    NOTE on `sectors` itself: it comes from ``sensors.sectors_list`` (see the
+    ``paint()`` body), not ``pkt.sectors_list`` — VehicleSensors.sectors_list
+    is a computed property that always returns exactly 3 SectorInfo entries;
+    LapDeltaPacket.sectors_list is a plain field defaulting to [] until the
+    first on_delta_frame arrives, which would leave every box empty (and
+    crash the diagnostic block) on the very first paint.
 
     Per-box visibility follows TIME_STATUS_SPEC.md's rule to the letter (a
     sector's box is one of exactly three states, never a fourth "leftover
@@ -103,13 +110,21 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         context: CockpitWidgetContext,
     ) -> None:
         sensors = context.sensors
+        pkt = context.delta
+        # Sectors themselves come from sensors.sectors_list, NOT
+        # pkt.sectors_list — VehicleSensors.sectors_list is a computed
+        # property that always returns exactly 3 SectorInfo entries (built
+        # from its own _sectorN_* fields), whereas LapDeltaPacket.sectors_list
+        # is a plain field defaulting to [] until the first on_delta_frame
+        # arrives. Reading it from pkt would leave every sector box empty
+        # (and crash the diagnostic block below) on the very first paint.
         sectors = sensors.sectors_list
 
         _cap_text: list = []   # exact strings painted, per box 0..2 (diagnostic)
         _cap_mode: list = []   # 'live' | 'frozen' per box (diagnostic)
         _cap_bg: list = []     # (r,g,b) background painted per box (diagnostic)
 
-        curr_sec = sensors.current_sector
+        curr_sec = pkt.current_sector
         if curr_sec != self._last_rendered_sector:
             try:
                 from simpulse.core.telemetry.overlay_anomaly_logger import OverlayAnomalyLogger
@@ -148,15 +163,15 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         font.setBold(True)
         painter.setFont(font)
 
-        time_status_sectors = sensors.time_status.sectors
+        time_status_sectors = pkt.time_status.sectors
         # Which TimeStatus the LIVE numeric readout follows — colour/PR below
-        # always stay on the raw sensors.time_status (never smoothed).
+        # always stay on the raw pkt.time_status (never smoothed).
         display_ts_sectors = (
-            sensors.time_status_smoothed.sectors
+            pkt.time_status_smoothed.sectors
             if context.delta_smoothing_mode == "smoothed"
-            else sensors.time_status.sectors
+            else pkt.time_status.sectors
         )
-        is_freeze = sensors.is_lap_freeze_active
+        is_freeze = pkt.is_lap_freeze_active
 
         for i in range(min(3, len(sectors))):
             s_x = start_x + (i * (sector_w + sector_spacing))
@@ -264,6 +279,6 @@ class QtSectorTimesWidget(BaseQtHudWidget):
         try:
             if _cap_text:
                 from simpulse.builtin_plugins.official_cockpit_hud.widgets.sector_paint_recorder import record
-                record(int(sensors.current_sector), tuple(_cap_text), tuple(_cap_mode), tuple(_cap_bg))
+                record(int(pkt.current_sector), tuple(_cap_text), tuple(_cap_mode), tuple(_cap_bg))
         except Exception:
             pass

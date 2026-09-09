@@ -4,22 +4,24 @@ Delta Timer Widget — Display expected lap delta time positioned below gear in 
 
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QPen
-from simpulse_sdk import TimeTarget, VehicleSensors, format_lap_time
+from simpulse_sdk import TimeTarget, LapDeltaPacket, format_lap_time
 from .base_widget import BaseQtHudWidget, CockpitWidgetContext, format_signed_delta
 
 
-def _live_delta_text(sensors: VehicleSensors) -> str:
-    """Same gating as VehicleSensors.delta_time_str, EXCEPT it does not go
-    blank just because the current lap is invalidated for record-keeping
-    (lap_flag != 2, e.g. a track-limits cut) — requested explicitly, more
-    than once: the driver already has a separate visual and audio indicator
-    for an invalid lap elsewhere, so hiding the live number too is a
-    redundant, unwanted second one. Still hidden with no reference at all,
-    during an actual pit in/out lap, or when telemetry isn't live — none of
-    those have a meaningful delta to show regardless of validity."""
-    if not sensors.has_delta_reference or sensors.is_pit_lap or not sensors.in_realtime:
+def _live_delta_text(pkt: LapDeltaPacket, in_realtime: bool) -> str:
+    """Same gating as VehicleSensors.delta_time_str used to provide, EXCEPT
+    it does not go blank just because the current lap is invalidated for
+    record-keeping (lap_flag != 2, e.g. a track-limits cut) — requested
+    explicitly, more than once: the driver already has a separate visual and
+    audio indicator for an invalid lap elsewhere, so hiding the live number
+    too is a redundant, unwanted second one. Still hidden with no reference
+    at all, during an actual pit in/out lap, or when telemetry isn't live —
+    none of those have a meaningful delta to show regardless of validity.
+    `in_realtime` isn't on LapDeltaPacket (it's a raw feed-liveness flag, not
+    a delta/timing concept) so it's passed in from context.sensors."""
+    if not pkt.has_reference or pkt.is_pit_lap or not in_realtime:
         return "--"
-    return format_signed_delta(sensors.delta_time)
+    return format_signed_delta(pkt.display_delta)
 
 
 class QtDeltaTimerWidget(BaseQtHudWidget):
@@ -31,8 +33,13 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
       delta_display_mode).
     - Line crossing: Displays Completed Lap Time (format MM:ss.mmm)
 
+    All lap delta, timing & sector state is read from ``context.delta``
+    (LapDeltaPacket) — see CockpitWidgetContext's docstring — not
+    VehicleSensors, which only keeps ``in_realtime`` (a raw feed-liveness
+    flag, not a delta/timing concept).
+
     The on-track value follows ``context.delta_smoothing_mode``: "smoothed"
-    (default) reads ``sensors.time_status_smoothed`` — DeltaEngine's own
+    (default) reads ``pkt.time_status_smoothed`` — DeltaEngine's own
     moving average over the "⚙️ Engines" tab's smoothing window — instead of
     the raw reading repainted every 100Hz frame. Both Delta and Expected are
     projections, not a physical telemetry channel, so smoothing them for
@@ -63,10 +70,10 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
         canvas_h: float,
         context: CockpitWidgetContext,
     ) -> None:
-        sensors = context.sensors
-        is_freeze = sensors.is_lap_freeze_active
-        lap_flag = sensors.lap_flag
-        lap_time_str = sensors.last_lap_time_str
+        pkt = context.delta
+        is_freeze = pkt.is_lap_freeze_active
+        lap_flag = pkt.lap_flag
+        lap_time_str = pkt.last_lap_time_str
 
         is_pr = False
 
@@ -77,8 +84,8 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             # the live projection, which would self-compare during this same
             # window. See DeltaEngine._handle_lap_transition.
             disp_str = lap_time_str if lap_time_str not in ("", "--") else "--:--.---"
-            target = sensors.time_status.lap.target
-            is_pr = sensors.time_status.lap.is_personal_record_target
+            target = pkt.time_status.lap.target
+            is_pr = pkt.time_status.lap.is_personal_record_target
 
             if lap_flag == 0 or target == TimeTarget.NONE:
                 # Invalid lap / no reference -> Grey
@@ -105,11 +112,11 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
             # time_status.lap.is_personal_record_target flag below (-> "PR" tag).
             use_smoothed = context.delta_smoothing_mode == "smoothed"
             if context.delta_display_mode == "expected":
-                raw_text = sensors.estimated_lap_time_str
-                value = sensors.time_status_smoothed.lap.expected_time if use_smoothed else sensors.estimated_lap_time
+                raw_text = pkt.estimated_lap_time_str
+                value = pkt.time_status_smoothed.lap.expected_time if use_smoothed else pkt.estimated_lap_time
             else:
-                raw_text = _live_delta_text(sensors)
-                value = sensors.time_status_smoothed.lap.delta_time if use_smoothed else sensors.delta_time
+                raw_text = _live_delta_text(pkt, context.sensors.in_realtime)
+                value = pkt.time_status_smoothed.lap.delta_time if use_smoothed else pkt.display_delta
 
             if raw_text in ("", "--", "--:--.---"):
                 disp_str = raw_text
@@ -117,8 +124,8 @@ class QtDeltaTimerWidget(BaseQtHudWidget):
                 disp_str = format_lap_time(value)
             else:
                 disp_str = format_signed_delta(value)
-            expected_tok = sensors.expected_status.strip()
-            is_pr = sensors.time_status.lap.is_personal_record_target
+            expected_tok = pkt.expected_status.strip()
+            is_pr = pkt.time_status.lap.is_personal_record_target
 
             if lap_flag == 0 or expected_tok == "invalid":
                 # Invalid lap -> Grey

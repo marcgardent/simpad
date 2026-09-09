@@ -674,7 +674,7 @@ class PaddockAgentPlugin(SimPulsePlugin, ITabProvider):
     SimPulse Builtin Plugin for LMU Paddock Agent & Online Race Schedule.
     """
 
-    def __init__(self):
+    def __init__(self, schedule_mgr: Optional[LMUScheduleManager] = None):
         super().__init__(PluginMetadata(
             id="simpulse.builtin.paddock_agent",
             name="LMU Paddock Agent",
@@ -685,7 +685,12 @@ class PaddockAgentPlugin(SimPulsePlugin, ITabProvider):
             tags=("schedule", "paddock", "races", "lmu", "online", "announcer", "voice", "filters")
         ))
         self.config: PaddockAgentConfig = PaddockAgentConfig()
-        self.schedule_mgr: LMUScheduleManager = LMUScheduleManager()
+        # Injectable for tests: LMUScheduleManager() (the default) reads AND
+        # WRITES the real user's schedule_config.json at the repo root and
+        # kicks off a real network fetch (auto_fetch=True) — never construct
+        # PaddockAgentPlugin() bare in a test; pass a tmp-path-backed,
+        # auto_fetch=False instance instead (see test_paddock_agent_plugin.py).
+        self.schedule_mgr: LMUScheduleManager = schedule_mgr if schedule_mgr is not None else LMUScheduleManager()
         self._active_tab_widget: Optional[PaddockAgentWidget] = None
 
     def on_load(self, context: PluginContext) -> None:

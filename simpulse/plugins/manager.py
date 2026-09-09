@@ -24,6 +24,7 @@ from simpulse_sdk import (
     ITabProvider,
     ITelemetrySubscriber,
     IDeltaSubscriber,
+    IEnergySubscriber,
     ITelemetryStateSubscriber,
     IChannelSampleSubscriber,
     IHudWidgetProvider,
@@ -32,6 +33,7 @@ from simpulse_sdk import (
     ChannelSample,
     TelemetryChannel,
     LapDeltaPacket,
+    EnergyPacket,
     VehicleSensors,
     TelemetryStateStore,
     TelemetryView,
@@ -324,11 +326,19 @@ class PluginManager(QObject):
             if p.state == PluginState.ENABLED and isinstance(p, IDeltaSubscriber)
         ]
 
+    def get_energy_subscribers(self) -> List[IEnergySubscriber]:
+        """Return all active plugins implementing IEnergySubscriber."""
+        return [
+            p for p in self._plugins.values()
+            if p.state == PluginState.ENABLED and isinstance(p, IEnergySubscriber)
+        ]
+
     def connect_telemetry_bus(self, telemetry_bus: Any) -> None:
         """Connect this PluginManager's dispatch handlers to TelemetryBus signals."""
         telemetry_bus.packet_received.connect(self.dispatch_packet)
         telemetry_bus.telemetry_updated.connect(self.dispatch_telemetry)
         telemetry_bus.delta_updated.connect(self.dispatch_delta)
+        telemetry_bus.energy_updated.connect(self.dispatch_energy)
 
         # Build the one ReferenceLapApi façade around the bus's ReferenceLapManager
         # — every plugin registered from here on gets it via its PluginContext
@@ -345,6 +355,7 @@ class PluginManager(QObject):
             (telemetry_bus.packet_received, self.dispatch_packet),
             (telemetry_bus.telemetry_updated, self.dispatch_telemetry),
             (telemetry_bus.delta_updated, self.dispatch_delta),
+            (telemetry_bus.energy_updated, self.dispatch_energy),
         ]:
             try:
                 sig.disconnect(slot)
@@ -374,6 +385,18 @@ class PluginManager(QObject):
                 self._error_counts[pid] = 0
             except Exception as e:
                 self._handle_plugin_error(pid, "on_delta_frame", e)
+
+    def dispatch_energy(self, energy_packet: EnergyPacket) -> None:
+        """Dispatch an authoritative EnergyPacket safely to all active IEnergySubscriber plugins."""
+        for pid, p in list(self._plugins.items()):
+            if p.state != PluginState.ENABLED or not isinstance(p, IEnergySubscriber):
+                continue
+
+            try:
+                p.on_energy_frame(energy_packet)
+                self._error_counts[pid] = 0
+            except Exception as e:
+                self._handle_plugin_error(pid, "on_energy_frame", e)
 
     # Declarative channel -> plugin hook routing. The Store merge itself is no
     # longer this class's job — TelemetryBus.process_raw_packet() merges the raw

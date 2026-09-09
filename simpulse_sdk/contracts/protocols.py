@@ -8,6 +8,7 @@ from typing import Optional, Protocol, runtime_checkable, Any
 
 from simpulse_sdk.models.telemetry import VehicleSensors, ChannelSample
 from simpulse_sdk.models.delta import LapDeltaPacket
+from simpulse_sdk.models.energy import EnergyPacket
 from simpulse_sdk.models.view import TelemetryView
 from simpulse_sdk.models.plugin_metadata import HudSlot
 
@@ -38,6 +39,21 @@ class IDeltaSubscriber(Protocol):
         ...
 
 
+@runtime_checkable
+class IEnergySubscriber(Protocol):
+    """
+    Capability: The plugin receives authoritative fuel/energy consumption and
+    session-completion projection packets (see EnergyPacket — same
+    build-push-emit pattern as LapDeltaPacket/IDeltaSubscriber).
+    """
+
+    def on_energy_frame(self, energy_packet: EnergyPacket) -> None:
+        """
+        Called every time FuelEnergyEngine/session_energy_gauge produce a new
+        EnergyPacket (only on a TelemInfo physics tick — see TelemetryBus.
+        _apply_fuel_fields()).
+        """
+        ...
 
 
 @runtime_checkable

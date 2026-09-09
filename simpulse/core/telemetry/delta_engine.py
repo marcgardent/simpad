@@ -49,6 +49,7 @@ from .reference_profile import (
 )
 from .sector_engine import SectorEngine
 from .wall_of_fame_engine import WallOfFameEngine
+from .metadata_engine import MetadataEngine
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +159,50 @@ class DeltaEngine:
         # (see TIME_STATUS_SPEC.md "eps") — a display decision, NOT a domain constant,
         # settable via ReferenceLapManager.set_time_status_eps(), same pattern as freeze_duration.
         self.time_status_eps: float = 0.001
+        # Combo (track/vehicle) identity + on-disk filename resolution for the
+        # whole ref_<track>_<car>.* family — SRP split from this class's own
+        # delta/timing math, see MetadataEngine's docstring. Instantiated once
+        # (not recreated in reset_session(), unlike _sectors/_wall_of_fame)
+        # so nothing that ever comes to hold this reference is left stale by
+        # a later session reset — reset_session() just clears its identity.
+        self._metadata = MetadataEngine()
         self.reset_session()
 
     def reset_session(self) -> None:
-        """Completely resets engine state (session/track change)."""
+        """Completely resets engine state (session/track change).
+
+        DUPLICATE STATE (not yet migrated — flagged, not fixed, see each
+        field below): DeltaEngine predates TelemetryStateStore's unified
+        BaseTimingState/FullGridScoringState and still keeps its own private
+        copies of several fields the unified state already carries, updated
+        by hand on every tick instead of read once from there. This is real
+        technical debt, not a style nit — it's the actual root cause behind
+        this session's whole "Insufficient samples" chase: two independent
+        trackers of "current car distance" (this class's _last_scoring_dist,
+        and TelemetryStateStore's own position tracking) that could disagree
+        with each other, instead of one shared value both could trust.
+        Every duplicate is marked at its declaration below with which
+        unified-state field it shadows and whether replacing it is a safe,
+        mechanical swap or needs real design work first — migrating them is
+        deliberately NOT done in the same pass as this marking (a
+        behavior-changing swap needs its own review/tests, not a
+        drive-by)."""
+        # DUPLICATE of BaseTimingState.track_name / FullGridScoringState.
+        # vehicle_name/.vehicle_class — _apply_scoring_update already
+        # receives these fresh, every call, as track_name/veh_name/veh_class
+        # parameters (sourced from the SAME unified timing/grid objects
+        # update_scoring_from_view was handed) purely to compare against
+        # these persistent copies and detect a change by hand. Safe,
+        # mechanical migration: hold the fresh values (or the timing/grid
+        # object itself) instead of re-copying them into private fields.
         self._track_name: str = ""
         self._vehicle_name: str = ""
         self._vehicle_class: str = ""
+        # DUPLICATE of BaseTimingState.track_length — same story as
+        # track_name/vehicle_name/vehicle_class above: _apply_scoring_update
+        # already receives it fresh every call as track_len.
         self._track_length: float = 0.0
+        self._metadata.reset()
 
         # Active reference mode
         self._ref_mode: DeltaReferenceMode = DeltaReferenceMode.ALL_TIME_BEST
@@ -206,8 +243,49 @@ class DeltaEngine:
 
         # Current lap samples: list of (dist, time_into, speed_ms, throttle, brake, steering, gear)
         self._current_lap_samples: List[Tuple[float, float, float, float, float, float, int]] = []
+        # Diagnostic-only counters, always on (no delta_debug config gate — see
+        # _finalize_completed_lap's log line): how many _apply_scoring_update()
+        # calls happened since the last lap transition, and how many of those
+        # passed the is_flying_lap gate. Answers "did scoring packets even
+        # reach DeltaEngine this lap, and if so, why didn't they turn into
+        # samples" on the very next "Lap completed"/"Insufficient samples"
+        # line, without needing delta_debug.log (often disabled — see
+        # config.json's "loggers" -> "delta_debug").
+        self._scoring_ticks_this_lap: int = 0
+        self._flying_ticks_this_lap: int = 0
+        # Same always-on diagnostic pattern, one level deeper: how many
+        # _collect_lap_sample() calls this lap were dropped specifically by
+        # the monotonic-distance check (see its docstring), plus the min/max
+        # player_dist actually observed. A tiny (min, max) span despite many
+        # flying_ticks means player_dist itself is barely moving between
+        # scoring ticks (dead-reckoning stalled — see _last_scoring_dist's
+        # update_physics() integration) — not just noisy/backwards jitter.
+        self._sample_monotonic_rejects_this_lap: int = 0
+        self._sample_dist_min_this_lap: Optional[float] = None
+        self._sample_dist_max_this_lap: Optional[float] = None
+        # How many update_physics() calls happened this lap (should track
+        # TelemInfo's own 50-120Hz rate) and how many of those actually ran
+        # the dead-reckoning integration (dt>0 and speed>0 — see
+        # update_physics's own comment). If physics_ticks stays in the same
+        # ballpark as scoring_ticks (should be ~10x higher) TelemInfo isn't
+        # reaching DeltaEngine at its expected rate at all; if physics_ticks
+        # is healthy but dead_reckon_ticks isn't, dt/speed are the problem
+        # instead — either way this is the field that actually explains why
+        # player_dist (CompactScoring's only source between real position
+        # updates) sits frozen for stretches, which is what starves
+        # _collect_lap_sample's monotonic-distance check.
+        self._physics_ticks_this_lap: int = 0
+        self._physics_dead_reckon_ticks_this_lap: int = 0
         self._last_laps_completed: int = -1
         self._last_dist: float = -1.0
+        # PARTIAL DUPLICATE of TelemetryStateStore._last_lap_flag — but NOT a
+        # safe drop-in swap like track_name/track_length above: the Store's
+        # copy goes through _process_lap_validity's own hysteresis (a
+        # different concern — TIMING_IN_PROGRESS/TIME_DELETED transition
+        # events for the race-engineer voice layer), while this one is the
+        # raw, unfiltered per-tick flag DeltaEngine's own colour/validity
+        # logic depends on. Needs a real look at whether the Store's
+        # hysteresis would still serve DeltaEngine's needs, not a blind swap.
         self._last_lap_flag: int = 2
         # Fed by _apply_scoring_update, read by update_physics: unlike
         # _last_lap_flag (record-keeping validity, e.g. a track-limits cut),
@@ -216,6 +294,14 @@ class DeltaEngine:
         self._last_in_pits: bool = False
         self._last_in_garage: bool = False
 
+        # DUPLICATE of TelemetryStateStore's own _last_speed_kmh/
+        # _last_throttle_pct/_last_brake_pct/_last_gear — same TelemInfo
+        # source (speed_mps/unfiltered_throttle/unfiltered_brake/gear),
+        # tracked a second time here, in different units (m/s vs km/h, 0-1
+        # vs 0-100 pct) — a mechanical unit-converting read instead of an
+        # independent copy, not yet done (no _last_steering equivalent
+        # exists on the Store today, so that one field stays DeltaEngine-only
+        # either way).
         # Last physical inputs
         self._last_speed_ms: float = 0.0
         self._last_throttle: float = 0.0
@@ -223,6 +309,22 @@ class DeltaEngine:
         self._last_steering: float = 0.0
         self._last_gear: int = 0
 
+        # NOT a simple duplicate, despite looking like one — see
+        # TelemetryStateStore.player_lap_dist/_last_lap_dist: that field is
+        # PARTLY circular, itself fed by update_delta() from THIS engine's
+        # own LapDeltaPacket.player_dist output (see _build_delta_packet).
+        # Pointing DeltaEngine at it instead would read back its own answer.
+        # The real gap this session's whole "Insufficient samples"/"stale
+        # distance" chase kept running into: CompactScoring carries no car
+        # position of its own (see update_scoring_from_view's CompactScoring
+        # branch), so _last_scoring_dist's own dead-reckoning integration in
+        # update_physics is the ONLY thing filling that gap right now — not
+        # redundant with the unified state, compensating for what it doesn't
+        # provide. Fixing this for real means either giving CompactScoring-
+        # only sessions an authoritative position source, or moving this
+        # dead-reckoning into TelemetryStateStore itself (so every consumer,
+        # not just DeltaEngine, gets a trustworthy continuous position) —
+        # real design work, not a rename.
         # Last scoring state (1-2 Hz)
         self._last_scoring_dist: float = 0.0
         self._last_scoring_time_into: float = 0.0
@@ -598,6 +700,13 @@ class DeltaEngine:
         if self._last_laps_completed < 0:
             self._last_laps_completed = laps_comp
             self._current_lap_samples = []
+            self._scoring_ticks_this_lap = 0
+            self._flying_ticks_this_lap = 0
+            self._sample_monotonic_rejects_this_lap = 0
+            self._sample_dist_min_this_lap = None
+            self._sample_dist_max_this_lap = None
+            self._physics_ticks_this_lap = 0
+            self._physics_dead_reckon_ticks_this_lap = 0
             # Best-effort local lap-start reference for the CompactScoring-only
             # fallback (see _local_lap_start_et) — we join mid-lap so this slightly
             # undercounts time_into until the next clean line crossing corrects it.
@@ -611,6 +720,13 @@ class DeltaEngine:
             print(f"[DeltaEngine] Session reset: lap counter reset to {laps_comp}", flush=True)
             log_delta_debug(f"[SESSION_RESET] laps_completed went from {self._last_laps_completed} to {laps_comp}")
             self._current_lap_samples = []
+            self._scoring_ticks_this_lap = 0
+            self._flying_ticks_this_lap = 0
+            self._sample_monotonic_rejects_this_lap = 0
+            self._sample_dist_min_this_lap = None
+            self._sample_dist_max_this_lap = None
+            self._physics_ticks_this_lap = 0
+            self._physics_dead_reckon_ticks_this_lap = 0
             self._sectors.reset_lap_capture(clear_primed=True)
             self._reset_delta_smoother()
             self._last_laps_completed = laps_comp
@@ -702,13 +818,60 @@ class DeltaEngine:
                 self._freeze_delta_until = 0.0
                 self._freeze_lap_until = 0.0
 
-            self._finalize_completed_lap(
-                lap_time=last_lap_time,
-                lap_flag=lap_flag,
-                in_garage=in_garage,
-                in_pits=in_pits,
-            )
-            self._current_lap_samples = []
+            # try/finally: a real session showed _current_lap_samples STILL
+            # holding the just-finished lap's last sample deep into the next
+            # one (poisoning its every reading, same mechanism as the
+            # crossing-tick fix below, just never actually reaching this
+            # reset at all) despite _finalize_completed_lap() visibly
+            # completing (its own "New All-Time Best"/"File saved to disk"
+            # lines printed) — meaning something between there and here was
+            # throwing, silently, with no traceback surfacing anywhere. This
+            # guarantees the reset happens even if _finalize_completed_lap()
+            # (profile resampling, disk I/O, WallOfFame update, all real
+            # ways to fail) raises, and — unlike before — actually surfaces
+            # that exception instead of leaving it to be silently swallowed
+            # by whatever wraps this call further up the stack.
+            try:
+                self._finalize_completed_lap(
+                    lap_time=last_lap_time,
+                    lap_flag=lap_flag,
+                    in_garage=in_garage,
+                    in_pits=in_pits,
+                )
+            except Exception:
+                logger.exception(
+                    "[DeltaEngine] _finalize_completed_lap raised — lap samples "
+                    "still being reset for the new lap, but this lap's reference "
+                    "recording may be incomplete/corrupted."
+                )
+                print("[DeltaEngine] _finalize_completed_lap CRASHED (see logger.exception above) — recovering for the new lap regardless", flush=True)
+            finally:
+                self._current_lap_samples = []
+                self._scoring_ticks_this_lap = 0
+                self._flying_ticks_this_lap = 0
+                self._sample_monotonic_rejects_this_lap = 0
+                self._sample_dist_min_this_lap = None
+                self._sample_dist_max_this_lap = None
+                self._physics_ticks_this_lap = 0
+                self._physics_dead_reckon_ticks_this_lap = 0
+            # _last_scoring_dist's own wrap (see update_physics's dead-
+            # reckoning block) only runs inside a dt>0/speed>0 physics tick —
+            # if THIS scoring tick's player_dist (read from _last_scoring_dist
+            # for a CompactScoring-only frame — see _apply_scoring_update)
+            # fires before the next physics tick gets a chance to wrap it,
+            # it's still sitting at the just-finished lap's tail (near
+            # _track_length), not near 0. _current_lap_samples was JUST
+            # emptied above, so THAT stale, near-track-length value would be
+            # accepted unconditionally as the new lap's very first sample
+            # (nothing to compare it against yet) — poisoning every genuinely
+            # low, correctly-increasing reading for the rest of the lap,
+            # which would all fail the monotonic-distance check against it
+            # until the car's real progress caught back up. Wrapping it here,
+            # right where the lap boundary is actually detected, closes that
+            # race instead of leaving it to whichever tick happens to run
+            # next. A no-op if it's already correctly wrapped (or unknown).
+            if self._track_length > 0.0 and self._last_scoring_dist >= self._track_length:
+                self._last_scoring_dist -= self._track_length
             # New lap starts now: refresh the CompactScoring-only fallback reference
             # (see _local_lap_start_et) whether or not FullScoringSession ever
             # supplies its own authoritative lap_start_et for this lap.
@@ -782,19 +945,50 @@ class DeltaEngine:
         steering: float = 0.0,
         gear: int = 0,
     ) -> None:
-        """SLAP Helper: Collects live lap samples (full telemetry) for reference profile building."""
-        if time_into > 0.0 and player_dist >= 0.0:
-            if self._track_length <= 0.0 or player_dist <= self._track_length + 200.0:
-                if not self._current_lap_samples or player_dist > self._current_lap_samples[-1][0]:
-                    self._current_lap_samples.append((
-                        player_dist,
-                        time_into,
-                        speed_ms,
-                        throttle,
-                        brake,
-                        steering,
-                        gear,
-                    ))
+        """SLAP Helper: Collects live lap samples (full telemetry) for reference profile building.
+
+        Every rejection is logged (full float precision, not the 1-decimal
+        rounding _apply_scoring_update's own [DELTA_NO_REF]/[SCORING_NOT_FLYING]
+        diagnostics use) — this is the ONLY place that decides whether a
+        flying-lap tick actually becomes a saved checkpoint, and it was
+        previously silent, making "why did an otherwise-flying lap end up
+        with almost no samples" impossible to answer without guessing."""
+        # Always-on (no delta_debug gate): track the full span of player_dist
+        # values actually offered to this function this lap, regardless of
+        # whether they end up accepted — see the field's docstring for why
+        # (distinguishes "stalled dead-reckoning" from "noisy jitter").
+        if self._sample_dist_min_this_lap is None or player_dist < self._sample_dist_min_this_lap:
+            self._sample_dist_min_this_lap = player_dist
+        if self._sample_dist_max_this_lap is None or player_dist > self._sample_dist_max_this_lap:
+            self._sample_dist_max_this_lap = player_dist
+
+        if time_into <= 0.0 or player_dist < 0.0:
+            log_delta_debug(
+                f"[SAMPLE_REJECTED] invalid inputs: player_dist={player_dist!r}, time_into={time_into!r}"
+            )
+            return
+        if self._track_length > 0.0 and player_dist > self._track_length + 200.0:
+            log_delta_debug(
+                f"[SAMPLE_REJECTED] out of track range: player_dist={player_dist!r} > "
+                f"track_length+200={self._track_length + 200.0!r}"
+            )
+            return
+        if self._current_lap_samples and player_dist <= self._current_lap_samples[-1][0]:
+            self._sample_monotonic_rejects_this_lap += 1
+            log_delta_debug(
+                f"[SAMPLE_REJECTED] not monotonic: player_dist={player_dist!r} <= "
+                f"last_sample_dist={self._current_lap_samples[-1][0]!r} (time_into={time_into!r})"
+            )
+            return
+        self._current_lap_samples.append((
+            player_dist,
+            time_into,
+            speed_ms,
+            throttle,
+            brake,
+            steering,
+            gear,
+        ))
 
     def update_scoring(
         self,
@@ -1081,6 +1275,13 @@ class DeltaEngine:
             self._vehicle_name = veh_name
             self._vehicle_class = veh_class
             self._current_lap_samples = []
+            self._scoring_ticks_this_lap = 0
+            self._flying_ticks_this_lap = 0
+            self._sample_monotonic_rejects_this_lap = 0
+            self._sample_dist_min_this_lap = None
+            self._sample_dist_max_this_lap = None
+            self._physics_ticks_this_lap = 0
+            self._physics_dead_reckon_ticks_this_lap = 0
             self._last_laps_completed = laps_comp
             self._last_checkpoint_idx = -1
             self._sectors.reset_lap_capture(clear_primed=True)
@@ -1157,6 +1358,36 @@ class DeltaEngine:
         # lap (total_laps rolled over); an identical 3->1 sequence without a new lap
         # is a stale echo and must not snap the HUD back up to the S1 box.
         lap_crossed = (laps_comp > self._last_laps_completed)
+        # Distinct from lap_crossed above (which _handle_sector_transition
+        # needs exactly as-is): this specifically excludes the very first
+        # packet ever received (self._last_laps_completed == -1 -> Case 0
+        # "Initialization" in _handle_lap_transition, not a real Case 2
+        # crossing with an actual previous lap's tail to worry about) — see
+        # the stale-distance skip below, which must NOT also skip the
+        # engine's very first sample.
+        is_real_lap_crossing = self._last_laps_completed >= 0 and lap_crossed
+        if is_real_lap_crossing:
+            # This tick's OWN player_dist was captured by the caller (see
+            # update_scoring_from_view) BEFORE we got here — for a
+            # CompactScoring-only frame that's self._last_scoring_dist,
+            # dead-reckoned from BEFORE the line crossing, so it's still
+            # sitting near the OLD lap's tail (~track_length), not the new
+            # lap's actual start (~0m). _collect_lap_sample already skips
+            # this tick entirely below (is_real_lap_crossing gate), but
+            # player_dist is ALSO used by _handle_sector_transition right
+            # below (would spuriously see a near-finish-line position for
+            # what's actually sector 1 of the new lap) and, more importantly,
+            # is unconditionally written back into self._last_scoring_dist
+            # at this function's tail — which used to silently UNDO
+            # _handle_lap_transition's own wrap-on-crossing correction the
+            # very same tick it ran, leaving every subsequent CompactScoring
+            # tick this whole lap reading that same stale near-track-length
+            # baseline instead of a corrected one (this, not just the single
+            # first tick, is what a 816/819 or 867/869 monotonic-rejection
+            # rate for an ENTIRE lap was actually coming from). Zeroing it
+            # here, once, fixes every one of those downstream reads in a
+            # single place instead of chasing each site separately.
+            player_dist = 0.0
         self._handle_lap_transition(laps_comp, last_lap_time, lap_flag, in_garage, in_pits, current_et=current_et)
         self._handle_sector_transition(curr_sec, time_into=time_into, player_dist=player_dist, lap_crossed=lap_crossed)
 
@@ -1178,6 +1409,9 @@ class DeltaEngine:
             self._sectors.last_current_sector = 1
 
         is_flying_lap = (lap_flag == 2 and time_into > 0.0)
+        self._scoring_ticks_this_lap += 1
+        if is_flying_lap:
+            self._flying_ticks_this_lap += 1
         # Live delta/expected keeps updating even when the CURRENT lap is
         # invalidated for record-keeping (lap_flag != 2, e.g. a track-limits
         # cut) — the driver already has separate visual/audio invalid-lap
@@ -1198,8 +1432,23 @@ class DeltaEngine:
             self._stint_best_lap_time = 999999.0
             self._apply_active_profile()
 
-        # Record reference samples only if valid flying lap in progress
-        if is_flying_lap:
+        # Record reference samples only if valid flying lap in progress.
+        # Skipped on the exact tick that just crossed the line (is_real_lap_crossing):
+        # `player_dist` for this tick was captured by the caller BEFORE
+        # _handle_lap_transition ran above, from a CompactScoring-only
+        # frame's `self._last_scoring_dist` (see update_scoring_from_view) —
+        # still possibly sitting at the just-finished lap's tail (near
+        # _track_length) if no physics tick had a chance to wrap it yet (see
+        # _handle_lap_transition's own wrap-on-crossing fix). _current_lap_
+        # samples was JUST emptied, so that stale value would otherwise be
+        # accepted unconditionally as the new lap's very first sample —
+        # poisoning every genuinely low, correctly-increasing reading for
+        # the rest of the lap against it (see [Incomplete track coverage]
+        # rejections starting well past 0m, and near-total monotonic_rejects
+        # counts). One skipped tick costs nothing against the hundreds
+        # collected per lap; the very next tick reads a fresh, correctly-
+        # wrapped value either way.
+        if is_flying_lap and not is_real_lap_crossing:
             self._collect_lap_sample(
                 time_into=time_into,
                 player_dist=player_dist,
@@ -1269,8 +1518,15 @@ class DeltaEngine:
         self._last_steering = steering
         self._last_gear = gear
 
+        # Always-on diagnostic counters (see their field docstring) — settle
+        # whether TelemInfo is even reaching this method at its expected
+        # rate, and whether the dead-reckoning below actually runs when it
+        # does, without guessing from SAMPLE_REJECTED patterns alone.
+        self._physics_ticks_this_lap += 1
+
         # High-frequency continuous distance dead reckoning integration (120Hz)
         if dt > 0.0 and self._last_speed_ms > 0.0 and self._last_scoring_dist >= 0.0:
+            self._physics_dead_reckon_ticks_this_lap += 1
             self._last_scoring_dist += self._last_speed_ms * dt
             if self._track_length > 0.0 and self._last_scoring_dist >= self._track_length:
                 self._last_scoring_dist -= self._track_length
@@ -1484,8 +1740,41 @@ class DeltaEngine:
             return
 
         sample_count = len(self._current_lap_samples)
-        logger.info(f"[DeltaEngine] Lap completed: lap_time={lap_time:.3f}s, flag={lap_flag}, samples={sample_count}")
-        print(f"[DeltaEngine] Lap completed: {lap_time:.3f}s (flag={lap_flag}, samples={sample_count})", flush=True)
+        # scoring_ticks/flying_ticks are always-on diagnostic counters (no
+        # delta_debug.log config gate — see their field docstring): how many
+        # scoring packets reached DeltaEngine this lap, and how many passed
+        # the is_flying_lap gate. Distinguishes "packets never arrived"
+        # (both low) from "arrived but time_into stayed 0" (flying_ticks low,
+        # scoring_ticks not) from "flying but _collect_lap_sample's own
+        # filters rejected them" (both high, samples still low) on this same
+        # line, without needing a second reproduction. dist_span/
+        # monotonic_rejects go one level deeper into that last case: a tiny
+        # dist_span despite many flying_ticks means player_dist itself barely
+        # moved between scoring ticks (dead-reckoning stalled), not just
+        # noisy backwards jitter (which would show a wide span AND a high
+        # monotonic_rejects count). physics_ticks/dead_reckon_ticks settle
+        # WHY player_dist stalls in the first place: physics_ticks close to
+        # scoring_ticks (instead of ~10x higher, matching TelemInfo's own
+        # 50-120Hz vs CompactScoring's ~10Hz) means TelemInfo isn't reaching
+        # update_physics() at its expected rate at all; physics_ticks healthy
+        # but dead_reckon_ticks much lower means dt/speed are the problem
+        # instead (see update_physics's own dead-reckoning guard).
+        dist_min = self._sample_dist_min_this_lap
+        dist_max = self._sample_dist_max_this_lap
+        dist_span = (dist_max - dist_min) if (dist_min is not None and dist_max is not None) else None
+        logger.info(
+            f"[DeltaEngine] Lap completed: lap_time={lap_time:.3f}s, flag={lap_flag}, samples={sample_count}, "
+            f"scoring_ticks={self._scoring_ticks_this_lap}, flying_ticks={self._flying_ticks_this_lap}, "
+            f"dist_span={dist_span}, monotonic_rejects={self._sample_monotonic_rejects_this_lap}, "
+            f"physics_ticks={self._physics_ticks_this_lap}, dead_reckon_ticks={self._physics_dead_reckon_ticks_this_lap}"
+        )
+        print(
+            f"[DeltaEngine] Lap completed: {lap_time:.3f}s (flag={lap_flag}, samples={sample_count}, "
+            f"scoring_ticks={self._scoring_ticks_this_lap}, flying_ticks={self._flying_ticks_this_lap}, "
+            f"dist_span={dist_span}, monotonic_rejects={self._sample_monotonic_rejects_this_lap}, "
+            f"physics_ticks={self._physics_ticks_this_lap}, dead_reckon_ticks={self._physics_dead_reckon_ticks_this_lap})",
+            flush=True,
+        )
 
         # 3. Physical plausibility check (minimum time according to track length, max ~400 km/h)
         if self._track_length > 500.0:
@@ -1666,16 +1955,21 @@ class DeltaEngine:
         # Apply active reference according to configured mode
         self._apply_active_profile()
 
+    def _sync_metadata(self) -> None:
+        """Pushes this session's current combo identity + configured ref-laps
+        directory into MetadataEngine — the single owner of combo->filename
+        naming (SRP: this class does delta/timing math, not file naming).
+        Cheap (string ops only, no I/O): safe to call before every filepath
+        lookup below rather than only on a detected combo change, so it stays
+        correct even for callers (tests included) that poke _track_name/
+        _vehicle_class/_vehicle_name directly instead of going through
+        _apply_scoring_update()'s combo-change block."""
+        self._metadata.update(self._track_name, self._vehicle_class, self._vehicle_name, base_dir=_REF_LAPS_DIR)
+
     def _get_profile_filepath(self) -> Optional[Path]:
         """Returns JSON filepath for (track, vehicle_class/vehicle)."""
-        if not self._track_name:
-            return None
-        t_clean = _clean_name(self._track_name)
-        v_identifier = _clean_name(self._vehicle_class) if self._vehicle_class else _clean_name(self._vehicle_name)
-        if not v_identifier:
-            v_identifier = "default"
-        filename = f"ref_{t_clean}_{v_identifier}.json"
-        return _REF_LAPS_DIR / filename
+        self._sync_metadata()
+        return self._metadata.get_profile_filepath()
 
     def _save_reference_profile(self) -> None:
         """Automatically saves all-time best reference lap telemetry to disk."""
@@ -2096,9 +2390,38 @@ class DeltaEngine:
         return self._track_name
 
     @property
+    def vehicle_class(self) -> str:
+        """Returns vehicle class of active session (see _find_player_vehicle)."""
+        return self._vehicle_class
+
+    @property
+    def vehicle_name(self) -> str:
+        """Returns vehicle name of active session (see _find_player_vehicle)."""
+        return self._vehicle_name
+
+    @property
     def track_length(self) -> float:
         """Returns total track length in meters."""
         return self._track_length
+
+    def get_energy_history_filepath(self) -> Optional[Path]:
+        """Filepath for this combo's persisted per-lap fuel/energy consumption
+        history (ref_<track>_<car>.energy.json) — same track/vehicle identity
+        and directory as the reference-lap telemetry file (_get_profile_filepath),
+        sitting next to it exactly the way its .marks.json sibling does.
+        Deliberately a separate file rather than a new key merged into
+        ref_<track>_<car>.json itself: FuelEnergyEngine (the only writer) has
+        to work from lap 1 of a combo that has never set a timed lap — before
+        _all_time_best_profile exists — without either creating a fake 0-point
+        profile that would perturb has_reference, or racing
+        _save_reference_profile()'s full telemetry rewrite whenever a new best
+        lap is set.
+
+        This class only *detects* the combo (from scoring packets, via
+        _apply_scoring_update()) — the actual name is resolved by
+        MetadataEngine, not computed here; see _sync_metadata()."""
+        self._sync_metadata()
+        return self._metadata.get_energy_history_filepath()
 
     @property
     def last_scoring_dist(self) -> float:

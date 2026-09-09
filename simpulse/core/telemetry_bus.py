@@ -9,6 +9,7 @@ import time
 import logging
 from collections import deque
 from enum import Enum
+from pathlib import Path
 from typing import Optional, Dict, Union
 from PySide6.QtCore import QObject, Signal, QTimer
 
@@ -20,8 +21,13 @@ from simpulse.core.telemetry_channels import (
     TelemetryChannel, ChannelMetrics, TelemetryRawPacket, TelemetryPayload
 )
 from simpulse.core.reference_lap import ReferenceLapManager, LapDeltaPacket
+from simpulse_sdk.models.energy import EnergyPacket
+from simpulse_sdk.models.telemetry import resolve_fuel_or_energy_level
 from simpulse.core.mock_telemetry import MockTelemetryGenerator
 from simpulse.core.telemetry.state_store import TelemetryStateStore
+from simpulse.core.telemetry.fuel_engine import FuelEnergyEngine
+from simpulse.core.telemetry.session_energy_gauge import compute_session_energy_gauge
+from simpulse_sdk.models.view import TelemetryView
 from isimotor_rawudp_client import (
     TelemInfo,
     CompactScoring,
@@ -69,6 +75,7 @@ class TelemetryBus(QObject):
 
     telemetry_updated = Signal(object)      # VehicleSensors
     delta_updated = Signal(object)          # LapDeltaPacket
+    energy_updated = Signal(object)         # EnergyPacket
     packet_received = Signal(object)        # TelemetryRawPacket
     metrics_updated = Signal()              # Triggered periodically for UI refresh
     telemetry_fps_changed = Signal(float)
@@ -81,6 +88,11 @@ class TelemetryBus(QObject):
     ):
         super().__init__(parent)
         self.reference_lap_mgr = reference_lap_mgr or ReferenceLapManager.get_instance()
+        self.fuel_engine = FuelEnergyEngine()
+        # Combo (track/vehicle) this fuel_engine's history was last (re)loaded
+        # for — see _sync_energy_history_combo(). None until the first combo
+        # resolves; also None forever in sessions where it never does.
+        self._energy_history_filepath: Optional[Path] = None
         self.mock_generator = MockTelemetryGenerator(fps=60, parent=self)
         self.mock_generator.frame_ready.connect(self._on_mock_frame)
 
@@ -89,6 +101,7 @@ class TelemetryBus(QObject):
         self._udp_server: Optional[UDPServer] = None
         self._latest_sensors = VehicleSensors()
         self._latest_delta = LapDeltaPacket()
+        self._latest_energy = EnergyPacket()
         self._last_status: UdpStreamStatus = UdpStreamStatus.STOPPED
 
         # Per-channel metrics tracking
@@ -118,6 +131,10 @@ class TelemetryBus(QObject):
     @property
     def latest_delta(self) -> LapDeltaPacket:
         return self._latest_delta
+
+    @property
+    def latest_energy(self) -> EnergyPacket:
+        return self._latest_energy
 
     @property
     def total_measured_kbs(self) -> float:
@@ -260,9 +277,14 @@ class TelemetryBus(QObject):
         # else (this is what resolves CompactScoring/FullScoringSession disagreeing
         # on transient values: they're merged into one View by the Store first).
         delta_pkt: Optional[LapDeltaPacket] = None
+        # Captured only on a TelemInfo tick — fuel_level only changes then, so
+        # this doubles as the "should FuelEnergyEngine advance this tick?" gate
+        # for _apply_fuel_fields() below.
+        physics_view: Optional[TelemetryView] = None
         if data is not None:
             if isinstance(data, TelemInfo):
-                delta_pkt = self.reference_lap_mgr.update_physics_from_view(store.snapshot())
+                physics_view = store.snapshot()
+                delta_pkt = self.reference_lap_mgr.update_physics_from_view(physics_view)
             elif isinstance(data, (CompactScoring, FullScoringSession)):
                 delta_pkt = self.reference_lap_mgr.update_scoring_from_view(store.timing, store.grid)
             elif isinstance(data, dict):
@@ -285,14 +307,16 @@ class TelemetryBus(QObject):
                 sensors = override_sensors
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
                 self._apply_presence_fields(sensors)
-                self.process_frame(sensors, delta_pkt)
+                energy_pkt = self._apply_fuel_fields(physics_view, delta_pkt)
+                self.process_frame(sensors, delta_pkt, energy_pkt)
             elif isinstance(data, VehicleSensors):
                 self.process_frame(data, delta_pkt)
             else:
                 sensors = VehicleSensors.from_view(store.snapshot())
                 delta_pkt = self._apply_delta_fields(sensors, delta_pkt)
                 self._apply_presence_fields(sensors)
-                self.process_frame(sensors, delta_pkt)
+                energy_pkt = self._apply_fuel_fields(physics_view, delta_pkt)
+                self.process_frame(sensors, delta_pkt, energy_pkt)
 
     def _apply_delta_fields(self, sensors: VehicleSensors, delta_pkt: Optional[LapDeltaPacket]) -> LapDeltaPacket:
         """Stamps sensors' delta/timing/sector fields from the single authoritative
@@ -355,16 +379,117 @@ class TelemetryBus(QObject):
         """
         sensors.in_realtime = TelemetryStateStore.get_instance().in_realtime
 
-    def process_frame(self, sensors: VehicleSensors, delta_packet: Optional[LapDeltaPacket] = None) -> None:
+    def _apply_fuel_fields(
+        self,
+        physics_view: Optional[TelemetryView],
+        delta_pkt: Optional[LapDeltaPacket],
+    ) -> EnergyPacket:
+        """Builds the authoritative EnergyPacket from FuelEnergyEngine +
+        session_energy_gauge.compute_session_energy_gauge() — same
+        build-push-emit pattern as ReferenceLapManager._build_delta_packet()/
+        LapDeltaPacket (see EnergyPacket's docstring): pushed into
+        TelemetryStateStore (single source of truth, TelemetryView.energy)
+        here, returned so the caller can pass it to process_frame() for the
+        energy_updated push-signal — never rebuilt ad hoc by consumers.
+
+        Deliberately never touches VehicleSensors: the level is read straight
+        off TelemetryView.raw_telemetry via resolve_fuel_or_energy_level() —
+        the exact same Hypercar-vs-fuel resolution VehicleSensors.
+        from_telem_info() uses, just called independently here — and nothing
+        is written back either. VehicleSensors.fuel_level/.energy_per_lap/
+        .session_*/etc are deprecated (see their properties): EnergyPacket is
+        the sanctioned model for all of it now.
+
+        Only advances the engine (and rebuilds the packet) on a TelemInfo tick
+        (`physics_view.raw_telemetry` is None otherwise, e.g. a Weather/
+        ExtendedState packet, or before the first physics tick of a session):
+        the level/session progress don't change between those, so re-feeding
+        them would just record a bogus zero-distance sample — the last built
+        packet (self._latest_energy) is reused as-is instead.
+        """
+        if physics_view is None or physics_view.raw_telemetry is None:
+            return self._latest_energy
+
+        self._sync_energy_history_combo()
+        level, is_percentage = resolve_fuel_or_energy_level(physics_view.raw_telemetry)
+        is_pit_lap = bool(delta_pkt.is_pit_lap) if delta_pkt is not None else False
+        lap_time = float(physics_view.timing.last_lap_time)
+        recorded = self.fuel_engine.update(level, physics_view.total_laps, lap_time, is_pit_lap)
+        if recorded and self._energy_history_filepath is not None:
+            self.fuel_engine.save_history(self._energy_history_filepath)
+
+        # view.grid (FullGridScoringState) — and its end_et, the session's
+        # scheduled end time — only exists once a FullScoringSession packet
+        # has been ingested; None until then (see TelemetryView's docstring).
+        end_et = physics_view.grid.end_et if physics_view.grid is not None else 0.0
+        gauge = compute_session_energy_gauge(
+            current_et=physics_view.timing.current_et,
+            end_et=end_et,
+            max_laps=physics_view.timing.max_laps,
+            total_laps=physics_view.total_laps,
+            energy_level=level,
+            median_consumption_per_lap=self.fuel_engine.estimated_consumption_per_lap,
+            median_lap_time=self.fuel_engine.estimated_lap_time,
+        )
+        energy_pkt = EnergyPacket(
+            level=level,
+            is_percentage=is_percentage,
+            consumption_per_lap=self.fuel_engine.estimated_consumption_per_lap,
+            lap_time_median=self.fuel_engine.estimated_lap_time,
+            projected_laps=self.fuel_engine.estimated_laps_remaining,
+            session_time_ratio=gauge.time_ratio,
+            session_lap_ratio=gauge.lap_ratio,
+            session_laps_left=gauge.laps_left_in_session,
+            session_energy_needed=gauge.energy_needed_to_finish,
+            session_energy_ratio=gauge.energy_ratio,
+            session_time_elapsed=gauge.time_elapsed,
+            session_time_total=gauge.time_total,
+            session_laps_done=gauge.laps_done,
+            session_laps_total=gauge.laps_total,
+            fuel_anomaly=self.fuel_engine.has_insufficient_fuel_anomaly(level, gauge.energy_ratio),
+            track_name=self.reference_lap_mgr.track_name,
+            vehicle_class=self.reference_lap_mgr.vehicle_class,
+            vehicle_name=self.reference_lap_mgr.vehicle_name,
+        )
+        try:
+            TelemetryStateStore.get_instance().update_energy(energy_pkt)
+        except Exception:
+            logger.exception("[TelemetryBus] Failed to push EnergyPacket into TelemetryStateStore")
+        return energy_pkt
+
+    def _sync_energy_history_combo(self) -> None:
+        """Detects a track/vehicle combo change (or its first resolution this
+        session) and (re)loads that combo's persisted consumption history —
+        see FuelEnergyEngine.load_history()'s docstring for why this has to
+        happen before the combo's first lap-transition, not after.
+        """
+        filepath = self.reference_lap_mgr.get_energy_history_filepath()
+        if filepath == self._energy_history_filepath:
+            return
+        self.fuel_engine.reset()
+        self._energy_history_filepath = filepath
+        if filepath is not None:
+            self.fuel_engine.load_history(filepath)
+
+    def process_frame(
+        self,
+        sensors: VehicleSensors,
+        delta_packet: Optional[LapDeltaPacket] = None,
+        energy_packet: Optional[EnergyPacket] = None,
+    ) -> None:
         """Handle incoming high-level telemetry frame and broadcast to observers."""
         self._latest_sensors = sensors
         if delta_packet is None:
             delta_packet = self.reference_lap_mgr.latest_packet
         self._latest_delta = delta_packet
+        if energy_packet is None:
+            energy_packet = self._latest_energy
+        self._latest_energy = energy_packet
 
         # Emit signals for host UI, overlay, and plugin observers
         self.telemetry_updated.emit(sensors)
         self.delta_updated.emit(delta_packet)
+        self.energy_updated.emit(energy_packet)
 
     def _on_mock_frame(self, sensors: VehicleSensors) -> None:
         """Simulate real UDP packet arrival across multiple channels in mock mode."""

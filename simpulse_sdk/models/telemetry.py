@@ -234,6 +234,43 @@ class LmuTelemetryData:
         return None
 
 
+# Real Hypercar virtual_energy is a 0.0-1.0 fraction; this sits many orders
+# of magnitude above any float/memory noise (see resolve_fuel_or_energy_
+# level's docstring — a real GTE car's packet showed virtual_energy=
+# 1.4854197949e-313, a subnormal double, i.e. leftover memory noise, not a
+# real reading) while still well below the smallest meaningful reading a
+# Hypercar could ever actually report.
+_MIN_HYPERCAR_VIRTUAL_ENERGY = 1e-6
+
+
+def resolve_fuel_or_energy_level(telem: TelemInfo) -> Tuple[float, bool]:
+    """Resolves the instantaneous fuel/energy level from a raw TelemInfo
+    packet: a Hypercar's virtual-energy percentage (telem.lmu.virtual_energy,
+    0-100) when it runs on WEC Hypercar energy management — mFuel reports
+    (near-)zero for those, since they don't use a traditional fuel cell —
+    otherwise raw fuel in liters (telem.fuel).
+
+    Single source of truth for both VehicleSensors.from_telem_info() (which
+    mirrors it onto the now-deprecated fuel_level/energy_is_percentage, kept
+    only for back-compat) and TelemetryBus (which calls this directly on
+    TelemetryView.raw_telemetry for EnergyPacket — see _apply_fuel_fields())
+    so the energy feature no longer depends on VehicleSensors at all.
+    Returns (level, is_percentage).
+
+    Deliberately does NOT use telem.lmu.has_hypercar_energy — that property
+    is just `virtual_energy > 0.0`, and a real Fuji session's raw packet for
+    a GTE car (not a Hypercar) showed virtual_energy=1.4854197949e-313,
+    which still satisfies it. See _MIN_HYPERCAR_VIRTUAL_ENERGY above: this
+    was silently discarding the GTE car's real, correctly-populated
+    telem.fuel every tick, resolving level to ~0.0 (1.4854e-313 * 100) no
+    matter the actual tank state.
+    """
+    lmu_ext = telem.lmu
+    if lmu_ext is not None and lmu_ext.virtual_energy > _MIN_HYPERCAR_VIRTUAL_ENERGY:
+        return float(lmu_ext.virtual_energy) * 100.0, True
+    return float(telem.fuel), False
+
+
 @dataclass
 class _VehicleSensorsFields:
     """
@@ -305,9 +342,30 @@ class _VehicleSensorsFields:
     filtered_throttle: Optional[float] = None
     filtered_brake: Optional[float] = None
 
-    # Session telemetry, lap timing and energy
-    fuel_level: float = 0.0
+    # Session telemetry, lap timing and energy.
+    #
+    # DEPRECATED (renamed to `_xxx`, see the @deprecated properties on
+    # VehicleSensors below) — EnergyPacket (simpulse_sdk/models/energy.py) is
+    # the sanctioned model for all of this now: built once per physics tick
+    # by TelemetryBus._apply_fuel_fields() from FuelEnergyEngine +
+    # session_energy_gauge.compute_session_energy_gauge(), pushed into
+    # TelemetryStateStore (TelemetryView.energy) and emitted via
+    # TelemetryBus.energy_updated / IEnergySubscriber.on_energy_frame() —
+    # same pattern as LapDeltaPacket. TelemetryBus no longer writes any of
+    # these fields; they're kept only so old reads don't crash, and stay
+    # frozen at their construction-time value (0.0/None) once nothing updates
+    # them any more.
+    _fuel_level: float = 0.0
+    _energy_is_percentage: bool = False
     remaining_laps: int = 0
+    _energy_per_lap: float = 0.0
+    _energy_projected_laps: float = 0.0
+    _energy_lap_time_median: float = 0.0
+    _session_time_ratio: Optional[float] = None
+    _session_lap_ratio: Optional[float] = None
+    _session_laps_left: Optional[float] = None
+    _session_energy_needed: Optional[float] = None
+    _session_energy_ratio: Optional[float] = None
     delta_time: float = 0.0
     estimated_lap_time: float = 0.0
     estimated_lap_time_str: str = "--:--.---"
@@ -558,7 +616,7 @@ class _VehicleSensorsFields:
                 unfiltered_brake=ub_f,
                 filtered_throttle=ft_f,
                 filtered_brake=fb_f,
-                fuel_level=fuel_level,
+                _fuel_level=fuel_level,
                 remaining_laps=remaining_laps,
                 delta_time=delta_time,
                 estimated_lap_time=estimated_lap_time,
@@ -677,7 +735,7 @@ class _VehicleSensorsFields:
             unfiltered_brake=ub_f,
             filtered_throttle=ft_f,
             filtered_brake=fb_f,
-            fuel_level=fuel_level,
+            _fuel_level=fuel_level,
             remaining_laps=remaining_laps,
             delta_time=delta_time,
             estimated_lap_time=estimated_lap_time,
@@ -829,7 +887,7 @@ class _VehicleSensorsFields:
         unfiltered_brake = float(telem.unfiltered_brake)
         filtered_throttle = float(telem.filtered_throttle)
         filtered_brake = float(telem.filtered_brake)
-        fuel_level = float(telem.fuel)
+        fuel_level, energy_is_percentage = resolve_fuel_or_energy_level(telem)
 
         # Extract ECU & Cockpit state from isimotor-rawudp v0.2.0
         ecu = telem.lmu.ecu if telem.lmu else None
@@ -877,7 +935,7 @@ class _VehicleSensorsFields:
             ecu_wiper_state = 0
             ecu_lift_and_coast = 0.0
 
-        return cls.from_wheel_velocities(
+        sensors = cls.from_wheel_velocities(
             long_patch_vels=lpv,
             long_ground_vels=lgv,
             lat_patch_vels=lat_pv,
@@ -942,6 +1000,13 @@ class _VehicleSensorsFields:
             surface_types=surface_types,
             terrain_names=terrain_names,
         )
+        # Not threaded through from_wheel_velocities()'s already-huge parameter
+        # list — stamped post-construction, same convention as the delta/sector
+        # fields TelemetryBus._apply_delta_fields() sets afterwards. Writes the
+        # private `_xxx` field directly (not the deprecated public property)
+        # to avoid firing its deprecation warning on every single construction.
+        sensors._energy_is_percentage = energy_is_percentage
+        return sensors
 
     @classmethod
     def from_view(cls, view: "TelemetryView") -> Self:
@@ -1270,7 +1335,7 @@ class _VehicleSensorsFields:
             unfiltered_brake=float(self.unfiltered_brake),
             filtered_throttle=float(self.filtered_throttle if self.filtered_throttle is not None else self.unfiltered_throttle),
             filtered_brake=float(self.filtered_brake if self.filtered_brake is not None else self.unfiltered_brake),
-            fuel=float(self.fuel_level),
+            fuel=float(self._fuel_level),
             local_vel=TelemVect3(x=0.0, y=0.0, z=float(self.vehicle_speed)),
             wheels=tuple(
                 TelemWheel(surface_type=st, terrain_name=tn)
@@ -1773,6 +1838,101 @@ class VehicleSensors(_VehicleSensorsFields):
     @sector3_delta.setter
     def sector3_delta(self, value: float) -> None:
         self._sector3_delta = value
+
+    # ── Fuel/energy & session gauge (deprecated, use EnergyPacket) ───────────
+    # EnergyPacket (simpulse_sdk/models/energy.py) is the sanctioned model for
+    # all of this — see its docstring and IEnergySubscriber.on_energy_frame().
+    # TelemetryBus no longer writes any of these; they stay frozen at their
+    # construction-time value once nothing updates them any more.
+    @property
+    @deprecated("Use EnergyPacket.level instead")
+    def fuel_level(self) -> float:
+        return self._fuel_level
+
+    @fuel_level.setter
+    def fuel_level(self, value: float) -> None:
+        self._fuel_level = value
+
+    @property
+    @deprecated("Use EnergyPacket.is_percentage instead")
+    def energy_is_percentage(self) -> bool:
+        return self._energy_is_percentage
+
+    @energy_is_percentage.setter
+    def energy_is_percentage(self, value: bool) -> None:
+        self._energy_is_percentage = value
+
+    @property
+    @deprecated("Use EnergyPacket.consumption_per_lap instead")
+    def energy_per_lap(self) -> float:
+        return self._energy_per_lap
+
+    @energy_per_lap.setter
+    def energy_per_lap(self, value: float) -> None:
+        self._energy_per_lap = value
+
+    @property
+    @deprecated("Use EnergyPacket.projected_laps instead")
+    def energy_projected_laps(self) -> float:
+        return self._energy_projected_laps
+
+    @energy_projected_laps.setter
+    def energy_projected_laps(self, value: float) -> None:
+        self._energy_projected_laps = value
+
+    @property
+    @deprecated("Use EnergyPacket.lap_time_median instead")
+    def energy_lap_time_median(self) -> float:
+        return self._energy_lap_time_median
+
+    @energy_lap_time_median.setter
+    def energy_lap_time_median(self, value: float) -> None:
+        self._energy_lap_time_median = value
+
+    @property
+    @deprecated("Use EnergyPacket.session_time_ratio instead")
+    def session_time_ratio(self) -> Optional[float]:
+        return self._session_time_ratio
+
+    @session_time_ratio.setter
+    def session_time_ratio(self, value: Optional[float]) -> None:
+        self._session_time_ratio = value
+
+    @property
+    @deprecated("Use EnergyPacket.session_lap_ratio instead")
+    def session_lap_ratio(self) -> Optional[float]:
+        return self._session_lap_ratio
+
+    @session_lap_ratio.setter
+    def session_lap_ratio(self, value: Optional[float]) -> None:
+        self._session_lap_ratio = value
+
+    @property
+    @deprecated("Use EnergyPacket.session_laps_left instead")
+    def session_laps_left(self) -> Optional[float]:
+        return self._session_laps_left
+
+    @session_laps_left.setter
+    def session_laps_left(self, value: Optional[float]) -> None:
+        self._session_laps_left = value
+
+    @property
+    @deprecated("Use EnergyPacket.session_energy_needed instead")
+    def session_energy_needed(self) -> Optional[float]:
+        return self._session_energy_needed
+
+    @session_energy_needed.setter
+    def session_energy_needed(self, value: Optional[float]) -> None:
+        self._session_energy_needed = value
+
+    @property
+    @deprecated("Use EnergyPacket.session_energy_ratio instead")
+    def session_energy_ratio(self) -> Optional[float]:
+        return self._session_energy_ratio
+
+    @session_energy_ratio.setter
+    def session_energy_ratio(self, value: Optional[float]) -> None:
+        self._session_energy_ratio = value
 
     @property
     @deprecated("Use .time_status.sector1.expected_time_str (while frozen) instead")

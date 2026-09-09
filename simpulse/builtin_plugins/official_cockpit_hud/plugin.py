@@ -25,9 +25,9 @@ from PySide6.QtWidgets import QWidget
 
 from simpulse_sdk import (
     SimPulsePlugin, PluginMetadata, PluginContext,
-    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IHudWidgetProvider, HudSlot,
+    ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IEnergySubscriber, IHudWidgetProvider, HudSlot,
     ITelemetryStateSubscriber,
-    LapDeltaPacket, VehicleSensors, TelemetryStateStore, TelemetryView
+    LapDeltaPacket, EnergyPacket, VehicleSensors, TelemetryStateStore, TelemetryView
 )
 from simpulse.builtin_plugins.official_cockpit_hud.widgets import (
     CockpitWidgetContext,
@@ -55,7 +55,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 class OfficialCockpitHudPlugin(
-    SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber,
+    SimPulsePlugin, ITabProvider, ITelemetrySubscriber, IDeltaSubscriber, IEnergySubscriber,
     ITelemetryStateSubscriber, IHudWidgetProvider,
 ):
     """
@@ -76,6 +76,7 @@ class OfficialCockpitHudPlugin(
         self.config: OfficialCockpitHudConfig = OfficialCockpitHudConfig()
         self.latest_sensors: VehicleSensors = VehicleSensors()
         self.latest_delta: LapDeltaPacket = LapDeltaPacket()
+        self.latest_energy: EnergyPacket = EnergyPacket()
 
         # Font configuration
         self.font_family: str = self._load_custom_font()
@@ -195,6 +196,9 @@ class OfficialCockpitHudPlugin(
         if self._active_tab_widget and self._active_tab_widget.isVisible() and not getattr(self._active_tab_widget, "_is_idle", False):
             self._active_tab_widget.update_delta_ui(delta_packet)
 
+    def on_energy_frame(self, energy_packet: EnergyPacket) -> None:
+        self.latest_energy = energy_packet
+
     # =========================================================================
     # IHudWidgetProvider
     # =========================================================================
@@ -306,6 +310,8 @@ class OfficialCockpitHudPlugin(
         store = TelemetryStateStore.get_instance()
         context = CockpitWidgetContext(
             sensors=sensors,
+            energy=self.latest_energy,
+            delta=self.latest_delta,
             speed_unit=self.config.speed_unit,
             hit_count=store.hit_count_current_lap,
             is_clean_lap=store.is_clean_lap,

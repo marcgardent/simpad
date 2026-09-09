@@ -16,7 +16,7 @@ from simpulse.builtin_plugins.paddock_agent.plugin import (
     PaddockAgentWidget,
     SeriesSetupCardWidget,
 )
-from simpulse.builtin_plugins.paddock_agent.schedule.manager import RaceEvent, RaceSetupConfig
+from simpulse.builtin_plugins.paddock_agent.schedule.manager import LMUScheduleManager, RaceEvent, RaceSetupConfig
 
 
 @pytest.fixture(scope="session")
@@ -28,11 +28,25 @@ def qapp():
     return app
 
 
+def _isolated_plugin(tmp_path: Path) -> PaddockAgentPlugin:
+    """PaddockAgentPlugin(), but with its LMUScheduleManager rooted at a
+    per-test tmp_path and auto_fetch off. Bare PaddockAgentPlugin() reads AND
+    WRITES the real user's schedule_config.json/lmu_schedule_cache.json at
+    the repo root (LMUScheduleManager()'s own defaults) and fires a real
+    network fetch — never construct it directly in a test."""
+    schedule_mgr = LMUScheduleManager(
+        config_file=tmp_path / "schedule_config.json",
+        cache_file=tmp_path / "lmu_schedule_cache.json",
+        auto_fetch=False,
+    )
+    return PaddockAgentPlugin(schedule_mgr=schedule_mgr)
+
+
 def test_paddock_agent_plugin_lifecycle(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
 
-    plugin = PaddockAgentPlugin()
+    plugin = _isolated_plugin(tmp_path)
     assert plugin.metadata.id == "simpulse.builtin.paddock_agent"
     assert plugin.metadata.icon == "🏁"
 
@@ -50,7 +64,7 @@ def test_paddock_persistent_filters(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
 
-    plugin = PaddockAgentPlugin()
+    plugin = _isolated_plugin(tmp_path)
     pm.register_plugin(plugin)
 
     widget = plugin.create_tab_widget()
@@ -113,7 +127,7 @@ def test_paddock_setup_subscriptions_and_toggles(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
 
-    plugin = PaddockAgentPlugin()
+    plugin = _isolated_plugin(tmp_path)
     pm.register_plugin(plugin)
 
     widget = plugin.create_tab_widget()
@@ -141,7 +155,7 @@ def test_paddock_timer_notifications(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
 
-    plugin = PaddockAgentPlugin()
+    plugin = _isolated_plugin(tmp_path)
     pm.register_plugin(plugin)
 
     widget = plugin.create_tab_widget()
@@ -159,7 +173,7 @@ def test_paddock_api_sync_worker(qapp, tmp_path):
     cfg_mgr = ConfigManager(config_file=tmp_path / "cfg.json")
     pm = PluginManager(cfg_mgr)
 
-    plugin = PaddockAgentPlugin()
+    plugin = _isolated_plugin(tmp_path)
     pm.register_plugin(plugin)
 
     widget = plugin.create_tab_widget()

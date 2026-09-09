@@ -4,9 +4,11 @@ Each widget handles its own telemetry updates, animation smoothing, and vector Q
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from PySide6.QtGui import QPainter
 from simpulse.core.telemetry import VehicleSensors
+from simpulse_sdk.models.delta import LapDeltaPacket
+from simpulse_sdk.models.energy import EnergyPacket
 
 
 def lerp(start: float, end: float, amt: float) -> float:
@@ -33,6 +35,17 @@ class CockpitWidgetContext:
     Provides normalized telemetry sensors and cockpit environmental configuration.
     """
     sensors: VehicleSensors
+    # Authoritative fuel/energy + session-completion projection (see
+    # EnergyPacket's docstring) — QtEnergyLapsWidget reads this, NOT
+    # sensors.fuel_level/.energy_per_lap/etc, which are deprecated.
+    energy: EnergyPacket = field(default_factory=EnergyPacket)
+    # Authoritative lap delta, timing & sector state (see LapDeltaPacket's
+    # docstring) — QtDeltaTimerWidget reads this instead of VehicleSensors.
+    # QtSectorTimesWidget reads it too EXCEPT for the sectors list itself
+    # (sensors.sectors_list, not pkt.sectors_list — see that widget's
+    # docstring for why: pkt.sectors_list defaults to an empty list until the
+    # first on_delta_frame arrives, sensors.sectors_list never does).
+    delta: LapDeltaPacket = field(default_factory=LapDeltaPacket)
     speed_unit: str = "kmh"
     hit_count: int = 0
     is_clean_lap: bool = True
