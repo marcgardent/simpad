@@ -253,9 +253,10 @@ class LinuxWindowManager(BaseWindowManager):
             script_dir.mkdir(parents=True, exist_ok=True)
             script_name = "kwin_keep_above.js" if keep_above else "kwin_restore_normal.js"
             script_path = script_dir / script_name
+            safe_title = window_title.replace("\\", "\\\\").replace('"', '\\"')
             script_code = (
                 f'workspace.windowList().forEach(function(w) {{ '
-                f'if (w.caption.indexOf("SimPulse") !== -1 || w.caption.indexOf("SimPulse") !== -1 || w.caption.indexOf("LMU HUD") !== -1) {{ '
+                f'if (w.caption.indexOf("{safe_title}") !== -1) {{ '
                 f'w.keepAbove = {b_keep}; w.noBorder = {b_border}; '
                 f'}} '
                 f'}});'

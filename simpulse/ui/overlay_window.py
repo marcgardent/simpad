@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import sys
 import logging
-import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +16,7 @@ from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import QPainter, QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import QWidget, QApplication
 
+from simpulse.core.utils.window_utils import get_window_manager
 from simpulse.plugins.manager import PluginManager
 from simpulse_sdk import IHudWidgetProvider, SimPulsePlugin, VehicleSensors
 from simpulse.ui.slot_compositor import HudSlotCompositor
@@ -94,33 +94,9 @@ class SimPulseHudOverlayWindow(QWidget):
             self._enforce_windows_topmost()
 
     def _enforce_kwin_wayland_topmost(self) -> None:
-        """Send DBus script to KWin to force keepAbove and borderless rules on KDE Wayland."""
+        """Force the window above the game via the shared KWin/X11 window-manager utility."""
         try:
-            script_dir = Path.home() / ".cache" / "simpulse"
-            script_dir.mkdir(parents=True, exist_ok=True)
-            script_path = script_dir / "kwin_force_overlay.js"
-            script_code = (
-                'workspace.windowList().forEach(function(w) {'
-                '  if (w.caption && w.caption.indexOf("SimPulse Qt6 HUD Overlay") !== -1) {'
-                '    w.keepAbove = true;'
-                '    w.noBorder = true;'
-                '    w.skipTaskbar = true;'
-                '  }'
-                '});'
-            )
-            script_path.write_text(script_code, encoding="utf-8")
-
-            load_out = subprocess.check_output(
-                ["busctl", "--user", "call", "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting", "loadScript", "s", str(script_path)],
-                stderr=subprocess.DEVNULL, timeout=0.3
-            ).decode("utf-8", errors="ignore").strip()
-
-            if load_out:
-                script_id = load_out.split()[-1]
-                subprocess.check_output(
-                    ["busctl", "--user", "call", "org.kde.KWin", f"/Scripting/Script{script_id}", "org.kde.kwin.Script", "run"],
-                    stderr=subprocess.DEVNULL, timeout=0.3
-                )
+            get_window_manager().make_transparent_overlay(self.windowTitle())
         except Exception:
             pass
 
