@@ -448,7 +448,7 @@
       "show_gear_speed": true,
       "show_rev_indicator": true,
       "show_pedals": true,
-      "show_assists": true,
+      "show_assists": false,
       "show_tires": true,
       "show_delta": true,
       "delta_display_mode": "expected",
